@@ -1,0 +1,142 @@
+ 
+@@c01 double1x1 3.14
+@@c02 double1x1 -2500
+@@c03 double1x1 NaN
+@@c04 double1x1 NaN
+@@c05 double1x1 1000
+@@c06 double1x1 NaN
+@@c07 double1x1 Inf
+@@c08 double1x1 -Inf
+@@c09 double1x1 NaN
+@@c10 double1x1 1+2i
+@@c11 double1x1 0+1i
+@@c12 double1x1 0+3i
+@@c13 double1x1 NaN
+@@c14 double1x1 0.5
+@@c15 double1x1 5
+@@c16 double2x2 [1 NaN;2.5 3]
+@@c17 double1x1 NaN
+@@c18 double0x0
+@@c19 double1x1 1324
+@@c20 double1x1 4
+@@c21 double1x1 NaN
+@@c22 double1x1 NaN
+@@c23 double1x2 [NaN 2]
+@@c24 double1x1 NaN
+@@c25 double1x1 NaN
+@@c26 double1x1 Inf
+@@c27 double1x1 NaN
+@@c28 double1x1 1+2i
+@@c29 double1x1 1+1i
+@@c30 double1x1 3-1i
+@@c31 double1x1 0+2.5i
+@@c32 double1x1 12
+@@c33 double1x1 NaN
+@@c34 double1x1 NaN
+@@d01 double2x2 [1 2;3 4]
+@@d02 double1x3 [1 2 3]
+@@d03 logical1x1 true
+@@d04 double1x1 1+2i
+@@d05 double1x1 Inf
+@@d06 double1x1 NaN
+@@d07 cell1x2{double0x0,logical1x1 false}
+@@d08 cell1x2{double2x1 [1;2],logical1x1 true}
+@@d09 double1x1 6
+@@d10 double1x2 [-1 -2]
+@@d11 double1x1 -1
+@@d12 double1x2 [1 2]
+@@d13 cell1x2{double0x0,logical1x1 false}
+@@d14 double0x0
+@@d15 double1x1 1000
+@@d16 logical1x2 [true false]
+@@d17 double1x2 [1 1]
+@@d18 double2x2 [1 2;3 4]
+@@d19 double2x2 [1 2;3 4]
+@@d20 ERR: Requires string or character array input.
+@@d21 double1x3 [Inf -Inf NaN]
+@@d22 double1x3 [1 2 3]
+@@d23 double1x1 0+3i
+@@d24 cell1x2{double0x0,logical1x1 false}
+@@e01 logical1x5 [false true false true false]
+@@e02 logical1x1 false
+@@e03 logical1x1 false
+@@e04 logical2x2 [false true;true false]
+@@e05 double1x8 [10 11 12 13 14 33 134 161]
+@@e06 double1x117 [66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 171 182 187 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 249 250 251 252 253 254 255 256]
+@@e07 logical1x4 [true false true false]
+@@e08 logical1x1 false
+@@e09 logical0x0
+@@e10 logical1x5 [true false false true false]
+@@e11 logical1x5 [false true false false false]
+@@e12 logical1x5 [false false true false false]
+@@e13 logical1x5 [false false false true false]
+@@e14 logical1x5 [true false false false false]
+@@e15 logical1x5 [true true false true false]
+@@e16 logical1x5 [false false false false true]
+@@e17 double1x23 [34 35 36 38 39 40 41 42 43 45 46 47 48 59 60 64 65 92 93 94 96 124 126]
+@@e18 double1x117 [66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 171 182 187 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 249 250 251 252 253 254 255 256]
+@@e19 double1x8 [10 11 12 13 14 33 134 161]
+@@e20 cell1x2{logical1x2 [false true],logical1x1 false}
+@@e21 logical1x1 true
+@@e22 logical0x0
+@@e23 ERR: Too many input arguments.
+@@e24 ERR: vowel is an invalid qualifier string.
+@@e25 double1x10 [49 50 51 52 53 54 55 56 57 58]
+@@e26 double1x33 [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 128]
+@@e27 double1x94 [34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127]
+@@f01 char2x3'  a|  b'
+@@f02 char1x3'a  '
+@@f03 char1x3' a '
+@@f04 char1x3'  a'
+@@f05 cell1x1{char1x2' a'}
+@@f06 char1x4' ab '
+@@f07 char1x4' a  '
+@@f08 char0x0
+@@f09 char1x3'  a'
+@@f10 ERR: Second argument to strjust must be one of: left, right, center.
+@@g01 char1x5'apple'
+@@g02 char1x5'apple'
+@@g03 ERR: Expected input to match one of these strings:
+
+'apple', 'apricot'
+
+The input, a, matched more than one valid string.
+@@g04 char1x5'apple'
+@@g05 ERR: Expected input to match one of these strings:
+
+'apple', 'banana'
+
+The input, 'x', did not match any of the valid strings.
+@@g06 ERR: Expected mode to match one of these strings:
+
+'apple', 'banana'
+
+The input, 'x', did not match any of the valid strings.
+@@g07 ERR: Expected input number 2, mode, to match one of these strings:
+
+'apple', 'banana'
+
+The input, 'x', did not match any of the valid strings.
+@@g08 ERR: Expected input to match one of these strings:
+
+'apple'
+
+The input did not match any of the valid strings.
+@@g09 char1x5'apple'
+@@h01 logical1x1 true
+@@h02 logical1x1 false
+@@h03 logical1x1 true
+@@h04 logical1x1 false
+@@h05 logical1x1 false
+@@h06 logical1x1 false
+@@h07 logical1x1 true
+@@h08 logical1x1 false
+@@h09 logical1x1 false
+@@h10 logical1x1 false
+@@h11 char1x0
+@@h12 char2x4'abab|abab'
+@@h13 char0x2
+@@h14 char1x3'cba'
+@@h15 cell1x2{char1x2'ab',char1x2'cd'}
+@@h16 logical1x1 true
+@@h17 char1x4'x1aB'

@@ -1,0 +1,2380 @@
+@@CASE 1|x = containers.Map()
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 2|x = containers.Map({'a','b'}, {1, 2})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 3|x = containers.Map('a', 1)
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 4|x = containers.Map('key1', 'val1')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 5|x = containers.Map({'a','b'}, [1 2])
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 6|x = containers.Map({'a','b'}, {'x','yy'})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 7|x = containers.Map({'a','b'}, {[1 2], 3})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 8|x = containers.Map({'a','b'}, {true, false})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: logical
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 9|x = containers.Map({'a','b'}, {int8(1), int8(2)})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: int8
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 10|x = containers.Map({'a','b'}, {single(1), 2})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 11|x = containers.Map({'a','b'}, {1, 'x'})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 12|x = containers.Map({'a','b'}, {struct('f',1), {2}})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 13|x = containers.Map([1 2 3], {'a','b','c'})
+
+x = 
+
+  Map with properties:
+
+        Count: 3
+      KeyType: double
+    ValueType: char
+
+@@CLASS containers.Map [3 1]
+@@END
+@@CASE 14|x = containers.Map({1, 2}, {'a','b'})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: double
+    ValueType: char
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 15|x = containers.Map(1:3, 4:6)
+
+x = 
+
+  Map with properties:
+
+        Count: 3
+      KeyType: double
+    ValueType: double
+
+@@CLASS containers.Map [3 1]
+@@END
+@@CASE 16|x = containers.Map(5, 'v')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: double
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 17|x = containers.Map(int32([1 2]), {3, 4})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: int32
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 18|x = containers.Map(uint64(5), 'v')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: uint64
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 19|x = containers.Map(single([1.5 2]), {1, 2})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: single
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 20|x = containers.Map('KeyType', 'char', 'ValueType', 'any')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 21|x = containers.Map('KeyType', 'double', 'ValueType', 'any')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: double
+    ValueType: any
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 22|x = containers.Map('KeyType', 'int32', 'ValueType', 'double')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: int32
+    ValueType: double
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 23|x = containers.Map('KeyType', 'uint32', 'ValueType', 'char')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: uint32
+    ValueType: char
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 24|x = containers.Map('KeyType', 'int64', 'ValueType', 'logical')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: int64
+    ValueType: logical
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 25|x = containers.Map('KeyType', 'uint64', 'ValueType', 'int16')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: uint64
+    ValueType: int16
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 26|x = containers.Map('KeyType', 'single', 'ValueType', 'single')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: single
+    ValueType: single
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 27|x = containers.Map('KeyType', 'double', 'ValueType', 'uint8')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: double
+    ValueType: uint8
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 28|x = containers.Map('ValueType', 'double', 'KeyType', 'double')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: double
+    ValueType: double
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 29|x = containers.Map('KeyType', 'double')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 30|x = containers.Map('ValueType', 'char')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 31|x = containers.Map('keytype', 'double', 'valuetype', 'any')
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: double
+    ValueType: any
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 32|x = containers.Map('KeyType', 'int8', 'ValueType', 'any')
+ERR Unsupported KeyType 'int8' specified.  See documentation for valid key types.
+@@END
+@@CASE 33|x = containers.Map('KeyType', 'logical', 'ValueType', 'any')
+ERR Unsupported KeyType 'logical' specified.  See documentation for valid key types.
+@@END
+@@CASE 34|x = containers.Map('KeyType', 'char', 'ValueType', 'cell')
+ERR Unsupported ValueType 'cell' specified.  See documentation for valid value types.
+@@END
+@@CASE 35|x = containers.Map('KeyType', 'char', 'ValueType', 'struct')
+ERR Unsupported ValueType 'struct' specified.  See documentation for valid value types.
+@@END
+@@CASE 36|x = containers.Map('KeyType', 'char')
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 37|x = containers.Map({'a','b'}, {1, 'x'}, 'UniformValues', false)
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 38|x = containers.Map({'a','b'}, {1, 2}, 'UniformValues', false)
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 39|x = containers.Map({'a','b'}, {1, 2}, 'UniformValues', true)
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 40|x = containers.Map({'a','b'}, {'p','q'}, 'UniformValues', true)
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: char
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 41|x = containers.Map({'a','b'}, {1, 'x'}, 'UniformValues', true)
+ERR When 'UniformValues' is true, values must be all character arrays or all scalars of matching type.
+@@END
+@@CASE 42|x = containers.Map({'a','b'}, {[1 2], 3}, 'UniformValues', true)
+ERR When 'UniformValues' is true, values must be all character arrays or all scalars of matching type.
+@@END
+@@CASE 43|x = containers.Map({'a','a'}, {1, 2})
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 44|x = containers.Map({'a','b'}, {1})
+ERR The number of keys and values must be the same.
+@@END
+@@CASE 45|x = containers.Map({'a','b','c'}, [1 2])
+ERR The number of keys and values must be the same.
+@@END
+@@CASE 46|x = containers.Map({'a', 1}, {1, 2})
+ERR The specified keys must all be of the same data type.
+@@END
+@@CASE 47|x = containers.Map(true, 1)
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: double
+    ValueType: double
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 48|x = containers.Map({}, {})
+ERR Empty keys are not allowed in this container.
+@@END
+@@CASE 49|x = containers.Map(zeros(1,0), {})
+ERR When keys are specified, values must also be specified.
+@@END
+@@CASE 50|x = containers.Map({''}, {1})
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 51|x = containers.Map(NaN, 1)
+ERR NaN-valued key is not allowed for this container.
+@@END
+@@CASE 52|x = containers.Map({'a'; 'b'}, {1; 2})
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 53|x = containers.Map({'a','b';'c','d'}, {1, 2; 3, 4})
+
+x = 
+
+  Map with properties:
+
+        Count: 4
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [4 1]
+@@END
+@@CASE 54|x = containers.Map({'a'}, {1}, 'KeyType', 'char')
+[Warning: Unknown parameter name KeyType will be ignored.  Check documentation for list of known
+parameters.] 
+[> In snippet (line 55)
+  In runner (line 2)] 
+
+x = 
+
+  Map with properties:
+
+        Count: 1
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [1 1]
+@@END
+@@CASE 55|x = containers.Map({'a','b'}, {1, 2}, 'Bogus', 1)
+[Warning: Unknown parameter name Bogus will be ignored.  Check documentation for list of known parameters.] 
+[> In snippet (line 56)
+  In runner (line 2)] 
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 56|x = containers.Map(1)
+ERR Incorrect number of inputs specified.
+@@END
+@@CASE 57|x = containers.Map({'a','b'}, {1, 2}, 'UniformValues')
+ERR Incorrect number of inputs specified.
+@@END
+@@CASE 58|mo1 = containers.Map({'b','a','C'}, {1, 2, 3}); x = class(mo1)
+
+x =
+
+containers.Map
+
+@@CLASS char [1 14]
+@@END
+@@CASE 59|mo1 = containers.Map({'b','a'}, {1, 2}); x = [isobject(mo1), isa(mo1, 'handle'), isa(mo1, 'containers.Map'), isvalid(mo1)]
+
+x =
+
+     1     1     1     1
+
+@@CLASS logical [1 4]
+@@END
+@@CASE 60|mo1 = containers.Map(); x = size(containers.Map.empty)
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 61|mo1 = containers.Map({'b','a','C','aa'}, {1, 2, 3, 4}); x = keys(mo1)
+
+x = 
+
+    'C'    'a'    'aa'    'b'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 62|mo1 = containers.Map({'b','a','C','aa'}, {1, 2, 3, 4}); x = values(mo1)
+
+x = 
+
+    [3]    [2]    [4]    [1]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 63|mo1 = containers.Map([3 1 2 -1.5], {'c','a','b','m'}); x = keys(mo1)
+
+x = 
+
+    [-1.5000]    [1]    [2]    [3]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 64|mo1 = containers.Map([3 1 2 -1.5], {'c','a','b','m'}); x = values(mo1)
+
+x = 
+
+    'm'    'a'    'b'    'c'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 65|mo1 = containers.Map(int32([3 1 2]), {'c','a','b'}); x = keys(mo1)
+
+x = 
+
+    [1]    [2]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 66|mo1 = containers.Map(int32([3 1 2]), {'c','a','b'}); t1 = keys(mo1); x = class(t1{1})
+
+x =
+
+int32
+
+@@CLASS char [1 5]
+@@END
+@@CASE 67|mo1 = containers.Map(single([2 1]), {'b','a'}); t1 = keys(mo1); x = class(t1{1})
+
+x =
+
+single
+
+@@CLASS char [1 6]
+@@END
+@@CASE 68|mo1 = containers.Map(uint64([2 1]), {'b','a'}); t1 = keys(mo1); x = class(t1{1})
+
+x =
+
+uint64
+
+@@CLASS char [1 6]
+@@END
+@@CASE 69|mo1 = containers.Map(); x = keys(mo1)
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 70|mo1 = containers.Map(); x = values(mo1)
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 71|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); x = keys(mo1)
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 72|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'c','a'})
+
+x = 
+
+    [3]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 73|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a'})
+
+x = 
+
+    [2]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 74|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {})
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 75|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a'; 'b'})
+
+x = 
+
+    [2]
+    [1]
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 76|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a','zz'})
+ERR The specified key is not present in this container.
+@@END
+@@CASE 77|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, 'a')
+ERR Invalid input for argument 2 (keySet):
+Value must be 'cell'.
+@@END
+@@CASE 78|mo1 = containers.Map([1 2 3], {'a','b','c'}); x = values(mo1, {3, 1})
+
+x = 
+
+    'c'    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 79|mo1 = containers.Map([1 2 3], {'a','b','c'}); x = values(mo1, [3 1])
+ERR Invalid input for argument 2 (keySet):
+Value must be 'cell'.
+@@END
+@@CASE 80|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.keys()
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 81|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.values({'b'})
+
+x = 
+
+    [1]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 82|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 'a')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 83|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 'A')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 84|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {'a','z','b'})
+
+x =
+
+     1     0     1
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 85|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {'a';'z'})
+
+x =
+
+     1
+     0
+
+@@CLASS logical [2 1]
+@@END
+@@CASE 86|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 87|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {1, 'a'})
+
+x =
+
+     0     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 88|mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, 2)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 89|mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, [1 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 90|mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, 'a')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 91|mo1 = containers.Map(int32([1 2]), {'a','b'}); x = isKey(mo1, 1)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 92|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.isKey('b')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 93|mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1)
+ERR No method 'isKey' with matching signature found for class 'containers.Map'.
+@@END
+@@CASE 94|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, 'a'); x = keys(mo1)
+
+x = 
+
+    'b'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 95|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = remove(mo1, 'a')
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 96|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','c'}); x = keys(mo1)
+
+x = 
+
+    'b'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 97|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, 'zz'); x = keys(mo1)
+[Warning: The specified key is not present in this container.] 
+[> In snippet (line 98)
+  In runner (line 2)] 
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 98|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','zz'}); x = keys(mo1)
+[Warning: The specified key is not present in this container.] 
+[> In snippet (line 99)
+  In runner (line 2)] 
+
+x = 
+
+    'b'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 99|mo1 = containers.Map([1 2 3], {'a','b','c'}); remove(mo1, 2); x = keys(mo1)
+
+x = 
+
+    [1]    [3]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 100|mo1 = containers.Map([1 2 3], {'a','b','c'}); remove(mo1, 'a'); x = keys(mo1)
+[Warning: The specified key is not present in this container.] 
+[> In snippet (line 101)
+  In runner (line 2)] 
+
+x = 
+
+    [1]    [2]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 101|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','b','c'}); x = mo1
+
+x = 
+
+  Map with properties:
+
+        Count: 0
+      KeyType: char
+    ValueType: double
+
+@@CLASS containers.Map [0 1]
+@@END
+@@CASE 102|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = [length(mo1), mo1.Count, mo1.length()]
+
+x =
+
+                    3                    3                    3
+
+@@CLASS uint64 [1 3]
+@@END
+@@CASE 103|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = mo1.Count
+
+x =
+
+                    3
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 104|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = class(mo1.Count)
+
+x =
+
+uint64
+
+@@CLASS char [1 6]
+@@END
+@@CASE 105|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = size(mo1)
+
+x =
+
+     3     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 106|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = size(mo1, 1)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 107|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); [t1, x] = size(mo1)
+
+t1 =
+
+     3
+
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 108|mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = numel(mo1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 109|mo1 = containers.Map(); x = [size(mo1), length(mo1), isempty(mo1)]
+
+x =
+
+     0     1     0     1
+
+@@CLASS double [1 4]
+@@END
+@@CASE 110|mo1 = containers.Map({'b'}, {1}); x = isempty(mo1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 111|mo1 = containers.Map({'b'}, {1}); x = {mo1.KeyType, mo1.ValueType}
+
+x = 
+
+    'char'    'double'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 112|mo1 = containers.Map(int32(1), 'q'); x = {mo1.KeyType, mo1.ValueType}
+
+x = 
+
+    'int32'    'char'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 113|mo1 = containers.Map({'b'}, {1}); mo1.Count = 5; x = mo1.Count
+ERR You cannot set the read-only property 'Count' of Map.
+@@END
+@@CASE 114|mo1 = containers.Map({'b'}, {1}); mo1.KeyType = 'double'; x = mo1.KeyType
+ERR You cannot set the read-only property 'KeyType' of Map.
+@@END
+@@CASE 115|mo1 = containers.Map({'b'}, {1}); x = mo1.Bogus
+ERR The name 'Bogus' is not an accessible property for an instance of class 'containers.Map'.
+@@END
+@@CASE 116|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('a')
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 117|mo1 = containers.Map({'b','a'}, {[1 2; 3 4], 2}); x = mo1('b')
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 118|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('zz')
+ERR The specified key is not present in this container.
+@@END
+@@CASE 119|mo1 = containers.Map([1 2], {'p','q'}); x = mo1(3)
+ERR The specified key is not present in this container.
+@@END
+@@CASE 120|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1(1)
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 121|mo1 = containers.Map([1 2], {'p','q'}); x = mo1('a')
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 122|mo1 = containers.Map([1 2], {'p','q'}); x = mo1(2)
+
+x =
+
+q
+
+@@CLASS char [1 1]
+@@END
+@@CASE 123|mo1 = containers.Map(int32([1 2]), {'p','q'}); x = mo1(2)
+
+x =
+
+q
+
+@@CLASS char [1 1]
+@@END
+@@CASE 124|mo1 = containers.Map([1 2], {'p','q'}); x = mo1(int32(2))
+
+x =
+
+q
+
+@@CLASS char [1 1]
+@@END
+@@CASE 125|mo1 = containers.Map([1 2], {'p','q'}); x = mo1([1 2])
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 126|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1({'a'})
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 127|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('a', 'b')
+ERR Only one-dimensional indexing is supported.
+@@END
+@@CASE 128|mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1()
+ERR Only one-dimensional indexing is supported.
+@@END
+@@CASE 129|mo1 = containers.Map({'b','a'}, {1, 2}); mo1('c') = 30; x = values(mo1)
+
+x = 
+
+    [2]    [1]    [30]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 130|mo1 = containers.Map({'b','a'}, {1, 2}); mo1('a') = 20; x = values(mo1)
+
+x = 
+
+    [20]    [1]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 131|mo1 = containers.Map(); mo1('k') = [1 2 3]; mo1('j') = 'txt'; x = values(mo1)
+
+x = 
+
+    'txt'    [1x3 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 132|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); mo1(3) = 'c'; mo1(-1) = {1}; x = keys(mo1)
+
+x = 
+
+    [-1]    [3]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 133|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = 5; mo1(2) = int8(7); x = values(mo1)
+
+x = 
+
+    [5]    [7]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 134|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = 'x'; x = values(mo1)
+ERR Specified value type does not match the type expected for this container.
+@@END
+@@CASE 135|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = [1 2]; x = values(mo1)
+ERR Specified value type does not match the type expected for this container.
+@@END
+@@CASE 136|mo1 = containers.Map('KeyType', 'char', 'ValueType', 'char'); mo1('a') = 5; x = values(mo1)
+ERR Specified value type does not match the type expected for this container.
+@@END
+@@CASE 137|mo1 = containers.Map('KeyType', 'char', 'ValueType', 'logical'); mo1('a') = 1; x = values(mo1)
+
+x = 
+
+    [1]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 138|mo1 = containers.Map('KeyType', 'char', 'ValueType', 'int8'); mo1('a') = 300; t1 = values(mo1); x = t1{1}
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 139|mo1 = containers.Map('KeyType', 'char', 'ValueType', 'any'); mo1(5) = 1; x = keys(mo1)
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 140|mo1 = containers.Map('KeyType', 'int32', 'ValueType', 'any'); mo1(2.5) = 1; t1 = keys(mo1); x = t1{1}
+
+x =
+
+           3
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 141|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); mo1('a') = 1; x = keys(mo1)
+ERR Specified key type does not match the type expected for this container.
+@@END
+@@CASE 142|mo1 = containers.Map({'b','a'}, {1, 'x'}); mo1('a') = {7}; x = mo1('a')
+
+x = 
+
+    [7]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 143|mo1 = containers.Map({'b','a'}, {1, 2}); mo1('c') = 'str'; x = values(mo1)
+ERR Specified value type does not match the type expected for this container.
+@@END
+@@CASE 144|mo1 = containers.Map({'b'}, {struct('f', 4)}); x = mo1('b').f
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 145|mo1 = containers.Map({'b'}, {[5 6 7]}); t1 = mo1('b'); x = t1(2)
+
+x =
+
+     6
+
+@@CLASS double [1 1]
+@@END
+@@CASE 146|mo1 = containers.Map({'a'}, {1}); mo2 = mo1; mo2('b') = 2; x = keys(mo1)
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 147|mo1 = containers.Map({'a'}, {1}); mo2 = mo1; remove(mo2, 'a'); x = mo1.Count
+
+x =
+
+                    0
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 148|mo1 = containers.Map({'a'}, {1}); mo2 = mo1; x = [mo1 == mo2, isequal(mo1, mo2)]
+
+x =
+
+     1     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 149|mo1 = containers.Map({'a'}, {1}); mo2 = containers.Map({'a'}, {1}); x = [mo1 == mo2, isequal(mo1, mo2)]
+
+x =
+
+     0     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 150|fid = fopen('h_obj_madd.m', 'w'); fprintf(fid, 'function h_obj_madd(m)\nm(''z'') = 26;\n'); fclose(fid); rehash; mo1 = containers.Map({'a'}, {1}); h_obj_madd(mo1); delete('h_obj_madd.m'); clear h_obj_madd; x = keys(mo1)
+
+x = 
+
+    'a'    'z'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 151|mo1 = containers.Map({'a'}, {1}); delete(mo1); x = isvalid(mo1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 152|mo1 = containers.Map({'a'}, {1}); delete(mo1); x = mo1
+
+x = 
+
+  handle to deleted Map
+
+ERR Invalid or deleted containers.Map.
+@@END
+@@CASE 153|mo1 = containers.Map({'a'}, {1}); delete(mo1); x = mo1('a')
+ERR Invalid or deleted containers.Map.
+@@END
+@@CASE 154|mo1 = containers.Map({'a','b'}, {1, 2}); x = evalc('disp(mo1)')
+
+x =
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+
+
+@@CLASS char [1 154]
+@@END
+@@CASE 155|mo1 = containers.Map({'a','b'}, {1, 2}); x = evalc('mo1')
+
+x =
+
+
+mo1 = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: char
+    ValueType: double
+
+
+
+@@CLASS char [1 163]
+@@END
+@@CASE 156|mo1 = containers.Map([1 2], {1, 'p'}); x = mo1
+
+x = 
+
+  Map with properties:
+
+        Count: 2
+      KeyType: double
+    ValueType: any
+
+@@CLASS containers.Map [2 1]
+@@END
+@@CASE 157|mo1 = containers.Map({'a'}, {1}); x = {mo1}
+
+x = 
+
+    [1x1 containers.Map]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 158|mo1 = containers.Map({'a'}, {1}); x = struct('m', mo1)
+
+x = 
+
+    m: [1x1 containers.Map]
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 159|mo1 = containers.Map({'a'}, {1}); x = [mo1, mo1]
+ERR Horizontal concatenation is not supported by a containers.Map.
+@@END
+@@CASE 160|mo1 = containers.Map({'a'}, {1}); x = mo1 + 1
+ERR Undefined function 'plus' for input arguments of type 'containers.Map'.
+@@END
+@@CASE 161|mo1 = containers.Map({'a','b'}, {1, 2}); x = cellfun(@(v) v * 10, values(mo1))
+
+x =
+
+    10    20
+
+@@CLASS double [1 2]
+@@END
+@@CASE 162|mo1 = containers.Map({'a','b'}, {1, 2}); x = keys(mo1, 'a')
+ERR No method 'keys' with matching signature found for class 'containers.Map'.
+@@END
+@@CASE 163|x = keys(5)
+ERR Undefined function 'keys' for input arguments of type 'double'.
+@@END
+@@CASE 164|x = inputParser
+
+x = 
+
+  inputParser with properties:
+
+       FunctionName: ''
+      CaseSensitive: 0
+      KeepUnmatched: 0
+    PartialMatching: 1
+       StructExpand: 1
+         Parameters: {1x0 cell}
+            Results: [1x1 struct]
+          Unmatched: [1x1 struct]
+      UsingDefaults: {1x0 cell}
+
+@@CLASS inputParser [1 1]
+@@END
+@@CASE 165|x = inputParser()
+
+x = 
+
+  inputParser with properties:
+
+       FunctionName: ''
+      CaseSensitive: 0
+      KeepUnmatched: 0
+    PartialMatching: 1
+       StructExpand: 1
+         Parameters: {1x0 cell}
+            Results: [1x1 struct]
+          Unmatched: [1x1 struct]
+      UsingDefaults: {1x0 cell}
+
+@@CLASS inputParser [1 1]
+@@END
+@@CASE 166|po1 = inputParser; x = class(po1)
+
+x =
+
+inputParser
+
+@@CLASS char [1 11]
+@@END
+@@CASE 167|po1 = inputParser; x = [isobject(po1), isa(po1, 'handle')]
+
+x =
+
+     1     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 168|po1 = inputParser; x = po1.Results
+
+x = 
+
+struct with no fields.
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 169|po1 = inputParser; x = po1.Parameters
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 170|po1 = inputParser; x = po1.UsingDefaults
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 171|po1 = inputParser; x = po1.Unmatched
+
+x = 
+
+struct with no fields.
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 172|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.addParameter('c', 3); x = po1
+
+x = 
+
+  inputParser with properties:
+
+       FunctionName: ''
+      CaseSensitive: 0
+      KeepUnmatched: 0
+    PartialMatching: 1
+       StructExpand: 1
+         Parameters: {'a'  'b'  'c'}
+            Results: [1x1 struct]
+          Unmatched: [1x1 struct]
+      UsingDefaults: {1x0 cell}
+
+@@CLASS inputParser [1 1]
+@@END
+@@CASE 173|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.addParameter('c', 3); po1.parse(1); x = po1
+
+x = 
+
+  inputParser with properties:
+
+       FunctionName: ''
+      CaseSensitive: 0
+      KeepUnmatched: 0
+    PartialMatching: 1
+       StructExpand: 1
+         Parameters: {'a'  'b'  'c'}
+            Results: [1x1 struct]
+          Unmatched: [1x1 struct]
+      UsingDefaults: {'b'  'c'}
+
+@@CLASS inputParser [1 1]
+@@END
+@@CASE 174|po1 = inputParser; po1.addRequired('a'); po1.parse(1); x = po1.Results
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 175|po1 = inputParser; addRequired(po1, 'a'); parse(po1, [1 2 3]); x = po1.Results.a
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 176|po1 = inputParser; po1.addRequired('a'); po1.addRequired('b'); po1.parse(1, 'q'); x = po1.Results
+
+x = 
+
+    a: 1
+    b: 'q'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 177|po1 = inputParser; po1.addRequired('a'); po1.parse(); x = po1.Results
+ERR Not enough input arguments.
+@@END
+@@CASE 178|po1 = inputParser; po1.addRequired('a'); po1.parse(1, 2); x = po1.Results
+ERR Expected a string for the parameter name, instead the input type was 'double'.
+@@END
+@@CASE 179|po1 = inputParser; po1.parse(); x = po1.Results
+
+x = 
+
+struct with no fields.
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 180|po1 = inputParser; po1.parse(1); x = po1.Results
+ERR Expected a string for the parameter name, instead the input type was 'double'.
+@@END
+@@CASE 181|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1); x = po1.Results
+
+x = 
+
+    a: 1
+    b: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 182|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1); x = po1.UsingDefaults
+
+x = 
+
+    'b'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 183|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1, 7); x = po1.Results
+
+x = 
+
+    a: 1
+    b: 7
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 184|po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1, 7); x = po1.UsingDefaults
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 185|po1 = inputParser; po1.addOptional('b', 2); po1.addOptional('c', 'cc'); po1.parse(); x = po1.Results
+
+x = 
+
+    b: 2
+    c: 'cc'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 186|po1 = inputParser; po1.addOptional('b', 2); po1.addOptional('c', 'cc'); po1.parse(5); x = po1.UsingDefaults
+
+x = 
+
+    'c'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 187|po1 = inputParser; po1.addOptional('b', 2, @isnumeric); po1.parse('x'); x = po1.Results
+ERR The value of 'b' is invalid. It must satisfy the function: isnumeric.
+@@END
+@@CASE 188|po1 = inputParser; po1.addOptional('b', 2, @ischar); po1.parse(5); x = po1.Results
+ERR The value of 'b' is invalid. It must satisfy the function: ischar.
+@@END
+@@CASE 189|po1 = inputParser; po1.addOptional('mode', 'fast', @ischar); po1.parse('slow'); x = po1.Results
+
+x = 
+
+    mode: 'slow'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 190|po1 = inputParser; po1.addOptional('mode', 'fast', @ischar); po1.addParameter('Tol', 1); po1.parse('Tol', 5); x = po1.Results
+ERR Expected a string for the parameter name, instead the input type was 'double'.
+@@END
+@@CASE 191|po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse('c', 3); x = po1.Results
+
+x = 
+
+    b: 1
+    c: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 192|po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse(5, 'c', 3); x = po1.Results
+
+x = 
+
+    b: 5
+    c: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 193|po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse('zz', 3); x = po1.Results
+ERR The argument 'zz' is a string and does not match any parameter names. It failed validation for the argument 'b'.
+@@END
+@@CASE 194|po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse('Tol', 5); x = po1.Results
+
+x = 
+
+    Tol: 5
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 195|po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse(); x = po1.Results
+
+x = 
+
+    Tol: 1.0000e-03
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 196|po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse(); x = po1.UsingDefaults
+
+x = 
+
+    'Tol'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 197|po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); po1.parse('Beta', 30); x = po1.Results
+
+x = 
+
+    alpha: 2
+     Beta: 30
+     Zeta: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 198|po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); x = po1.Parameters
+
+x = 
+
+    'alpha'    'Beta'    'Zeta'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 199|po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); po1.parse(); x = po1.UsingDefaults
+
+x = 
+
+    'Zeta'    'alpha'    'Beta'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 200|po1 = inputParser; po1.addRequired('zz'); po1.addOptional('mm', 1); po1.addParameter('aa', 2); x = po1.Parameters
+
+x = 
+
+    'aa'    'mm'    'zz'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 201|po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse('b', 5, 'a', 4, 'b', 6); x = po1.Results
+
+x = 
+
+    a: 4
+    b: 6
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 202|po1 = inputParser; po1.addParameter('a', 1); po1.parse('a'); x = po1.Results
+ERR No value was given for 'a'. Name-value pair arguments require a name followed by a value.
+@@END
+@@CASE 203|po1 = inputParser; po1.addParameter('a', 1); po1.parse(5, 1); x = po1.Results
+ERR Expected a string for the parameter name, instead the input type was 'double'.
+@@END
+@@CASE 204|po1 = inputParser; po1.addParameter('a', 1); po1.parse('b', 1); x = po1.Results
+ERR 'b' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 205|po1 = inputParser; po1.addParamValue('a', 1); po1.parse('a', 9); x = po1.Results
+
+x = 
+
+    a: 9
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 206|po1 = inputParser; addParamValue(po1, 'a', 1, @isnumeric); parse(po1, 'a', 'x'); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: isnumeric.
+@@END
+@@CASE 207|po1 = inputParser; po1.addParameter('Tol', 1, @isnumeric, 'PartialMatchPriority', 2); po1.parse('Tol', 3); x = po1.Results
+
+x = 
+
+    Tol: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 208|po1 = inputParser; po1.addRequired('a'); po1.parse(1); po1.parse(2); x = po1.Results
+
+x = 
+
+    a: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 209|po1 = inputParser; po1.addParameter('a', 1); po1.parse('a', 5); po1.parse(); x = po1.Results
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 210|po1 = inputParser; po1.addParameter('a', 1); po1.parse('a', 5); po1.parse(); x = po1.UsingDefaults
+
+x = 
+
+    'a'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 211|po1 = inputParser; po1.addRequired('a'); po1.addRequired('a'); x = po1.Parameters
+ERR A parameter name equivalent to 'a' already exists in the input parser. Redefining a parameter is not allowed.
+@@END
+@@CASE 212|po1 = inputParser; po1.addRequired('a'); po1.addParameter('A', 1); x = po1.Parameters
+ERR A parameter name equivalent to 'A' already exists in the input parser. Redefining a parameter is not allowed.
+@@END
+@@CASE 213|po1 = inputParser; po1.CaseSensitive = true; po1.addRequired('a'); po1.addParameter('A', 1); x = po1.Parameters
+
+x = 
+
+    'A'    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 214|po1 = inputParser; po1.addRequired('1a'); x = po1.Parameters
+ERR First argument must be a string that can represent a field name.
+@@END
+@@CASE 215|po1 = inputParser; po1.addRequired(5); x = po1.Parameters
+ERR First argument must be a string that can represent a field name.
+@@END
+@@CASE 216|po1 = inputParser; po1.addRequired('a', 1); x = po1.Parameters
+ERR Validator must be a function handle.
+@@END
+@@CASE 217|po1 = inputParser; po1.addOptional('b'); x = po1.Parameters
+ERR Not enough input arguments.
+@@END
+@@CASE 218|po1 = inputParser; po1.addParameter('b'); x = po1.Parameters
+ERR Not enough input arguments.
+@@END
+@@CASE 219|po1 = inputParser; po1.addOptional('b', 1); po1.addRequired('a'); x = po1.Parameters
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 220|po1 = inputParser; po1.addParameter('c', 1); po1.addOptional('b', 1); x = po1.Parameters
+
+x = 
+
+    'b'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 221|po1 = inputParser; po1.addParameter('c', 1); po1.addRequired('a'); x = po1.Parameters
+
+x = 
+
+    'a'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 222|po1 = inputParser; po1.addParameter('c', 1, 'notafunction'); x = po1.Parameters
+ERR Validator must be a function handle.
+@@END
+@@CASE 223|po1 = inputParser; addRequired(po1); x = po1.Parameters
+ERR Not enough input arguments.
+@@END
+@@CASE 224|po1 = inputParser; po1.addParameter('Tol', 1, @isnumeric, 'Bogus', 2); x = po1.Parameters
+ERR 'Bogus' is not a recognized parameter. Expected: 'PartialMatchPriority'.
+@@END
+@@CASE 225|po1 = inputParser; po1.addRequired('a', @isnumeric); po1.parse('x'); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: isnumeric.
+@@END
+@@CASE 226|po1 = inputParser; po1.addRequired('a', @(v) isnumeric(v) && isscalar(v)); po1.parse([1 2]); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)isnumeric(v)&&isscalar(v).
+@@END
+@@CASE 227|po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse(-1); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)v>0.
+@@END
+@@CASE 228|po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse([1 -1]); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)v>0.
+@@END
+@@CASE 229|po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse([1 2]); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)v>0.
+@@END
+@@CASE 230|po1 = inputParser; po1.addRequired('a', @(v) validateattributes(v, {'numeric'}, {'positive'})); po1.parse(-2); x = po1.Results
+ERR The value of 'a' is invalid. Expected input to be positive.
+@@END
+@@CASE 231|po1 = inputParser; po1.addRequired('a', @(v) validateattributes(v, {'numeric'}, {'positive'})); po1.parse(2); x = po1.Results
+
+x = 
+
+    a: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 232|po1 = inputParser; po1.addRequired('a', @(v) assert(v > 0, 'must be positive')); po1.parse(-2); x = po1.Results
+ERR The value of 'a' is invalid. must be positive
+@@END
+@@CASE 233|po1 = inputParser; po1.addRequired('a', @(v) error('my:id', 'custom %d', 7)); po1.parse(1); x = po1.Results
+ERR The value of 'a' is invalid. custom 7
+@@END
+@@CASE 234|po1 = inputParser; po1.addRequired('a', @(v) 5); po1.parse(1); x = po1.Results
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 235|po1 = inputParser; po1.addRequired('a', @(v) 0); po1.parse(1); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)0.
+@@END
+@@CASE 236|po1 = inputParser; po1.addRequired('a', @(v) 'yes'); po1.parse(1); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)'yes'.
+@@END
+@@CASE 237|po1 = inputParser; po1.addRequired('a', @(v) []); po1.parse(1); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: @(v)[].
+@@END
+@@CASE 238|po1 = inputParser; po1.addOptional('b', 1, @(v) v < 10); po1.parse(20); x = po1.Results
+ERR The value of 'b' is invalid. It must satisfy the function: @(v)v<10.
+@@END
+@@CASE 239|po1 = inputParser; po1.addParameter('Tol', 1, @(v) v > 0); po1.parse('Tol', -1); x = po1.Results
+ERR The value of 'Tol' is invalid. It must satisfy the function: @(v)v>0.
+@@END
+@@CASE 240|po1 = inputParser; po1.addParameter('Tol', 1, @(v) v > 0); po1.parse('Tol', 0.5); x = po1.Results
+
+x = 
+
+    Tol: 0.5000
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 241|po1 = inputParser; po1.addParameter('Mode', 'alpha', @(v) any(validatestring(v, {'alpha','beta'}))); po1.parse('Mode', 'gamma'); x = po1.Results
+ERR The value of 'Mode' is invalid. Expected input to match one of these strings:
+
+'alpha', 'beta'
+
+The input, 'gamma', did not match any of the valid strings.
+@@END
+@@CASE 242|po1 = inputParser; po1.addParameter('Mode', 'alpha', @(v) any(validatestring(v, {'alpha','beta'}))); po1.parse('Mode', 'be'); x = po1.Results
+
+x = 
+
+    Mode: 'be'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 243|po1 = inputParser; po1.addParameter('Tol', -1, @(v) v > 0); po1.parse(); x = po1.Results
+
+x = 
+
+    Tol: -1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 244|fh_obj = @isnumeric; po1 = inputParser; po1.addRequired('a', fh_obj); po1.parse({}); x = po1.Results
+ERR The value of 'a' is invalid. It must satisfy the function: isnumeric.
+@@END
+@@CASE 245|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2, 'a', 3); x = po1.Results
+
+x = 
+
+    a: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 246|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2, 'a', 3); x = po1.Unmatched
+
+x = 
+
+    b: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 247|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('zeta', 2, 'b', 3); x = fieldnames(po1.Unmatched)'
+
+x = 
+
+    'b'    'zeta'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 248|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2); x = po1.UsingDefaults
+
+x = 
+
+    'a'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 249|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('1b', 2); x = po1.Unmatched
+
+x = 
+
+    1b: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 250|po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse(struct('a', 5, 'q', 6)); x = po1.Unmatched
+
+x = 
+
+    q: 6
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 251|po1 = inputParser; po1.KeepUnmatched = 1; x = po1.KeepUnmatched
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 252|po1 = inputParser; po1.KeepUnmatched = 'yes'; x = po1.KeepUnmatched
+ERR While setting the 'KeepUnmatched' property of 'inputParser':
+Value must be a scalar.
+@@END
+@@CASE 253|po1 = inputParser; po1.addParameter('Tol', 1); po1.parse('tol', 2); x = po1.Results
+
+x = 
+
+    Tol: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 254|po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse('tol', 2); x = po1.Results
+ERR 'tol' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 255|po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse('Tol', 2); x = po1.Results
+
+x = 
+
+    Tol: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 256|po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.addParameter('tol', 2); po1.parse('tol', 5); x = po1.Results
+
+x = 
+
+    Tol: 1
+    tol: 5
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 257|po1 = inputParser; po1.addParameter('Tolerance', 1); po1.parse('Tol', 2); x = po1.Results
+
+x = 
+
+    Tolerance: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 258|po1 = inputParser; po1.addParameter('Tolerance', 1); po1.parse('tolerance', 2); x = po1.Results
+
+x = 
+
+    Tolerance: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 259|po1 = inputParser; po1.PartialMatching = false; po1.addParameter('Tolerance', 1); po1.parse('Tol', 2); x = po1.Results
+ERR 'Tol' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 260|po1 = inputParser; po1.addParameter('Tol', 1); po1.addParameter('TolX', 2); po1.parse('Tol', 5); x = po1.Results
+
+x = 
+
+     Tol: 5
+    TolX: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 261|po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2); po1.parse('Tol', 5); x = po1.Results
+ERR 'Tol' matches multiple parameter names: 'TolFun', 'TolX'. To avoid ambiguity, specify the complete name of the parameter.
+@@END
+@@CASE 262|po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2, @isnumeric, 'PartialMatchPriority', 2); po1.parse('Tol', 5); x = po1.Results
+[Warning: 'Tol' matches multiple parameter names: 'TolFun', 'TolX'. Assuming the intended name is 'TolFun'.] 
+[> In snippet (line 263)
+  In runner (line 2)] 
+
+x = 
+
+    TolFun: 5
+      TolX: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 263|po1 = inputParser; po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+
+x = 
+
+    Tol: 5
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 264|po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse(struct('a', 5), 'b', 7); x = po1.Results
+
+x = 
+
+    a: 5
+    b: 7
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 265|po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse('b', 7, struct('a', 5)); x = po1.Results
+
+x = 
+
+    a: 5
+    b: 7
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 266|po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct('q', 5)); x = po1.Results
+ERR 'q' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 267|po1 = inputParser; po1.StructExpand = false; po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+ERR Expected a string for the parameter name, instead the input type was 'struct'.
+@@END
+@@CASE 268|po1 = inputParser; po1.StructExpand = false; po1.addOptional('opt', 0); po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+
+x = 
+
+    opt: [1x1 struct]
+    Tol: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 269|po1 = inputParser; po1.addRequired('r'); po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+
+x = 
+
+      r: [1x1 struct]
+    Tol: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 270|po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct('a', {1, 2})); x = po1.Results
+ERR Input structure to a function must be scalar.
+@@END
+@@CASE 271|po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct()); x = po1.Results
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 272|po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse(struct('tol', 5)); x = po1.Results
+ERR 'tol' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 273|po1 = inputParser; po1.PartialMatching = 0; x = [po1.PartialMatching, po1.CaseSensitive, po1.StructExpand, po1.KeepUnmatched]
+
+x =
+
+     0     0     1     0
+
+@@CLASS logical [1 4]
+@@END
+@@CASE 274|po1 = inputParser; po1.CaseSensitive = 2; x = po1.CaseSensitive
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 275|po1 = inputParser; po1.FunctionName = 'myfn'; x = po1.FunctionName
+
+x =
+
+myfn
+
+@@CLASS char [1 4]
+@@END
+@@CASE 276|po1 = inputParser; po1.FunctionName = 'myfn'; x = po1
+
+x = 
+
+  inputParser with properties:
+
+       FunctionName: 'myfn'
+      CaseSensitive: 0
+      KeepUnmatched: 0
+    PartialMatching: 1
+       StructExpand: 1
+         Parameters: {1x0 cell}
+            Results: [1x1 struct]
+          Unmatched: [1x1 struct]
+      UsingDefaults: {1x0 cell}
+
+@@CLASS inputParser [1 1]
+@@END
+@@CASE 277|po1 = inputParser; po1.FunctionName = 5; x = po1.FunctionName
+ERR While setting the 'FunctionName' property of 'inputParser':
+Value must be a string.
+@@END
+@@CASE 278|po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a', @isnumeric); try, po1.parse('x'); x = 1; catch me1, x = getReport(me1, 'basic', 'hyperlinks', 'off'); end; x
+
+x =
+
+Error using myfn
+The value of 'a' is invalid. It must satisfy the function: isnumeric.
+
+
+@@CLASS char [1 87]
+@@END
+@@CASE 279|po1 = inputParser; po1.addRequired('a', @isnumeric); try, po1.parse('x'); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, me1.message); end; x
+
+x =
+
+MATLAB:InputParser:ArgumentFailedValidation
+The value of 'a' is invalid. It must satisfy the function: isnumeric.
+
+@@CLASS char [1 113]
+@@END
+@@CASE 280|po1 = inputParser; po1.FunctionName = 'myfn'; po1.addParameter('a', 1); try, po1.parse('b', 2); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, me1.message); end; x
+
+x =
+
+MATLAB:InputParser:UnmatchedParameter
+'b' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for myfn.
+
+@@CLASS char [1 151]
+@@END
+@@CASE 281|po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a'); try, po1.parse(); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; x
+
+x =
+
+MATLAB:InputParser:notEnoughInputs
+Error using myfn
+Not enough input arguments.
+
+
+@@CLASS char [1 80]
+@@END
+@@CASE 282|po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a'); try, po1.parse(1, 2); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; x
+
+x =
+
+MATLAB:InputParser:ParamMustBeChar
+Error using myfn
+Expected a string for the parameter name, instead the input type was 'double'.
+
+
+@@CLASS char [1 131]
+@@END
+@@CASE 283|po1 = inputParser; po1.addParameter('a', 1); try, po1.parse('a'); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:InputParser:ParamMissingValue
+
+@@CLASS char [1 36]
+@@END
+@@CASE 284|po1 = inputParser; po1.addParameter('a', 1); try, po1.parse(5, 1); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:InputParser:ParamMustBeChar
+
+@@CLASS char [1 34]
+@@END
+@@CASE 285|po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2); try, po1.parse('Tol', 5); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:InputParser:AmbiguousParameter
+
+@@CLASS char [1 37]
+@@END
+@@CASE 286|po1 = inputParser; po1.addRequired('a'); try, po1.addRequired('a'); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:InputParser:ParamAlreadyExists
+
+@@CLASS char [1 37]
+@@END
+@@CASE 287|po1 = inputParser; po1.addRequired('a'); po2 = po1; po2.addOptional('b', 1); x = po1.Parameters
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 288|po1 = inputParser; po1.addRequired('a'); po2 = po1.copy(); po2.addOptional('b', 1); x = po1.Parameters
+
+x = 
+
+    'a'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 289|po1 = inputParser; po1.addRequired('a'); po2 = copy(po1); po2.parse(4); x = [po2.Results.a, numel(fieldnames(po1.Results))]
+
+x =
+
+     4     0
+
+@@CLASS double [1 2]
+@@END
+@@CASE 290|fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; x = h_obj_p1(3, 'Tol', 4); delete('h_obj_p1.m'); clear h_obj_p1; x
+
+x = 
+
+      a: 3
+    Tol: 4
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 291|fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(-1); x = 1; catch me1, x = sprintf('%s\n%s\n%s\n%s', me1.identifier, me1.message, me1.stack(1).name, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+
+x =
+
+MATLAB:InputParser:ArgumentFailedValidation
+The value of 'a' is invalid. It must satisfy the function: @(v)v>0.
+h_obj_p1
+Error using MYFN
+The value of 'a' is invalid. It must satisfy the function: @(v)v>0.
+
+
+@@CLASS char [1 206]
+@@END
+@@CASE 292|fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(1, 'Tol', 'x'); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+
+x =
+
+MATLAB:InputParser:ArgumentFailedValidation
+The value of 'Tol' is invalid. It must satisfy the function: isnumeric.
+Error using MYFN
+The value of 'Tol' is invalid. It must satisfy the function: isnumeric.
+
+
+@@CLASS char [1 205]
+@@END
+@@CASE 293|fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+
+x =
+
+MATLAB:InputParser:notEnoughInputs
+Not enough input arguments.
+Error using MYFN
+Not enough input arguments.
+
+
+@@CLASS char [1 108]
+@@END
+@@CASE 294|fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(1, 'Bad', 2); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+
+x =
+
+MATLAB:InputParser:UnmatchedParameter
+'Bad' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for MYFN.
+Error using MYFN
+'Bad' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for MYFN.
+
+
+@@CLASS char [1 287]
+@@END
+@@CASE 295|fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; x = h_obj_p2(1, 3); delete('h_obj_p2.m'); clear h_obj_p2; x
+
+x = 
+
+    a: 1
+    b: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 296|fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2('q'); x = 1; catch me1, x = sprintf('%s\n%s\n%s\n%s', me1.identifier, me1.message, me1.stack(1).name, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+
+x =
+
+MATLAB:InputParser:ArgumentFailedValidation
+The value of 'a' is invalid. It must satisfy the function: isnumeric.
+h_obj_p2
+Error using h_obj_p2 (line 5)
+The value of 'a' is invalid. It must satisfy the function: isnumeric.
+
+
+@@CLASS char [1 223]
+@@END
+@@CASE 297|fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2(1, 20); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+
+x =
+
+MATLAB:InputParser:ArgumentFailedValidation
+The value of 'b' is invalid. It must satisfy the function: @(v)v<10.
+Error using h_obj_p2 (line 5)
+The value of 'b' is invalid. It must satisfy the function: @(v)v<10.
+
+
+@@CLASS char [1 212]
+@@END
+@@CASE 298|fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2(1, 2, 3); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+
+x =
+
+MATLAB:InputParser:ParamMustBeChar
+Expected a string for the parameter name, instead the input type was 'double'.
+Error using h_obj_p2 (line 5)
+Expected a string for the parameter name, instead the input type was 'double'.
+
+
+@@CLASS char [1 223]
+@@END
+@@CASE 299|fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\ny = pi3.Unmatched;\n'); fclose(fid); rehash; x = h_obj_p3(0, 'Other', 5); delete('h_obj_p3.m'); clear h_obj_p3; x
+
+x = 
+
+    Other: 5
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 300|fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\ny = pi3.UsingDefaults;\n'); fclose(fid); rehash; x = h_obj_p3(0, 'Other', 5); delete('h_obj_p3.m'); clear h_obj_p3; x
+
+x = 
+
+    'Tol'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 301|fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\npi3.FunctionName = 5;\ny = 1;\n'); fclose(fid); rehash; try, h_obj_p3(0, 'Other', 5); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p3.m'); clear h_obj_p3; x
+
+x =
+
+MATLAB:class:RequireString
+While setting the 'FunctionName' property of 'inputParser':
+Value must be a string.
+
+
+@@CLASS char [1 148]
+@@END
+@@CASE 302|fid = fopen('h_obj_m1.m', 'w'); fprintf(fid, 'function y = h_obj_m1(k)\nmi1 = containers.Map({''a''}, {1});\ny = mi1(k);\n'); fclose(fid); rehash; try, h_obj_m1('zz'); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_m1.m'); clear h_obj_m1; x
+
+x =
+
+MATLAB:Containers:Map:NoKey
+The specified key is not present in this container.
+Error using containers.Map/subsref
+The specified key is not present in this container.
+
+
+@@CLASS char [1 167]
+@@END
+@@CASE 303|mo1 = containers.Map({'a'}, {1}); try, t1 = mo1('zz'); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:Containers:Map:NoKey
+
+@@CLASS char [1 27]
+@@END
+@@CASE 304|mo1 = containers.Map({'a'}, {1}); try, t1 = mo1(1); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:Containers:TypeMismatch
+
+@@CLASS char [1 30]
+@@END
+@@CASE 305|mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); try, mo1(1) = 'x'; x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:Containers:TypeMismatch
+
+@@CLASS char [1 30]
+@@END
+@@CASE 306|try, mo1 = containers.Map({'a','b'}, {1}); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:Containers:Map:NumberKeysValuesMismatch
+
+@@CLASS char [1 46]
+@@END
+@@CASE 307|try, mo1 = containers.Map('KeyType', 'int8', 'ValueType', 'any'); x = 1; catch me1, x = me1.identifier; end; x
+
+x =
+
+MATLAB:Containers:Map:KeyUnsupportedType
+
+@@CLASS char [1 40]
+@@END

@@ -1,0 +1,25 @@
+[package]
+name = "matrust-web"
+version = "0.1.0"
+edition = "2024"
+description = "MatRust in the browser: the numerical engine as a WebAssembly module"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Own workspace root: not a member of the MatRust package (own Cargo.lock and web/target).
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+matrust = { path = "..", default-features = false }
+wasm-bindgen = "=0.2.129"
+# Already in MatRust's dependency tree; builds the JSON results.
+serde_json = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,24 @@
+---
+import Base from '../layouts/Base.astro';
+import release from '../data/release.json';
+import { platformNames, type Platform } from '../lib/platform';
+---
+<Base title="Download">
+  <div class="container">
+    <div class="page-heading"><p class="eyebrow">DOWNLOAD · ALPHA</p><h1>A native workspace.<br />On your machine.</h1><p>Download MatRust for Windows, Linux or macOS (Apple silicon). Each archive includes the desktop app, command line and PDF helper.</p><p class="small muted" id="release-status">Version {release.version.replace(/^v/,'')} · Release data bundled with this site.</p></div>
+    <section class="page-body" aria-label="Platform downloads">
+      <div class="grid-3 release-grid" id="release-assets">{release.assets.map(asset => <article class="card release-card" data-os={asset.os}>
+        <div class="release-title"><h2>{platformNames[asset.os as Platform]}<span class="small muted"> {asset.os === 'macos' ? 'Apple silicon' : 'x64'}</span></h2><p class="badge" data-recommended hidden>Recommended<span class="sr-only"> for your device</span></p></div>
+        <div><p class="filename" data-filename>{asset.name}</p><p class="small muted" data-size>{(asset.size/1048576).toFixed(1)} MB · {asset.size.toLocaleString('en-US')} bytes</p>{asset.os === 'linux' && <p class="small muted">Ubuntu 22.04, Debian 12, Fedora 36 or newer (glibc 2.35+)</p>}</div>
+        <a class="button primary" data-asset-download href={asset.url}>Download for {platformNames[asset.os as Platform]}</a>
+        <div class="checksum-block"><span class="checksum-label">SHA-256</span><code class="checksum" data-sha256>{asset.sha256}</code><button class="copy-checksum" type="button" aria-label={`Copy SHA-256 for ${platformNames[asset.os as Platform]}`}>Copy SHA-256</button></div>
+        <div class="install-note">{asset.os === 'macos' ? <><p>Unsigned app. After unpacking, run in Terminal:</p><code>xattr -dr com.apple.quarantine &lt;folder&gt;</code><p>Then start ./matrust-desktop from that folder.</p></> : asset.os === 'windows' ? <p>Unzip, then open matrust-desktop. If SmartScreen appears, choose “More info → Run anyway”.</p> : <><p>Unpack, then run ./matrust-desktop. If needed:</p><code>chmod +x matrust matrust-desktop matrust-pdf-worker</code></>}</div>
+      </article>)}</div>
+      <section class="card verify-box" aria-labelledby="pm-title"><h2 id="pm-title">Or use a package manager.</h2><p class="muted">No Gatekeeper or SmartScreen prompt, and updates come with the package manager.</p><div class="section-note"><div><h3>macOS and Linux · Homebrew</h3><pre><code>brew install leoom-labs/tap/matrust</code></pre></div><div><h3>Windows · Scoop</h3><pre><code>scoop bucket add matrust https://github.com/leoom-labs/scoop-bucket
+scoop install matrust</code></pre></div></div></section>
+      <section class="card verify-box" aria-labelledby="verify-title"><h2 id="verify-title">Verify the download.</h2><p class="muted">Run the command for your platform in the download folder. Compare the result with the SHA-256 above.</p><div class="section-note"><div><h3>Linux</h3><pre><code data-verify="linux">sha256sum {release.assets.find(a=>a.os==='linux')!.name}</code></pre></div><div><h3>macOS</h3><pre><code data-verify="macos">shasum -a 256 {release.assets.find(a=>a.os==='macos')!.name}</code></pre></div><div><h3>Windows · PowerShell</h3><pre><code data-verify="windows">Get-FileHash .\{release.assets.find(a=>a.os==='windows')!.name} -Algorithm SHA256</code></pre></div></div><p class="small muted">Windows code signing: free code signing provided by <a href="https://about.signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>. Signing starts once the project is approved; until then Windows builds are unsigned. <a href="/code-signing/">Code signing policy</a>.</p></section>
+      <p class="section-note">Keep matrust, matrust-desktop and matrust-pdf-worker together. <a href={release.url}>Read the {release.version} release notes.</a></p>
+    </section>
+  </div>
+  <script>import '../scripts/download';</script>
+</Base>

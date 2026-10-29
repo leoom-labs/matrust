@@ -1,0 +1,20 @@
+---
+import Base from '../layouts/Base.astro';
+const github = 'https://github.com/leoom-labs/matrust';
+---
+<Base title="Code signing policy" description="How MatRust's Windows programs are built, approved and signed.">
+  <article class="container page-body">
+    <div class="page-heading"><p class="eyebrow">CODE SIGNING</p><h1>Code signing policy.</h1><p>Free code signing provided by <a href="https://about.signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>.</p></div>
+    <div class="prose">
+      <h2>What is signed.</h2><p>The Windows programs in each MatRust release: <code>matrust.exe</code>, <code>matrust-desktop.exe</code> and <code>matrust-pdf-worker.exe</code>. They are built from the tagged source in the <a href={github}>public repository</a> by its <code>windows-package</code> workflow on GitHub-hosted runners. Nothing built elsewhere is signed. Until SignPath Foundation has approved the project, Windows releases are unsigned.</p>
+      <h2>Team and roles.</h2>
+      <ul>
+        <li>Committers and reviewers: <a href="https://github.com/leonaffi-byte">leonaffi-byte</a>. Changes from other contributors are reviewed before they are merged.</li>
+        <li>Approvers: <a href="https://github.com/leonaffi-byte">leonaffi-byte</a>. Every release is approved by hand before it is signed.</li>
+      </ul>
+      <p>Everyone in these roles uses multi-factor authentication for GitHub and SignPath.</p>
+      <h2>Privacy.</h2><p>This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. See the <a href="/privacy/">privacy page</a> for details.</p>
+      <h2>Report a problem.</h2><p>If you think a signed MatRust file was misused or is not what it claims to be, open an issue in the <a href={`${github}/issues`}>repository</a>.</p>
+    </div>
+  </article>
+</Base>

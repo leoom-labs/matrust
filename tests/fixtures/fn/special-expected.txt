@@ -1,0 +1,964 @@
+@@CASE 1|x = besselj(0, 1)
+
+x =
+
+   0.765197686557967
+
+@@CLASS double [1 1]
+@@END
+@@CASE 2|x = besselj(1, [0 1 2.5 10])
+
+x =
+
+                   0   0.440050585744934   0.497094102464274   0.043472746168861
+
+@@CLASS double [1 4]
+@@END
+@@CASE 3|x = besselj([0 1 2], 3)
+
+x =
+
+  -0.260051954901934   0.339058958525936   0.486091260585891
+
+@@CLASS double [1 3]
+@@END
+@@CASE 4|x = besselj(0.5, [1; 2])
+
+x =
+
+   0.671396707141803
+   0.513016136561828
+
+@@CLASS double [2 1]
+@@END
+@@CASE 5|x = besselj(-1.5, 2)
+
+x =
+
+  -0.395623281358704
+
+@@CLASS double [1 1]
+@@END
+@@CASE 6|x = besselj(0, 100)
+
+x =
+
+   0.019985850304223
+
+@@CLASS double [1 1]
+@@END
+@@CASE 7|x = besselj(2, 1e-5)
+
+x =
+
+     1.249999999989585e-11
+
+@@CLASS double [1 1]
+@@END
+@@CASE 8|x = besselj(0, 2+1i)
+
+x =
+
+  0.187853728082462 - 0.646169435153981i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 9|x = besselj(1, 50i, 1)
+
+x =
+
+  0.000000000000000 + 0.055993123892895i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 10|x = besselj(0, [NaN Inf -Inf])
+
+x =
+
+   NaN   NaN   NaN
+
+@@CLASS double [1 3]
+@@END
+@@CASE 11|x = besselj(0, [])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 12|x = besselj(1, -2)
+
+x =
+
+  -0.576724807756874
+
+@@CLASS double [1 1]
+@@END
+@@CASE 13|x = besselj(0.5, -2)
+
+x =
+
+  0.000000000000000 + 0.513016136561828i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 14|[j, ierr] = besselj(0, 1); x = ierr
+ERR Too many output arguments.
+@@END
+@@CASE 15|x = besselj(1)
+ERR Not enough input arguments.
+@@END
+@@CASE 16|x = bessely(0, 1)
+
+x =
+
+   0.088256964215677
+
+@@CLASS double [1 1]
+@@END
+@@CASE 17|x = bessely(1, [0.5 2 10])
+
+x =
+
+  -1.471472392670243  -0.107032431540937   0.249015424206954
+
+@@CLASS double [1 3]
+@@END
+@@CASE 18|x = bessely(0, 0)
+
+x =
+
+  -Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 19|x = bessely(2, 1e-3)
+
+x =
+
+    -1.273239863045667e+06
+
+@@CLASS double [1 1]
+@@END
+@@CASE 20|x = bessely(0, -1)
+
+x =
+
+  0.088256964215677 + 1.530395373115933i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 21|x = bessely(0, 100)
+
+x =
+
+  -0.077244313365083
+
+@@CLASS double [1 1]
+@@END
+@@CASE 22|x = bessely(1, 10i, 1)
+
+x =
+
+ -0.121262681384456 + 0.000000000538996i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 23|x = bessely(0, Inf)
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 24|x = besseli(0, 1)
+
+x =
+
+   1.266065877752008
+
+@@CLASS double [1 1]
+@@END
+@@CASE 25|x = besseli(1, [0 0.5 5])
+
+x =
+
+                   0   0.257894305390896  24.335642142450531
+
+@@CLASS double [1 3]
+@@END
+@@CASE 26|x = besseli(0, 100)
+
+x =
+
+     1.073751707131074e+42
+
+@@CLASS double [1 1]
+@@END
+@@CASE 27|x = besseli(0, 100, 1)
+
+x =
+
+   0.039944379299097
+
+@@CLASS double [1 1]
+@@END
+@@CASE 28|x = besseli(0, 1000)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 29|x = besseli(2, -1)
+
+x =
+
+   0.135747669767038
+
+@@CLASS double [1 1]
+@@END
+@@CASE 30|x = besseli(0.5, 1i)
+
+x =
+
+  0.474749164486288 + 0.474749164486287i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 31|x = besseli(0, Inf)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 32|x = besselk(0, 1)
+
+x =
+
+   0.421024438240708
+
+@@CLASS double [1 1]
+@@END
+@@CASE 33|x = besselk(1, [0.1 1 10])
+
+x =
+
+   9.853844780870606   0.601907230197235   0.000018648773454
+
+@@CLASS double [1 3]
+@@END
+@@CASE 34|x = besselk(0, 0)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 35|x = besselk(0, 100, 1)
+
+x =
+
+   0.125175621659127
+
+@@CLASS double [1 1]
+@@END
+@@CASE 36|x = besselk(0, 800)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 37|x = besselk(0, -1)
+
+x =
+
+  0.421024438240708 - 3.977463260506422i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 38|x = besselk(1.5, 2+3i)
+
+x =
+
+ -0.089763518122306 + 0.054689228848542i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 39|x = besselh(0, 1)
+
+x =
+
+  0.765197686557966 + 0.088256964215677i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 40|x = besselh(1, 2, [1 2.5])
+
+x =
+
+  0.440050585744934 + 0.781212821300289i  0.497094102464274 - 0.145918137966786i
+
+@@CLASS double [1 2]
+@@END
+@@CASE 41|x = besselh(0, 2, 1)
+
+x =
+
+  0.765197686557966 - 0.088256964215677i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 42|x = besselh(0, 1, 10, 1)
+
+x =
+
+  0.176071407662647 - 0.180506339242370i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 43|x = besselh(1, 1+1i)
+
+x =
+
+ -0.015640669069981 - 0.292666506764257i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 44|x = besselh(0, 3, 1)
+ERR K must be 1 or 2.
+@@END
+@@CASE 45|x = airy(0)
+
+x =
+
+   0.355028053887817
+
+@@CLASS double [1 1]
+@@END
+@@CASE 46|x = airy([-1 0 1 5])
+
+x =
+
+   0.535560883292352   0.355028053887817   0.135292416312881   0.000108344428136
+
+@@CLASS double [1 4]
+@@END
+@@CASE 47|x = airy(1, 1)
+
+x =
+
+  -0.159147441296793
+
+@@CLASS double [1 1]
+@@END
+@@CASE 48|x = airy(2, 1)
+
+x =
+
+   1.207423594952871
+
+@@CLASS double [1 1]
+@@END
+@@CASE 49|x = airy(3, 1)
+
+x =
+
+   0.932435933392775
+
+@@CLASS double [1 1]
+@@END
+@@CASE 50|x = airy(0, 10, 1)
+
+x =
+
+   0.158123666854346
+
+@@CLASS double [1 1]
+@@END
+@@CASE 51|x = airy(0, -10)
+
+x =
+
+   0.040241238486439
+
+@@CLASS double [1 1]
+@@END
+@@CASE 52|x = airy(0, 1+1i)
+
+x =
+
+  0.060458308371838 - 0.151889565877181i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 53|x = airy(4, 1)
+ERR K must be 0, 1, 2, or 3.
+@@END
+@@CASE 54|x = gammainc(1, 2)
+
+x =
+
+   0.264241117657115
+
+@@CLASS double [1 1]
+@@END
+@@CASE 55|x = gammainc([0 0.5 1 10], 2)
+
+x =
+
+                   0   0.090204010431050   0.264241117657115   0.999500600772613
+
+@@CLASS double [1 4]
+@@END
+@@CASE 56|x = gammainc(1, [0.5 1 2])
+
+x =
+
+   0.842700792949715   0.632120558828558   0.264241117657115
+
+@@CLASS double [1 3]
+@@END
+@@CASE 57|x = gammainc(2, 3, 'upper')
+
+x =
+
+   0.676676416183063
+
+@@CLASS double [1 1]
+@@END
+@@CASE 58|x = gammainc(2, 3, 'lower')
+
+x =
+
+   0.323323583816937
+
+@@CLASS double [1 1]
+@@END
+@@CASE 59|x = gammainc(100, 100)
+
+x =
+
+   0.513298798279149
+
+@@CLASS double [1 1]
+@@END
+@@CASE 60|x = gammainc(0, 0)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 61|x = gammainc(Inf, 2)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 62|x = gammainc(NaN, 2)
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 63|x = gammainc(1, 2, 'scaledlower')
+
+x =
+
+   1.436563656918090
+
+@@CLASS double [1 1]
+@@END
+@@CASE 64|x = gammainc(1, 2, 'scaledupper')
+
+x =
+
+   4.000000000000001
+
+@@CLASS double [1 1]
+@@END
+@@CASE 65|x = gammainc(-1, 2)
+
+x =
+
+  1.000000000000000 - 0.000000000000000i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 66|x = gammainc(1, -2)
+ERR A must be real and non-negative.
+@@END
+@@CASE 67|x = gammaincinv(0.5, 2)
+
+x =
+
+   1.678346990016660
+
+@@CLASS double [1 1]
+@@END
+@@CASE 68|x = gammaincinv([0 0.1 0.9 1], 3)
+
+x =
+
+                   0   1.102065328249321   5.322320337834210                 Inf
+
+@@CLASS double [1 4]
+@@END
+@@CASE 69|x = gammaincinv(0.5, 2, 'upper')
+
+x =
+
+   1.678346990016660
+
+@@CLASS double [1 1]
+@@END
+@@CASE 70|x = gammaincinv(1e-10, 0.5)
+
+x =
+
+     7.853981633974481e-21
+
+@@CLASS double [1 1]
+@@END
+@@CASE 71|x = gammaincinv(0.5, 100)
+
+x =
+
+  99.666864919315501
+
+@@CLASS double [1 1]
+@@END
+@@CASE 72|x = gammaincinv(2, 1)
+ERR Y must be in the interval [0,1].
+@@END
+@@CASE 73|x = betainc(0.5, 2, 3)
+
+x =
+
+   0.687500000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 74|x = betainc([0 0.2 0.8 1], 2, 3)
+
+x =
+
+                   0   0.180800000000000   0.972800000000000   1.000000000000000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 75|x = betainc(0.5, [1 2 5], 2)
+
+x =
+
+   0.750000000000000   0.500000000000000   0.109375000000000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 76|x = betainc(0.3, 2, 3, 'upper')
+
+x =
+
+   0.651700000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 77|x = betainc(0.5, 100, 100)
+
+x =
+
+   0.500000000000048
+
+@@CLASS double [1 1]
+@@END
+@@CASE 78|x = betainc(0.999, 0.5, 0.5)
+
+x =
+
+   0.979864958366622
+
+@@CLASS double [1 1]
+@@END
+@@CASE 79|x = betainc(NaN, 1, 1)
+ERR X must be in the interval [0,1].
+@@END
+@@CASE 80|x = betainc(1.5, 1, 1)
+ERR X must be in the interval [0,1].
+@@END
+@@CASE 81|x = betainc(0.5, -1, 1)
+ERR Z must be real and non-negative.
+@@END
+@@CASE 82|x = betaincinv(0.5, 2, 3)
+
+x =
+
+   0.385727568132389
+
+@@CLASS double [1 1]
+@@END
+@@CASE 83|x = betaincinv([0 0.1 0.9 1], 2, 3)
+
+x =
+
+                   0   0.142559316710031   0.679539416278182   1.000000000000000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 84|x = betaincinv(0.5, 2, 3, 'upper')
+
+x =
+
+   0.385727568132389
+
+@@CLASS double [1 1]
+@@END
+@@CASE 85|x = betaincinv(1e-8, 0.5, 5)
+
+x =
+
+     1.651196775006311e-17
+
+@@CLASS double [1 1]
+@@END
+@@CASE 86|x = betaincinv(2, 1, 1)
+ERR Y must be in the interval [0,1].
+@@END
+@@CASE 87|x = expint(1)
+
+x =
+
+   0.219383934395520
+
+@@CLASS double [1 1]
+@@END
+@@CASE 88|x = expint([0.1 0.5 2 10])
+
+x =
+
+   1.822923958419390   0.559773594776161   0.048900510708061   0.000004156968930
+
+@@CLASS double [1 4]
+@@END
+@@CASE 89|x = expint(0)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 90|x = expint(-1)
+
+x =
+
+ -1.895117816355937 - 3.141592653589793i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 91|x = expint(1+1i)
+
+x =
+
+  0.000281624451981 - 0.179324535039359i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 92|x = expint(50)
+
+x =
+
+     3.783264029550461e-24
+
+@@CLASS double [1 1]
+@@END
+@@CASE 93|x = expint([Inf NaN])
+
+x =
+
+   NaN     0
+
+@@CLASS double [1 2]
+@@END
+@@CASE 94|x = psi(1)
+
+x =
+
+  -0.577215664901532
+
+@@CLASS double [1 1]
+@@END
+@@CASE 95|x = psi([0.5 2 10 100])
+
+x =
+
+  -1.963510026021423   0.422784335098467   2.251752589066721   4.600161852738088
+
+@@CLASS double [1 4]
+@@END
+@@CASE 96|x = psi(1, 1)
+
+x =
+
+   1.644934066848226
+
+@@CLASS double [1 1]
+@@END
+@@CASE 97|x = psi(2, [1 2])
+
+x =
+
+  -2.404113806319189  -0.404113806319189
+
+@@CLASS double [1 2]
+@@END
+@@CASE 98|x = psi(0)
+
+x =
+
+  -Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 99|x = psi(-0.5)
+ERR X must be nonnegative.
+@@END
+@@CASE 100|x = psi(Inf)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 101|x = psi(1i)
+ERR Input must be real.
+@@END
+@@CASE 102|x = legendre(2, 0.5)
+
+x =
+
+  -0.125000000000000
+  -1.299038105676658
+   2.250000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 103|x = legendre(0, [0 0.5])
+
+x =
+
+     1     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 104|x = legendre(3, [-1 0 1])
+
+x =
+
+  -1.000000000000000                   0   1.000000000000000
+                   0   1.500000000000000                   0
+                   0                   0                   0
+                   0 -15.000000000000002                   0
+
+@@CLASS double [4 3]
+@@END
+@@CASE 105|x = legendre(2, 0.5, 'sch')
+
+x =
+
+  -0.125000000000000
+   0.750000000000000
+   0.649519052838329
+
+@@CLASS double [3 1]
+@@END
+@@CASE 106|x = legendre(2, 0.5, 'norm')
+
+x =
+
+  -0.197642353760524
+   0.838525491562421
+   0.726184377413891
+
+@@CLASS double [3 1]
+@@END
+@@CASE 107|x = legendre(1, [0.1 0.2; 0.3 0.4])
+
+x(:,:,1) =
+
+   0.100000000000000   0.300000000000000
+  -0.994987437106620  -0.953939201416946
+
+
+x(:,:,2) =
+
+   0.200000000000000   0.400000000000000
+  -0.979795897113271  -0.916515138991168
+
+@@CLASS double [2 2 2]
+@@END
+@@CASE 108|x = legendre(2, 2)
+ERR X must be real and in the range (-1,1).
+@@END
+@@CASE 109|x = legendre(-1, 0.5)
+ERR N must be a positive scalar integer.
+@@END
+@@CASE 110|x = ellipke(0.5)
+
+x =
+
+   1.854074677301372
+
+@@CLASS double [1 1]
+@@END
+@@CASE 111|x = ellipke([0 0.1 0.9 0.999999])
+
+x =
+
+   1.570796326794897   1.612441348720219   2.578092113348173   8.294051463601061
+
+@@CLASS double [1 4]
+@@END
+@@CASE 112|x = ellipke(1)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 113|[k, e] = ellipke([0 0.5 1]); x = e
+
+x =
+
+   1.570796326794897   1.350643881047675   1.000000000000000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 114|x = ellipke(0.5, 1e-3)
+
+x =
+
+   1.854048814399336
+
+@@CLASS double [1 1]
+@@END
+@@CASE 115|x = ellipke(2)
+ERR M must be in the range 0 <= M <= 1.
+@@END
+@@CASE 116|x = ellipke(-0.5)
+ERR M must be in the range 0 <= M <= 1.
+@@END
+@@CASE 117|[sn, cn, dn] = ellipj(0.5, 0.3); x = [sn cn dn]
+
+x =
+
+   0.474215622711821   0.880408736426462   0.965678964745951
+
+@@CLASS double [1 3]
+@@END
+@@CASE 118|[sn, cn, dn] = ellipj([0 1 2], 0.5); x = [sn; cn; dn]
+
+x =
+
+                   0   0.803001824895644   0.994662325358018
+   1.000000000000000   0.595976567672141  -0.103183615527762
+   1.000000000000000   0.823161001631596   0.710861047784087
+
+@@CLASS double [3 3]
+@@END
+@@CASE 119|[sn, cn, dn] = ellipj(1, 0); x = [sn cn dn]
+
+x =
+
+   0.841470984807897   0.540302305868140   1.000000000000000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 120|[sn, cn, dn] = ellipj(1, 1); x = [sn cn dn]
+
+x =
+
+   0.761594155955765   0.648054273663885   0.648054273663885
+
+@@CLASS double [1 3]
+@@END
+@@CASE 121|[sn, cn, dn] = ellipj(0.5, 0.3, 1e-3); x = [sn cn dn]
+
+x =
+
+   0.474215622711912   0.880408736426413   0.965678964745938
+
+@@CLASS double [1 3]
+@@END
+@@CASE 122|x = ellipj(1, 2)
+ERR M must be in the range 0 <= M <= 1.
+@@END
+@@CASE 123|x = ellipj([1 2], [0.1 0.2 0.3])
+ERR U and M must be the same size.
+@@END
+@@CASE 124|x = erfcx(1)
+
+x =
+
+   0.427583576155807
+
+@@CLASS double [1 1]
+@@END
+@@CASE 125|x = erfcx([-1 0 0.5 10])
+
+x =
+
+   5.008980080762284   1.000000000000000   0.615690344192926   0.056140992743823
+
+@@CLASS double [1 4]
+@@END
+@@CASE 126|x = erfcx(1e5)
+
+x =
+
+     5.641895835195469e-06
+
+@@CLASS double [1 1]
+@@END
+@@CASE 127|x = erfcx(-30)
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 128|x = erfcx([Inf -Inf NaN])
+
+x =
+
+     0   Inf   NaN
+
+@@CLASS double [1 3]
+@@END
+@@CASE 129|x = erfcx(single(1))
+
+x =
+
+   0.4275836
+
+@@CLASS single [1 1]
+@@END
+@@CASE 130|x = erfcx(1i)
+ERR Input must be real and full.
+@@END

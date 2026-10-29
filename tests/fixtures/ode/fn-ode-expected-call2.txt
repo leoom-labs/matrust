@@ -1,0 +1,48 @@
+ 
+ERR ode45() => Not enough input arguments. See ODE45.
+ERR ode45(fe) => When the first argument to ode45 is a function handle, the tspan and y0 arguments must be supplied.
+ERR ode45(fe,[0 1]) => When the first argument to ode45 is a function handle, the tspan and y0 arguments must be supplied.
+ERR ode45(fe,[0 1],[]) => When the first argument to ode45 is a function handle, the tspan and y0 arguments must be supplied.
+ERR ode45(@(t,y) y.',[0 1],[1;2]) => @(T,Y)Y.' must return a column vector.
+ERR ode45(@(t,y) [y;1],[0 1],[1;2]) => @(T,Y)[Y;1] returns a vector of length 3, but the length of initial conditions vector is 2. The vector returned by @(T,Y)[Y;1] and the initial conditions vector must have the same number of elements.
+ERR ode45(fe,[0 0],1) => The last entry in tspan must be different from the first entry.
+ERR ode45(fe,[0 2 1 3],1) => The entries in tspan must strictly increase or decrease.
+ERR ode45(fe,[0 NaN],1) => While setting the 'XLim' property of 'Axes':
+Value must be a 1x2 vector of numeric type in which the second element is larger than the first and may be Inf
+ERR ode45(fe,[0 1],1,odeset('RelTol',-1)) => RelTol must be a positive scalar.
+ERR ode45(fe,[0 1],[1;2],odeset('AbsTol',[1 2 3])) => Solving @(T,Y)-Y requires a scalar AbsTol, or a vector AbsTol of length 2
+ERR ode45(fe,[0 1],1,odeset('AbsTol',0)) => AbsTol must be positive.
+ERR ode45(fe,[0 1],1,odeset('MaxStep',0)) => Option 'MaxStep' must be greater than zero.
+ERR ode45(fe,[0 1],1,odeset('InitialStep',0)) => Option 'InitialStep' must be greater than zero.
+[Warning: Mixture of single and double data for 't0', 'y0', and 'f(t0,y0)' in call to ode45.] 
+[> In odearguments (line 116)
+  In ode45 (line 115)
+  In snippet (line 14)
+  In runner (line 2)] 
+ERR ode45(fe,[0 1],[true;false]) => Invalid type for argument Y. Type should be double.
+ERR odeset('Foo',1) => Unrecognized property name 'Foo'.
+ERR odeset('Max',1) => Ambiguous property name 'Max' (MaxOrder, MaxStep).
+ERR odeset('RelTol') => Arguments must occur in name-value pairs.
+ERR odeset('RelTol',1,2,3) => Expected argument 3 to be a string property name.
+ERR odeset(5) => Expected argument 1 to be a string property name or an options structure created with ODESET.
+ERR odeget(odeset(),'Foo') => Unrecognized property name 'Foo'.  See ODESET for possibilities.
+ERR odeget(5,'RelTol') => First argument must be an options structure created with ODESET.
+ERR odeget(odeset()) => Not enough input arguments.
+ERR odeget(odeset('Max',1),'Max') => Ambiguous property name 'Max' (MaxOrder, MaxStep).
+odeget 1e-06 1e-08 1e-09 | 1 | 0.25
+name one output: 41 x 1
+scalar tspan: 41 x 1, u(end)=2
+[Warning: Failure at t=9.999694e-01.  Unable to meet integration tolerances without reducing the step size
+below the smallest value allowed (1.776357e-15) at time t.] 
+[> In ode45 (line 308)
+  In snippet (line 28)
+  In runner (line 2)] 
+blowup: t(end)=0.99996942883098183 n=265
+Failure at t=9.999694e-01.  Unable to meet integration tolerances without reducing the step size below the smallest value allowed (1.776357e-15) at time t.
+[Warning: RelTol has been increased to 2.22045e-14.] 
+[> In odearguments (line 127)
+  In ode45 (line 115)
+  In snippet (line 30)
+  In runner (line 2)] 
+RelTol has been increased to 2.22045e-14.
+NaN y0: 41 x 1 last NaN

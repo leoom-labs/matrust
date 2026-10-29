@@ -1,0 +1,25 @@
+MatRust quick start
+===================
+
+Desktop app:   run  matrust-desktop  (double-click on Windows).
+Command line:  run  matrust  for an interactive console, or
+               matrust script.m   to run a script.
+macOS:         the programs are not signed. After unpacking, run once in
+               Terminal:  xattr -dr com.apple.quarantine <unpacked folder>
+               then start ./matrust-desktop from that folder.
+One-liner:     matrust --eval "disp(1+1)"
+Version:       matrust --version   and   matrust-desktop --version
+Benchmark:     matrust bench   (matrust bench --help; MATLAB side by hand: bench/)
+
+Help:          at the prompt or in the desktop Command Window type
+                 help          (list of commands)
+                 help plot     (help for one function)
+
+Compatibility: MatRust implements a bounded subset of numeric, logical,
+complex, character and cell-array behavior. Full MATLAB, toolbox and
+Simulink compatibility remains incomplete. Unsupported syntax is rejected
+with an error.
+
+matrust-pdf-worker is a helper the desktop app starts for PDF export.
+Keep the three programs in the same folder.
+Licences: LICENSE and THIRD-PARTY-LICENSES.txt.

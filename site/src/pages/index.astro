@@ -1,0 +1,53 @@
+---
+import Base from '../layouts/Base.astro';
+import release from '../data/release.json';
+import { homeExample } from '../try/examples';
+import { plainCodeHash } from '../lib/share';
+import { highlight } from '../lib/highlight';
+const github = 'https://github.com/leoom-labs/matrust';
+const features = [
+ ['Language','Scripts, functions, control flow, structs, cells, handles, try/catch and switch.'],
+ ['Numeric types','Double, single, int8–uint64, logical, char and complex.'],
+ ['750+ functions','Built-in help pages document syntax, examples and compatibility notes.'],
+ ['Plotting','Explore results with plots, then export to image and vector formats.'],
+ ['MAT and CSV files','Save and load a workspace, or exchange data with other tools.'],
+ ['Desktop tools','A Filter Designer and a discrete-time Block Simulation tool.'],
+];
+// The example's plot(t, sin(t)), drawn at build time: 100 points over one period.
+const plotX = (t: number) => 40 + t / (2 * Math.PI) * 424;
+const sinePoints = Array.from({ length: 100 }, (_, i) => 2 * Math.PI * i / 99).map(t => `${plotX(t).toFixed(1)},${(84 - 64 * Math.sin(t)).toFixed(1)}`).join(' ');
+---
+<Base title="MatRust">
+  <div class="container">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">OPEN SOURCE · ALPHA</p>
+        <h1 id="hero-title">Numerical computing. Built in Rust.</h1>
+        <p>Run .m scripts, plot results and work in a native desktop workspace. Free and open source under the GPL.</p>
+        <div class="actions"><a class="button primary" data-os-download href="/download/">Download MatRust</a><a class="button" href="/try/">Try in your browser</a></div>
+        <p class="small muted">Version {release.version.replace(/^v/,'')} · Windows, Linux, macOS (Apple silicon)</p>
+      </div>
+      <figure class="hero-shot">
+        <picture><source data-dark-source media="(prefers-color-scheme: dark)" srcset="/screens/desktop-dark.png" /><img src="/screens/desktop-light.png" width="1440" height="900" alt="MatRust desktop workspace with an editor, Command Window, variable table and plotted results." fetchpriority="high" /></picture>
+        <figcaption>A native workspace for scripts, data and figures.</figcaption>
+      </figure>
+    </section>
+    <section class="section" aria-labelledby="demo-title">
+      <div class="section-heading"><p class="eyebrow">DEMO</p><h2 id="demo-title">One minute, start to finish.</h2><p class="muted">Write a script, run it, use the Command Window, then the same code in the browser.</p></div>
+      <figure class="hero-shot demo-shot"><video controls muted playsinline preload="none" width="1280" height="800" poster="/media/demo-poster.jpg" src="/media/demo.mp4">Your browser cannot play this video. <a href="/media/demo.mp4">Download it (MP4, 0.6 MB).</a></video></figure>
+    </section>
+    <section class="section" aria-labelledby="works-title">
+      <div class="section-heading"><p class="eyebrow">WHAT WORKS</p><h2 id="works-title">The core language, natively.</h2></div>
+      <div class="grid-3">{features.map(([title,text],i) => <article class="card feature-card"><span class="feature-number" aria-hidden="true">0{i+1}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
+      <p class="section-note">Not yet: toolboxes, Simulink, classdef, N-D and sparse arrays. <a href={`${github}/blob/main/README.md#what-does-not-work-yet`}>See the full list.</a></p>
+    </section>
+    <section class="section grid-2" aria-labelledby="try-title">
+      <div class="stack"><div class="section-heading"><p class="eyebrow">TRY IT</p><h2 id="try-title">Runs in your browser, too.</h2><p class="muted">Write a few lines, run a calculation and see the result.</p></div><div><a class="button" href={`/try/${plainCodeHash(homeExample)}`}>Open in the browser console</a><p class="section-note">The browser version runs on your device. Your code is not sent anywhere.</p></div></div>
+      <div class="code-card"><div class="panel-heading"><span>example.m</span><span class="muted">Script</span></div><pre><code set:html={highlight(homeExample)} /></pre><div class="code-output"><span>Command Window</span><pre>     2<br />     3</pre></div>
+        <figure class="code-output code-figure"><figcaption>Figure 1</figcaption><svg viewBox="0 0 480 180" role="img" aria-label="Line plot of sin(t) for t from 0 to 2π: one period between -1 and 1."><rect class="plot-box" x="40" y="20" width="424" height="128" /><path class="plot-grid" d="M40 84H464" /><polyline class="plot-line" points={sinePoints} />{[1, 0, -1].map(value => <text x="32" y={88 - 64 * value} text-anchor="end">{value}</text>)}{[0, 1, 2, 3, 4, 5, 6].map(t => <text x={plotX(t)} y="172" text-anchor="middle">{t}</text>)}</svg></figure></div>
+    </section>
+    <section class="section" aria-labelledby="benchmark-title"><div class="section-heading"><p class="eyebrow">BENCHMARK</p><h2 id="benchmark-title">Measure it on your own machine.</h2><p class="muted">matrust bench times MatRust on built-in cases or your own scripts.</p></div><div class="actions"><pre class="inline-command"><code>matrust bench</code></pre><a href={`${github}/blob/main/BENCHMARKS.md`}>Read the benchmark guide →</a></div></section>
+    <section class="section" aria-labelledby="open-title"><div class="section-heading"><p class="eyebrow">OPEN SOURCE</p><h2 id="open-title">Open source, in the open.</h2><p class="muted">MatRust is licensed under GPL-3.0-or-later. Use it, study it and help improve it. Issues and contributions are welcome.</p></div><div class="actions"><a href={`${github}/blob/main/CONTRIBUTING.md`}>Contributing guide →</a><a href={`${github}/issues`}>Issue tracker →</a></div></section>
+    <section class="closing section" aria-labelledby="download-title"><h2 id="download-title">Download MatRust {release.version.replace(/^v/,'')}</h2><div class="actions"><a class="button primary" data-os-download href="/download/">Download MatRust</a><a href="/download/">All downloads</a></div></section>
+  </div>
+</Base>

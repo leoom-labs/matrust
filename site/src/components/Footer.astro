@@ -1,0 +1,13 @@
+---
+import release from '../data/release.json';
+const g = 'https://github.com/leoom-labs/matrust';
+const columns = [
+ ['Product',[['Download','/download/'],['Try online','/try/'],['Benchmarks',`${g}/blob/main/BENCHMARKS.md`],['Release notes',release.url]]],
+ ['Learn',[['User guide',`${g}/blob/main/docs/guide/user-guide.md`],['Functions','/docs/#functions'],['Quick start',`${g}/blob/main/scripts/QUICKSTART.txt`]]],
+ ['Project',[['GitHub',g],['Issues',`${g}/issues`],['License',`${g}/blob/main/LICENSE`],['Privacy','/privacy/'],['Code signing','/code-signing/']]],
+] as const;
+---
+<footer class="site-footer"><div class="container">
+  <div class="footer-links">{columns.map(([title,links]) => <div><h2>{title}</h2>{links.map(([label,url]) => <a href={url}>{label}</a>)}</div>)}</div>
+  <div class="footer-fine"><p>MATLAB is a registered trademark of The MathWorks, Inc.<br />MatRust is not affiliated with, endorsed by, or sponsored by MathWorks.</p><p>© 2026 MatRust contributors</p></div>
+</div></footer>

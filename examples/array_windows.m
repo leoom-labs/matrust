@@ -1,0 +1,28 @@
+% Array transforms and filter-design windows in MatRust.
+A = [1 4; 2 5; 3 6];
+D = diag([2 3 4]);
+L = tril(A);
+U = triu(A);
+F = flipud(A);
+S = cumsum(A);
+P = cumprod(A,2);
+n = 0:63;
+figure(1);
+subplot(2,2,1);
+plot(n,hann(64),n,hann(64,'periodic'));
+title('Hann sampling');
+xlabel('Sample');
+ylabel('Weight');
+legend('Symmetric','Periodic');
+subplot(2,2,2);
+plot(n,blackman(64));
+title('Blackman window');
+subplot(2,2,3);
+plot(n,bartlett(64),n,triang(64));
+title('Triangular windows');
+legend('Bartlett','Triangular');
+subplot(2,2,4);
+plot(n,cumsum(hann(64)));
+title('Cumulative window weight');
+savefig('array_windows.mfig');
+saveas(gcf,'array_windows.svg');

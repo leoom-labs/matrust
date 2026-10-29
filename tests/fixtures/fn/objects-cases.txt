@@ -1,0 +1,321 @@
+# containers.Map: constructor forms and display
+x = containers.Map()
+x = containers.Map({'a','b'}, {1, 2})
+x = containers.Map('a', 1)
+x = containers.Map('key1', 'val1')
+x = containers.Map({'a','b'}, [1 2])
+x = containers.Map({'a','b'}, {'x','yy'})
+x = containers.Map({'a','b'}, {[1 2], 3})
+x = containers.Map({'a','b'}, {true, false})
+x = containers.Map({'a','b'}, {int8(1), int8(2)})
+x = containers.Map({'a','b'}, {single(1), 2})
+x = containers.Map({'a','b'}, {1, 'x'})
+x = containers.Map({'a','b'}, {struct('f',1), {2}})
+x = containers.Map([1 2 3], {'a','b','c'})
+x = containers.Map({1, 2}, {'a','b'})
+x = containers.Map(1:3, 4:6)
+x = containers.Map(5, 'v')
+x = containers.Map(int32([1 2]), {3, 4})
+x = containers.Map(uint64(5), 'v')
+x = containers.Map(single([1.5 2]), {1, 2})
+x = containers.Map('KeyType', 'char', 'ValueType', 'any')
+x = containers.Map('KeyType', 'double', 'ValueType', 'any')
+x = containers.Map('KeyType', 'int32', 'ValueType', 'double')
+x = containers.Map('KeyType', 'uint32', 'ValueType', 'char')
+x = containers.Map('KeyType', 'int64', 'ValueType', 'logical')
+x = containers.Map('KeyType', 'uint64', 'ValueType', 'int16')
+x = containers.Map('KeyType', 'single', 'ValueType', 'single')
+x = containers.Map('KeyType', 'double', 'ValueType', 'uint8')
+x = containers.Map('ValueType', 'double', 'KeyType', 'double')
+x = containers.Map('KeyType', 'double')
+x = containers.Map('ValueType', 'char')
+x = containers.Map('keytype', 'double', 'valuetype', 'any')
+x = containers.Map('KeyType', 'int8', 'ValueType', 'any')
+x = containers.Map('KeyType', 'logical', 'ValueType', 'any')
+x = containers.Map('KeyType', 'char', 'ValueType', 'cell')
+x = containers.Map('KeyType', 'char', 'ValueType', 'struct')
+x = containers.Map('KeyType', 'char')
+x = containers.Map({'a','b'}, {1, 'x'}, 'UniformValues', false)
+x = containers.Map({'a','b'}, {1, 2}, 'UniformValues', false)
+x = containers.Map({'a','b'}, {1, 2}, 'UniformValues', true)
+x = containers.Map({'a','b'}, {'p','q'}, 'UniformValues', true)
+x = containers.Map({'a','b'}, {1, 'x'}, 'UniformValues', true)
+x = containers.Map({'a','b'}, {[1 2], 3}, 'UniformValues', true)
+x = containers.Map({'a','a'}, {1, 2})
+x = containers.Map({'a','b'}, {1})
+x = containers.Map({'a','b','c'}, [1 2])
+x = containers.Map({'a', 1}, {1, 2})
+x = containers.Map(true, 1)
+x = containers.Map({}, {})
+x = containers.Map(zeros(1,0), {})
+x = containers.Map({''}, {1})
+x = containers.Map(NaN, 1)
+x = containers.Map({'a'; 'b'}, {1; 2})
+x = containers.Map({'a','b';'c','d'}, {1, 2; 3, 4})
+x = containers.Map({'a'}, {1}, 'KeyType', 'char')
+x = containers.Map({'a','b'}, {1, 2}, 'Bogus', 1)
+x = containers.Map(1)
+x = containers.Map({'a','b'}, {1, 2}, 'UniformValues')
+mo1 = containers.Map({'b','a','C'}, {1, 2, 3}); x = class(mo1)
+mo1 = containers.Map({'b','a'}, {1, 2}); x = [isobject(mo1), isa(mo1, 'handle'), isa(mo1, 'containers.Map'), isvalid(mo1)]
+mo1 = containers.Map(); x = size(containers.Map.empty)
+# keys / values / isKey / remove / length / Count / size / isempty
+mo1 = containers.Map({'b','a','C','aa'}, {1, 2, 3, 4}); x = keys(mo1)
+mo1 = containers.Map({'b','a','C','aa'}, {1, 2, 3, 4}); x = values(mo1)
+mo1 = containers.Map([3 1 2 -1.5], {'c','a','b','m'}); x = keys(mo1)
+mo1 = containers.Map([3 1 2 -1.5], {'c','a','b','m'}); x = values(mo1)
+mo1 = containers.Map(int32([3 1 2]), {'c','a','b'}); x = keys(mo1)
+mo1 = containers.Map(int32([3 1 2]), {'c','a','b'}); t1 = keys(mo1); x = class(t1{1})
+mo1 = containers.Map(single([2 1]), {'b','a'}); t1 = keys(mo1); x = class(t1{1})
+mo1 = containers.Map(uint64([2 1]), {'b','a'}); t1 = keys(mo1); x = class(t1{1})
+mo1 = containers.Map(); x = keys(mo1)
+mo1 = containers.Map(); x = values(mo1)
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); x = keys(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'c','a'})
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a'})
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {})
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a'; 'b'})
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, {'a','zz'})
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = values(mo1, 'a')
+mo1 = containers.Map([1 2 3], {'a','b','c'}); x = values(mo1, {3, 1})
+mo1 = containers.Map([1 2 3], {'a','b','c'}); x = values(mo1, [3 1])
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.keys()
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.values({'b'})
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 'a')
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 'A')
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {'a','z','b'})
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {'a';'z'})
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, 1)
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1, {1, 'a'})
+mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, 2)
+mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, [1 2])
+mo1 = containers.Map([1 2], {'a','b'}); x = isKey(mo1, 'a')
+mo1 = containers.Map(int32([1 2]), {'a','b'}); x = isKey(mo1, 1)
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1.isKey('b')
+mo1 = containers.Map({'b','a'}, {1, 2}); x = isKey(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, 'a'); x = keys(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = remove(mo1, 'a')
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','c'}); x = keys(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, 'zz'); x = keys(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','zz'}); x = keys(mo1)
+mo1 = containers.Map([1 2 3], {'a','b','c'}); remove(mo1, 2); x = keys(mo1)
+mo1 = containers.Map([1 2 3], {'a','b','c'}); remove(mo1, 'a'); x = keys(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); remove(mo1, {'a','b','c'}); x = mo1
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = [length(mo1), mo1.Count, mo1.length()]
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = mo1.Count
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = class(mo1.Count)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = size(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = size(mo1, 1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); [t1, x] = size(mo1)
+mo1 = containers.Map({'b','a','c'}, {1, 2, 3}); x = numel(mo1)
+mo1 = containers.Map(); x = [size(mo1), length(mo1), isempty(mo1)]
+mo1 = containers.Map({'b'}, {1}); x = isempty(mo1)
+mo1 = containers.Map({'b'}, {1}); x = {mo1.KeyType, mo1.ValueType}
+mo1 = containers.Map(int32(1), 'q'); x = {mo1.KeyType, mo1.ValueType}
+mo1 = containers.Map({'b'}, {1}); mo1.Count = 5; x = mo1.Count
+mo1 = containers.Map({'b'}, {1}); mo1.KeyType = 'double'; x = mo1.KeyType
+mo1 = containers.Map({'b'}, {1}); x = mo1.Bogus
+# m(k) read and write, errors
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('a')
+mo1 = containers.Map({'b','a'}, {[1 2; 3 4], 2}); x = mo1('b')
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('zz')
+mo1 = containers.Map([1 2], {'p','q'}); x = mo1(3)
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1(1)
+mo1 = containers.Map([1 2], {'p','q'}); x = mo1('a')
+mo1 = containers.Map([1 2], {'p','q'}); x = mo1(2)
+mo1 = containers.Map(int32([1 2]), {'p','q'}); x = mo1(2)
+mo1 = containers.Map([1 2], {'p','q'}); x = mo1(int32(2))
+mo1 = containers.Map([1 2], {'p','q'}); x = mo1([1 2])
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1({'a'})
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1('a', 'b')
+mo1 = containers.Map({'b','a'}, {1, 2}); x = mo1()
+mo1 = containers.Map({'b','a'}, {1, 2}); mo1('c') = 30; x = values(mo1)
+mo1 = containers.Map({'b','a'}, {1, 2}); mo1('a') = 20; x = values(mo1)
+mo1 = containers.Map(); mo1('k') = [1 2 3]; mo1('j') = 'txt'; x = values(mo1)
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); mo1(3) = 'c'; mo1(-1) = {1}; x = keys(mo1)
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = 5; mo1(2) = int8(7); x = values(mo1)
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = 'x'; x = values(mo1)
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); mo1(1) = [1 2]; x = values(mo1)
+mo1 = containers.Map('KeyType', 'char', 'ValueType', 'char'); mo1('a') = 5; x = values(mo1)
+mo1 = containers.Map('KeyType', 'char', 'ValueType', 'logical'); mo1('a') = 1; x = values(mo1)
+mo1 = containers.Map('KeyType', 'char', 'ValueType', 'int8'); mo1('a') = 300; t1 = values(mo1); x = t1{1}
+mo1 = containers.Map('KeyType', 'char', 'ValueType', 'any'); mo1(5) = 1; x = keys(mo1)
+mo1 = containers.Map('KeyType', 'int32', 'ValueType', 'any'); mo1(2.5) = 1; t1 = keys(mo1); x = t1{1}
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'any'); mo1('a') = 1; x = keys(mo1)
+mo1 = containers.Map({'b','a'}, {1, 'x'}); mo1('a') = {7}; x = mo1('a')
+mo1 = containers.Map({'b','a'}, {1, 2}); mo1('c') = 'str'; x = values(mo1)
+mo1 = containers.Map({'b'}, {struct('f', 4)}); x = mo1('b').f
+mo1 = containers.Map({'b'}, {[5 6 7]}); t1 = mo1('b'); x = t1(2)
+# handle semantics and display
+mo1 = containers.Map({'a'}, {1}); mo2 = mo1; mo2('b') = 2; x = keys(mo1)
+mo1 = containers.Map({'a'}, {1}); mo2 = mo1; remove(mo2, 'a'); x = mo1.Count
+mo1 = containers.Map({'a'}, {1}); mo2 = mo1; x = [mo1 == mo2, isequal(mo1, mo2)]
+mo1 = containers.Map({'a'}, {1}); mo2 = containers.Map({'a'}, {1}); x = [mo1 == mo2, isequal(mo1, mo2)]
+fid = fopen('h_obj_madd.m', 'w'); fprintf(fid, 'function h_obj_madd(m)\nm(''z'') = 26;\n'); fclose(fid); rehash; mo1 = containers.Map({'a'}, {1}); h_obj_madd(mo1); delete('h_obj_madd.m'); clear h_obj_madd; x = keys(mo1)
+mo1 = containers.Map({'a'}, {1}); delete(mo1); x = isvalid(mo1)
+mo1 = containers.Map({'a'}, {1}); delete(mo1); x = mo1
+mo1 = containers.Map({'a'}, {1}); delete(mo1); x = mo1('a')
+mo1 = containers.Map({'a','b'}, {1, 2}); x = evalc('disp(mo1)')
+mo1 = containers.Map({'a','b'}, {1, 2}); x = evalc('mo1')
+mo1 = containers.Map([1 2], {1, 'p'}); x = mo1
+mo1 = containers.Map({'a'}, {1}); x = {mo1}
+mo1 = containers.Map({'a'}, {1}); x = struct('m', mo1)
+mo1 = containers.Map({'a'}, {1}); x = [mo1, mo1]
+mo1 = containers.Map({'a'}, {1}); x = mo1 + 1
+mo1 = containers.Map({'a','b'}, {1, 2}); x = cellfun(@(v) v * 10, values(mo1))
+mo1 = containers.Map({'a','b'}, {1, 2}); x = keys(mo1, 'a')
+x = keys(5)
+# inputParser: display and properties
+x = inputParser
+x = inputParser()
+po1 = inputParser; x = class(po1)
+po1 = inputParser; x = [isobject(po1), isa(po1, 'handle')]
+po1 = inputParser; x = po1.Results
+po1 = inputParser; x = po1.Parameters
+po1 = inputParser; x = po1.UsingDefaults
+po1 = inputParser; x = po1.Unmatched
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.addParameter('c', 3); x = po1
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.addParameter('c', 3); po1.parse(1); x = po1
+# addRequired / addOptional / addParameter / parse / Results / UsingDefaults
+po1 = inputParser; po1.addRequired('a'); po1.parse(1); x = po1.Results
+po1 = inputParser; addRequired(po1, 'a'); parse(po1, [1 2 3]); x = po1.Results.a
+po1 = inputParser; po1.addRequired('a'); po1.addRequired('b'); po1.parse(1, 'q'); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.parse(); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.parse(1, 2); x = po1.Results
+po1 = inputParser; po1.parse(); x = po1.Results
+po1 = inputParser; po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1); x = po1.UsingDefaults
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1, 7); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.addOptional('b', 2); po1.parse(1, 7); x = po1.UsingDefaults
+po1 = inputParser; po1.addOptional('b', 2); po1.addOptional('c', 'cc'); po1.parse(); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 2); po1.addOptional('c', 'cc'); po1.parse(5); x = po1.UsingDefaults
+po1 = inputParser; po1.addOptional('b', 2, @isnumeric); po1.parse('x'); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 2, @ischar); po1.parse(5); x = po1.Results
+po1 = inputParser; po1.addOptional('mode', 'fast', @ischar); po1.parse('slow'); x = po1.Results
+po1 = inputParser; po1.addOptional('mode', 'fast', @ischar); po1.addParameter('Tol', 1); po1.parse('Tol', 5); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse('c', 3); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse(5, 'c', 3); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 1); po1.addParameter('c', 2); po1.parse('zz', 3); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse('Tol', 5); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse(); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1e-3); po1.parse(); x = po1.UsingDefaults
+po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); po1.parse('Beta', 30); x = po1.Results
+po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); x = po1.Parameters
+po1 = inputParser; po1.addParameter('Zeta', 1); po1.addParameter('alpha', 2); po1.addParameter('Beta', 3); po1.parse(); x = po1.UsingDefaults
+po1 = inputParser; po1.addRequired('zz'); po1.addOptional('mm', 1); po1.addParameter('aa', 2); x = po1.Parameters
+po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse('b', 5, 'a', 4, 'b', 6); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse('a'); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse(5, 1); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse('b', 1); x = po1.Results
+po1 = inputParser; po1.addParamValue('a', 1); po1.parse('a', 9); x = po1.Results
+po1 = inputParser; addParamValue(po1, 'a', 1, @isnumeric); parse(po1, 'a', 'x'); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1, @isnumeric, 'PartialMatchPriority', 2); po1.parse('Tol', 3); x = po1.Results
+po1 = inputParser; po1.addRequired('a'); po1.parse(1); po1.parse(2); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse('a', 5); po1.parse(); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse('a', 5); po1.parse(); x = po1.UsingDefaults
+# definition errors
+po1 = inputParser; po1.addRequired('a'); po1.addRequired('a'); x = po1.Parameters
+po1 = inputParser; po1.addRequired('a'); po1.addParameter('A', 1); x = po1.Parameters
+po1 = inputParser; po1.CaseSensitive = true; po1.addRequired('a'); po1.addParameter('A', 1); x = po1.Parameters
+po1 = inputParser; po1.addRequired('1a'); x = po1.Parameters
+po1 = inputParser; po1.addRequired(5); x = po1.Parameters
+po1 = inputParser; po1.addRequired('a', 1); x = po1.Parameters
+po1 = inputParser; po1.addOptional('b'); x = po1.Parameters
+po1 = inputParser; po1.addParameter('b'); x = po1.Parameters
+po1 = inputParser; po1.addOptional('b', 1); po1.addRequired('a'); x = po1.Parameters
+po1 = inputParser; po1.addParameter('c', 1); po1.addOptional('b', 1); x = po1.Parameters
+po1 = inputParser; po1.addParameter('c', 1); po1.addRequired('a'); x = po1.Parameters
+po1 = inputParser; po1.addParameter('c', 1, 'notafunction'); x = po1.Parameters
+po1 = inputParser; addRequired(po1); x = po1.Parameters
+po1 = inputParser; po1.addParameter('Tol', 1, @isnumeric, 'Bogus', 2); x = po1.Parameters
+# validation failures
+po1 = inputParser; po1.addRequired('a', @isnumeric); po1.parse('x'); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) isnumeric(v) && isscalar(v)); po1.parse([1 2]); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse(-1); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse([1 -1]); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) v > 0); po1.parse([1 2]); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) validateattributes(v, {'numeric'}, {'positive'})); po1.parse(-2); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) validateattributes(v, {'numeric'}, {'positive'})); po1.parse(2); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) assert(v > 0, 'must be positive')); po1.parse(-2); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) error('my:id', 'custom %d', 7)); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) 5); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) 0); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) 'yes'); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addRequired('a', @(v) []); po1.parse(1); x = po1.Results
+po1 = inputParser; po1.addOptional('b', 1, @(v) v < 10); po1.parse(20); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1, @(v) v > 0); po1.parse('Tol', -1); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1, @(v) v > 0); po1.parse('Tol', 0.5); x = po1.Results
+po1 = inputParser; po1.addParameter('Mode', 'alpha', @(v) any(validatestring(v, {'alpha','beta'}))); po1.parse('Mode', 'gamma'); x = po1.Results
+po1 = inputParser; po1.addParameter('Mode', 'alpha', @(v) any(validatestring(v, {'alpha','beta'}))); po1.parse('Mode', 'be'); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', -1, @(v) v > 0); po1.parse(); x = po1.Results
+fh_obj = @isnumeric; po1 = inputParser; po1.addRequired('a', fh_obj); po1.parse({}); x = po1.Results
+# KeepUnmatched / Unmatched
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2, 'a', 3); x = po1.Results
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2, 'a', 3); x = po1.Unmatched
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('zeta', 2, 'b', 3); x = fieldnames(po1.Unmatched)'
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('b', 2); x = po1.UsingDefaults
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse('1b', 2); x = po1.Unmatched
+po1 = inputParser; po1.KeepUnmatched = true; po1.addParameter('a', 1); po1.parse(struct('a', 5, 'q', 6)); x = po1.Unmatched
+po1 = inputParser; po1.KeepUnmatched = 1; x = po1.KeepUnmatched
+po1 = inputParser; po1.KeepUnmatched = 'yes'; x = po1.KeepUnmatched
+# CaseSensitive / PartialMatching / StructExpand
+po1 = inputParser; po1.addParameter('Tol', 1); po1.parse('tol', 2); x = po1.Results
+po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse('tol', 2); x = po1.Results
+po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse('Tol', 2); x = po1.Results
+po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.addParameter('tol', 2); po1.parse('tol', 5); x = po1.Results
+po1 = inputParser; po1.addParameter('Tolerance', 1); po1.parse('Tol', 2); x = po1.Results
+po1 = inputParser; po1.addParameter('Tolerance', 1); po1.parse('tolerance', 2); x = po1.Results
+po1 = inputParser; po1.PartialMatching = false; po1.addParameter('Tolerance', 1); po1.parse('Tol', 2); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1); po1.addParameter('TolX', 2); po1.parse('Tol', 5); x = po1.Results
+po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2); po1.parse('Tol', 5); x = po1.Results
+po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2, @isnumeric, 'PartialMatchPriority', 2); po1.parse('Tol', 5); x = po1.Results
+po1 = inputParser; po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse(struct('a', 5), 'b', 7); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.addParameter('b', 2); po1.parse('b', 7, struct('a', 5)); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct('q', 5)); x = po1.Results
+po1 = inputParser; po1.StructExpand = false; po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+po1 = inputParser; po1.StructExpand = false; po1.addOptional('opt', 0); po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+po1 = inputParser; po1.addRequired('r'); po1.addParameter('Tol', 1); po1.parse(struct('Tol', 5)); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct('a', {1, 2})); x = po1.Results
+po1 = inputParser; po1.addParameter('a', 1); po1.parse(struct()); x = po1.Results
+po1 = inputParser; po1.CaseSensitive = true; po1.addParameter('Tol', 1); po1.parse(struct('tol', 5)); x = po1.Results
+po1 = inputParser; po1.PartialMatching = 0; x = [po1.PartialMatching, po1.CaseSensitive, po1.StructExpand, po1.KeepUnmatched]
+po1 = inputParser; po1.CaseSensitive = 2; x = po1.CaseSensitive
+# FunctionName and handle semantics
+po1 = inputParser; po1.FunctionName = 'myfn'; x = po1.FunctionName
+po1 = inputParser; po1.FunctionName = 'myfn'; x = po1
+po1 = inputParser; po1.FunctionName = 5; x = po1.FunctionName
+po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a', @isnumeric); try, po1.parse('x'); x = 1; catch me1, x = getReport(me1, 'basic', 'hyperlinks', 'off'); end; x
+po1 = inputParser; po1.addRequired('a', @isnumeric); try, po1.parse('x'); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, me1.message); end; x
+po1 = inputParser; po1.FunctionName = 'myfn'; po1.addParameter('a', 1); try, po1.parse('b', 2); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, me1.message); end; x
+po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a'); try, po1.parse(); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; x
+po1 = inputParser; po1.FunctionName = 'myfn'; po1.addRequired('a'); try, po1.parse(1, 2); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; x
+po1 = inputParser; po1.addParameter('a', 1); try, po1.parse('a'); x = 1; catch me1, x = me1.identifier; end; x
+po1 = inputParser; po1.addParameter('a', 1); try, po1.parse(5, 1); x = 1; catch me1, x = me1.identifier; end; x
+po1 = inputParser; po1.addParameter('TolFun', 1); po1.addParameter('TolX', 2); try, po1.parse('Tol', 5); x = 1; catch me1, x = me1.identifier; end; x
+po1 = inputParser; po1.addRequired('a'); try, po1.addRequired('a'); x = 1; catch me1, x = me1.identifier; end; x
+po1 = inputParser; po1.addRequired('a'); po2 = po1; po2.addOptional('b', 1); x = po1.Parameters
+po1 = inputParser; po1.addRequired('a'); po2 = po1.copy(); po2.addOptional('b', 1); x = po1.Parameters
+po1 = inputParser; po1.addRequired('a'); po2 = copy(po1); po2.parse(4); x = [po2.Results.a, numel(fieldnames(po1.Results))]
+# errors raised inside function files
+fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; x = h_obj_p1(3, 'Tol', 4); delete('h_obj_p1.m'); clear h_obj_p1; x
+fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(-1); x = 1; catch me1, x = sprintf('%s\n%s\n%s\n%s', me1.identifier, me1.message, me1.stack(1).name, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(1, 'Tol', 'x'); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+fid = fopen('h_obj_p1.m', 'w'); fprintf(fid, 'function y = h_obj_p1(varargin)\npi1 = inputParser;\npi1.FunctionName = ''MYFN'';\npi1.addRequired(''a'', @(v) v > 0);\npi1.addParameter(''Tol'', 1, @isnumeric);\npi1.parse(varargin{:});\ny = pi1.Results;\n'); fclose(fid); rehash; try, h_obj_p1(1, 'Bad', 2); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p1.m'); clear h_obj_p1; x
+fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; x = h_obj_p2(1, 3); delete('h_obj_p2.m'); clear h_obj_p2; x
+fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2('q'); x = 1; catch me1, x = sprintf('%s\n%s\n%s\n%s', me1.identifier, me1.message, me1.stack(1).name, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2(1, 20); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+fid = fopen('h_obj_p2.m', 'w'); fprintf(fid, 'function y = h_obj_p2(varargin)\npi2 = inputParser;\npi2.addRequired(''a'', @isnumeric);\npi2.addOptional(''b'', 2, @(v) v < 10);\npi2.parse(varargin{:});\ny = pi2.Results;\n'); fclose(fid); rehash; try, h_obj_p2(1, 2, 3); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p2.m'); clear h_obj_p2; x
+fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\ny = pi3.Unmatched;\n'); fclose(fid); rehash; x = h_obj_p3(0, 'Other', 5); delete('h_obj_p3.m'); clear h_obj_p3; x
+fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\ny = pi3.UsingDefaults;\n'); fclose(fid); rehash; x = h_obj_p3(0, 'Other', 5); delete('h_obj_p3.m'); clear h_obj_p3; x
+fid = fopen('h_obj_p3.m', 'w'); fprintf(fid, 'function y = h_obj_p3(a, varargin)\npi3 = inputParser;\npi3.FunctionName = mfilename;\npi3.KeepUnmatched = true;\npi3.addParameter(''Tol'', 1);\npi3.parse(varargin{:});\npi3.FunctionName = 5;\ny = 1;\n'); fclose(fid); rehash; try, h_obj_p3(0, 'Other', 5); x = 1; catch me1, x = sprintf('%s\n%s', me1.identifier, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_p3.m'); clear h_obj_p3; x
+fid = fopen('h_obj_m1.m', 'w'); fprintf(fid, 'function y = h_obj_m1(k)\nmi1 = containers.Map({''a''}, {1});\ny = mi1(k);\n'); fclose(fid); rehash; try, h_obj_m1('zz'); x = 1; catch me1, x = sprintf('%s\n%s\n%s', me1.identifier, me1.message, getReport(me1, 'basic', 'hyperlinks', 'off')); end; delete('h_obj_m1.m'); clear h_obj_m1; x
+# error identifiers for Map
+mo1 = containers.Map({'a'}, {1}); try, t1 = mo1('zz'); x = 1; catch me1, x = me1.identifier; end; x
+mo1 = containers.Map({'a'}, {1}); try, t1 = mo1(1); x = 1; catch me1, x = me1.identifier; end; x
+mo1 = containers.Map('KeyType', 'double', 'ValueType', 'double'); try, mo1(1) = 'x'; x = 1; catch me1, x = me1.identifier; end; x
+try, mo1 = containers.Map({'a','b'}, {1}); x = 1; catch me1, x = me1.identifier; end; x
+try, mo1 = containers.Map('KeyType', 'int8', 'ValueType', 'any'); x = 1; catch me1, x = me1.identifier; end; x
+

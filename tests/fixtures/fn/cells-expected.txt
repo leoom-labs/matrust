@@ -1,0 +1,3722 @@
+@@CASE 1|ca_a = {1, 2}; ca_b = {3, 4}; x = [ca_a, ca_b]
+
+x = 
+
+    [1]    [2]    [3]    [4]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 2|ca_a = {1, 2}; ca_b = {3, 4}; x = [ca_a; ca_b]
+
+x = 
+
+    [1]    [2]
+    [3]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 3|ca_a = {1, 'ab'}; ca_b = {[1 2 3], true}; x = [ca_a ca_b]
+
+x = 
+
+    [1]    'ab'    [1x3 double]    [1]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 4|ca_a = {1; 2}; ca_b = {3; 4}; x = [ca_a, ca_b]
+
+x = 
+
+    [1]    [3]
+    [2]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 5|ca_c = {1, 2}; x = [ca_c, {5}]
+
+x = 
+
+    [1]    [2]    [5]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 6|ca_c = {1, 2}; x = [ca_c, {'xy'}]
+
+x = 
+
+    [1]    [2]    'xy'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 7|x = [{1}, 2]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 8|x = [{1}, 2, 3]
+
+x = 
+
+    [1]    [2]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 9|x = [2, {1}]
+
+x = 
+
+    [2]    [1]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 10|x = [{1}, [2 3]]
+
+x = 
+
+    [1]    [1x2 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 11|x = [{1}, [2; 3]]
+
+x = 
+
+    [1]    [2x1 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 12|ca_c = {1, 2}; x = [ca_c, 'text']
+
+x = 
+
+    [1]    [2]    'text'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 13|ca_c = {1, 2}; x = ['text', ca_c]
+
+x = 
+
+    'text'    [1]    [2]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 14|ca_c = {'a'; 'b'}; x = [ca_c; 'cd']
+
+x = 
+
+    'a'
+    'b'
+    'cd'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 15|x = [{1}, true]
+
+x = 
+
+    [1]    [1]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 16|x = [{1}, int8(5)]
+
+x = 
+
+    [1]    [5]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 17|x = [{1}, {2}]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 18|x = [{1}, {2}; {3}, {4}]
+
+x = 
+
+    [1]    [2]
+    [3]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 19|ca_c = {1, 2}; x = [{}, ca_c]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 20|ca_c = {1, 2}; x = [ca_c, {}]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 21|x = [{}, {}]
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 22|x = [{}; {}]
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 23|x = [{}, cell(0,3)]
+
+x = 
+
+   Empty cell array: 0-by-3
+
+@@CLASS cell [0 3]
+@@END
+@@CASE 24|x = [cell(2,0), cell(2,0)]
+
+x = 
+
+   Empty cell array: 2-by-0
+
+@@CLASS cell [2 0]
+@@END
+@@CASE 25|x = [cell(2,0), {1; 2}]
+
+x = 
+
+    [1]
+    [2]
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 26|ca_w = warning('off', 'backtrace'); x = [cell(0,3), {1, 2}]; warning(ca_w); x
+[Warning: This concatenation operation includes an empty array with an incorrect number of rows.
+Concatenation including empty arrays will require all arrays to have the same number of rows in a future
+release.] 
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 27|x = [cell(0,3); {1, 2, 3}]
+
+x = 
+
+    [1]    [2]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 28|ca_c = {1, 2}; x = [ca_c, []]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 29|ca_c = {1, 2}; x = [[], ca_c]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 30|ca_c = {1, 2}; x = [ca_c, zeros(1,0)]
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 31|ca_c = {1, 2}; x = [ca_c, '']
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 32|x = [{}, 1]
+
+x = 
+
+    [1]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 33|ca_a = {1, 2}; ca_b = {3, 4}; x = [{ca_a}, ca_b]
+
+x = 
+
+    {1x2 cell}    [3]    [4]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 34|ca_a = {1, {2, 3}}; x = [ca_a, {{4}}]
+
+x = 
+
+    [1]    {1x2 cell}    {1x1 cell}
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 35|x = [{1, 'a'}, {true, int8(2)}, {[1 2; 3 4]}]
+
+x = 
+
+    [1]    'a'    [1]    [2]    [2x2 double]
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 36|x = [{single(1)}, {uint16(7)}, {'q'}, {1+2i}]
+
+x = 
+
+    [1]    [7]    'q'    [1.0000 + 2.0000i]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 37|ca_a = {1, 2}; ca_b = {3, 4, 5}; x = [ca_a; ca_b]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 38|ca_a = {1; 2}; ca_b = {3; 4; 5}; x = [ca_a, ca_b]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 39|ca_a = {1, 2}; x = [ca_a; 3]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 40|x = [{1, 2}; [3 4]]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 41|x = [{1}, struct('a', 1)]
+
+x = 
+
+    [1]    [1x1 struct]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 42|x = [struct('a', 1), {1}]
+ERR The following error occurred converting from cell to struct:
+Conversion to struct from cell is not possible.
+@@END
+@@CASE 43|ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('a', 3, 'b', 4); x = [ca_s1, ca_s2]
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+    b
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 44|ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('a', 3, 'b', 4); x = [ca_s1; ca_s2]
+
+x = 
+
+2x1 struct array with fields:
+
+    a
+    b
+
+@@CLASS struct [2 1]
+@@END
+@@CASE 45|ca_st = struct('a', {1, 2, 3}); x = [ca_st, ca_st(2:end)]
+
+x = 
+
+1x5 struct array with fields:
+
+    a
+
+@@CLASS struct [1 5]
+@@END
+@@CASE 46|ca_st = struct('a', {1, 2, 3}); x = [ca_st, ca_st(2:end)]; x = [x.a]
+
+x =
+
+     1     2     3     2     3
+
+@@CLASS double [1 5]
+@@END
+@@CASE 47|ca_s1 = struct('a', 1); ca_s2 = struct('b', 2); x = [ca_s1, ca_s2]
+ERR Names of fields in structure arrays being concatenated do not match. Concatenation of structure arrays requires that these arrays have the same set of fields.
+@@END
+@@CASE 48|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2, 'b', 3); x = [ca_s1, ca_s2]
+ERR Number of fields in structure arrays being concatenated do not match. Concatenation of structure arrays requires that these arrays have the same set of fields.
+@@END
+@@CASE 49|ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s1, ca_s2]
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+    b
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 50|ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s1, ca_s2]; x = x(2)
+
+x = 
+
+    a: 4
+    b: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 51|ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s2, ca_s1]; x = fieldnames(x)
+
+x = 
+
+    'b'
+    'a'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 52|ca_s1 = struct('a', 1); x = [ca_s1, 5]
+ERR The following error occurred converting from double to struct:
+Conversion to struct from double is not possible.
+@@END
+@@CASE 53|ca_s1 = struct('a', 1); x = [ca_s1, []]
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 54|ca_s1 = struct('a', 1); x = [struct([]), ca_s1]
+
+x = 
+
+    a: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 55|ca_s1 = struct('a', {1, 2}); ca_s2 = struct('a', {3; 4}); x = [ca_s1; ca_s2]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 56|ca_s1 = struct('a', {1, 2}); ca_s2 = struct('a', 3); x = [ca_s1; ca_s2]
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 57|ca_a = {1, 2}; ca_b = {3, 4}; x = cat(1, ca_a, ca_b)
+
+x = 
+
+    [1]    [2]
+    [3]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 58|ca_a = {1, 2}; ca_b = {3, 4}; x = cat(2, ca_a, ca_b)
+
+x = 
+
+    [1]    [2]    [3]    [4]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 59|ca_a = {1, 2}; ca_b = {3, 4}; x = cat(3, ca_a, ca_b)
+
+x(:,:,1) = 
+
+    [1]    [2]
+
+
+x(:,:,2) = 
+
+    [3]    [4]
+
+@@CLASS cell [1 2 2]
+@@END
+@@CASE 60|ca_a = {1, 2}; ca_b = {3, 4, 5}; x = cat(1, ca_a, ca_b)
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 61|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(1, ca_s1, ca_s2)
+
+x = 
+
+2x1 struct array with fields:
+
+    a
+
+@@CLASS struct [2 1]
+@@END
+@@CASE 62|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(2, ca_s1, ca_s2)
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 63|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = size(cat(3, ca_s1, ca_s2))
+
+x =
+
+     1     1     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 64|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(3, ca_s1, ca_s2)
+
+x = 
+
+1x1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 1 2]
+@@END
+@@CASE 65|x = cat(2, {1}, 2)
+
+x = 
+
+    [1]    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 66|x = cat(2)
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 67|ca_a = {1, 2}; ca_b = {'x'}; x = horzcat(ca_a, ca_b)
+
+x = 
+
+    [1]    [2]    'x'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 68|ca_a = {1, 2}; ca_b = {3, 4}; x = vertcat(ca_a, ca_b)
+
+x = 
+
+    [1]    [2]
+    [3]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 69|x = horzcat({1}, 2, 'ab')
+
+x = 
+
+    [1]    [2]    'ab'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 70|ca_a = {1, 2}; ca_b = {3}; x = vertcat(ca_a, ca_b)
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 71|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = horzcat(ca_s1, ca_s2)
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 72|ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = vertcat(ca_s1, ca_s2)
+
+x = 
+
+2x1 struct array with fields:
+
+    a
+
+@@CLASS struct [2 1]
+@@END
+@@CASE 73|ca_s1 = struct('a', 1); ca_s2 = struct('b', 2); x = vertcat(ca_s1, ca_s2)
+ERR Names of fields in structure arrays being concatenated do not match. Concatenation of structure arrays requires that these arrays have the same set of fields.
+@@END
+@@CASE 74|x = horzcat()
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 75|x = vertcat()
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 76|x = ['ab'; 'cd']
+
+x =
+
+ab
+cd
+
+@@CLASS char [2 2]
+@@END
+@@CASE 77|x = ['ab'; 'cde']
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 78|x = ['ab', 'cde']
+
+x =
+
+abcde
+
+@@CLASS char [1 5]
+@@END
+@@CASE 79|x = ['a', 66]
+
+x =
+
+aB
+
+@@CLASS char [1 2]
+@@END
+@@CASE 80|x = [66, 'a']
+
+x =
+
+Ba
+
+@@CLASS char [1 2]
+@@END
+@@CASE 81|x = ['a'; 66]
+
+x =
+
+a
+B
+
+@@CLASS char [2 1]
+@@END
+@@CASE 82|x = ['a', 66.7]
+
+x =
+
+aB
+
+@@CLASS char [1 2]
+@@END
+@@CASE 83|x = ['a', int8(66)]
+
+x =
+
+aB
+
+@@CLASS char [1 2]
+@@END
+@@CASE 84|x = ['ab', '']
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 85|x = [''; 'ab']
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 86|x = [char(zeros(0,3)); 'abc']
+
+x =
+
+abc
+
+@@CLASS char [1 3]
+@@END
+@@CASE 87|ca_c = {1, 'ab', [1 2 3]}; x = ca_c'
+
+x = 
+
+    [         1]
+    'ab'
+    [1x3 double]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 88|ca_c = {1, 'ab', [1 2 3]}; x = ca_c.'
+
+x = 
+
+    [         1]
+    'ab'
+    [1x3 double]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 89|ca_c = {1; 'ab'}; x = ca_c'
+
+x = 
+
+    [1]    'ab'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 90|ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = ca_c'
+
+x = 
+
+    [1]    'a'    [1]
+    [2]    'b'    [3]
+
+@@CLASS cell [2 3]
+@@END
+@@CASE 91|ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = transpose(ca_c)
+
+x = 
+
+    [1]    'a'    [1]
+    [2]    'b'    [3]
+
+@@CLASS cell [2 3]
+@@END
+@@CASE 92|ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = ctranspose(ca_c)
+
+x = 
+
+    [1]    'a'    [1]
+    [2]    'b'    [3]
+
+@@CLASS cell [2 3]
+@@END
+@@CASE 93|x = {}'
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 94|x = cell(0,3)'
+
+x = 
+
+   Empty cell array: 3-by-0
+
+@@CLASS cell [3 0]
+@@END
+@@CASE 95|x = cell(2,0).'
+
+x = 
+
+   Empty cell array: 0-by-2
+
+@@CLASS cell [0 2]
+@@END
+@@CASE 96|ca_c = {1, {2, 3}}; x = ca_c'
+
+x = 
+
+    [       1]
+    {1x2 cell}
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 97|ca_c = {1, {2, 3}}; x = ca_c'; x = x{2}
+
+x = 
+
+    [2]    [3]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 98|x = {1+2i}'
+
+x = 
+
+    [1.0000 + 2.0000i]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 99|x = {1+2i}'; x = x{1}
+
+x =
+
+   1.0000 + 2.0000i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 100|x = {1+2i}.'; x = x{1}
+
+x =
+
+   1.0000 + 2.0000i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 101|x = ctranspose({[1+2i, 3-1i]}); x = x{1}
+
+x =
+
+   1.0000 + 2.0000i   3.0000 - 1.0000i
+
+@@CLASS double [1 2]
+@@END
+@@CASE 102|ca_c = {'abc', 'de'}; x = ca_c'
+
+x = 
+
+    'abc'
+    'de'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 103|ca_st = struct('a', {1, 2, 3}); x = ca_st'
+
+x = 
+
+3x1 struct array with fields:
+
+    a
+
+@@CLASS struct [3 1]
+@@END
+@@CASE 104|ca_st = struct('a', {1, 2, 3}); x = transpose(ca_st); x = [x.a]
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 105|ca_st = struct('a', 1, 'b', 'xy'); x = ca_st'
+
+x = 
+
+    a: 1
+    b: 'xy'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 106|ca_st = struct('a', 1+2i); x = ca_st'; x = x.a
+
+x =
+
+   1.0000 + 2.0000i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 107|ca_st = struct('a', {1, 2; 3, 4}); x = ca_st.'; x = [x.a]
+
+x =
+
+     1     2     3     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 108|x = ['ab'; 'cd']'
+
+x =
+
+ac
+bd
+
+@@CLASS char [2 2]
+@@END
+@@CASE 109|ca_t = 'abc'; x = ca_t'
+
+x =
+
+a
+b
+c
+
+@@CLASS char [3 1]
+@@END
+@@CASE 110|x = ctranspose(['ab'; 'cd'; 'ef'])
+
+x =
+
+ace
+bdf
+
+@@CLASS char [2 3]
+@@END
+@@CASE 111|x = char(zeros(0,3))'
+
+x =
+
+   Empty matrix: 3-by-0
+
+
+@@CLASS char [3 0]
+@@END
+@@CASE 112|x = {}
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 113|x = cell(0,3)
+
+x = 
+
+   Empty cell array: 0-by-3
+
+@@CLASS cell [0 3]
+@@END
+@@CASE 114|x = cell(2,0)
+
+x = 
+
+   Empty cell array: 2-by-0
+
+@@CLASS cell [2 0]
+@@END
+@@CASE 115|x = cell(2,2)
+
+x = 
+
+    []    []
+    []    []
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 116|x = {{}}
+
+x = 
+
+    {{}}
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 117|x = {{1, 'a'}, {}}
+
+x = 
+
+    {1x2 cell}    {}
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 118|x = {{{1}}}
+
+x = 
+
+    {1x1 cell}
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 119|x = {cell(0,3), cell(2,0)}
+
+x = 
+
+    {0x3 cell}    {2x0 cell}
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 120|x = {struct('a', 1)}
+
+x = 
+
+    [1x1 struct]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 121|x = {struct('a', {1, 2})}
+
+x = 
+
+    [1x2 struct]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 122|x = {[1 2; 3 4], [1 2 3]}
+
+x = 
+
+    [2x2 double]    [1x3 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 123|x = {zeros(1,0), [], ''}
+
+x = 
+
+    [1x0 double]    []    ''
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 124|x = {true, [true false]}
+
+x = 
+
+    [1]    [1x2 logical]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 125|x = {int8(5), int8([1 2 3])}
+
+x = 
+
+    [5]    [1x3 int8]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 126|x = {uint8(200), int16(-3), single(2.5)}
+
+x = 
+
+    [200]    [-3]    [2.5000]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 127|x = {1+2i, 'a'}
+
+x = 
+
+    [1.0000 + 2.0000i]    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 128|x = struct('a', {1, 2})
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 129|x = struct('a', {})
+
+x = 
+
+0x0 struct array with fields:
+
+    a
+
+@@CLASS struct [0 0]
+@@END
+@@CASE 130|x = struct('a', {{1, 2}})
+
+x = 
+
+    a: {[1]  [2]}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 131|x = struct('a', {1, 2}, 'b', 'q')
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+    b
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 132|x = struct('c', {{}})
+
+x = 
+
+    c: {}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 133|x = {'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz'}
+
+x = 
+
+    'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 134|x = {1:20}
+
+x = 
+
+    [1x20 double]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 135|cb_c = {1, 2, 3}; cb_c(2) = []; x = cb_c
+
+x = 
+
+    [1]    [3]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 136|cb_c = {1, 2; 3, 4; 5, 6}; cb_c(:,1) = []; x = cb_c
+
+x = 
+
+    [2]
+    [4]
+    [6]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 137|cb_c = {1, 2; 3, 4; 5, 6}; cb_c(1,:) = []; x = cb_c
+
+x = 
+
+    [3]    [4]
+    [5]    [6]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 138|cb_c = {1, 2, 3, 4}; cb_c([1 3]) = []; x = cb_c
+
+x = 
+
+    [2]    [4]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 139|cb_c = {1, 2, 3, 4}; cb_c(logical([1 0 1 0])) = []; x = cb_c
+
+x = 
+
+    [2]    [4]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 140|cb_c = {1; 2; 3}; cb_c(2) = []; x = cb_c
+
+x = 
+
+    [1]
+    [3]
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 141|cb_c = {1, 2; 3, 4}; cb_c(2) = []; x = cb_c
+
+x = 
+
+    [1]    [2]    [4]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 142|cb_c = {1, 2; 3, 4}; cb_c(2,1) = []; x = cb_c
+ERR A null assignment can have only one non-colon index.
+@@END
+@@CASE 143|cb_c = {1, 2, 3}; cb_c(5) = []; x = cb_c
+ERR Matrix index is out of range for deletion.
+@@END
+@@CASE 144|cb_c = {1, 2, 3}; cb_c{2} = []; x = cb_c
+
+x = 
+
+    [1]    []    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 145|cb_c = {1, 2, 3}; cb_c(2) = {5}; x = cb_c
+
+x = 
+
+    [1]    [5]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 146|cb_c = {1, 2, 3}; cb_c(2) = {{5, 6}}; x = cb_c
+
+x = 
+
+    [1]    {1x2 cell}    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 147|cb_c = {1, 2, 3}; cb_c(5) = {1}; x = cb_c
+
+x = 
+
+    [1]    [2]    [3]    []    [1]
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 148|cb_c = {1; 2}; cb_c(4) = {9}; x = cb_c
+
+x = 
+
+    [1]
+    [2]
+    []
+    [9]
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 149|cb_c = {1, 2; 3, 4}; cb_c(2,3) = {1}; x = cb_c
+
+x = 
+
+    [1]    [2]     []
+    [3]    [4]    [1]
+
+@@CLASS cell [2 3]
+@@END
+@@CASE 150|cb_c = {1, 2; 3, 4}; cb_c(5) = {1}; x = cb_c
+ERR Attempt to grow array along ambiguous dimension.
+@@END
+@@CASE 151|cb_c = {1, 2, 3}; cb_c(2:3) = {7, 8}; x = cb_c
+
+x = 
+
+    [1]    [7]    [8]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 152|cb_c = {1, 2, 3}; cb_c(2:3) = {7}; x = cb_c
+
+x = 
+
+    [1]    [7]    [7]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 153|cb_c = {1, 2, 3}; cb_c(2:3) = {7, 8, 9}; x = cb_c
+ERR In an assignment  A(:) = B, the number of elements in A and B must be the same.
+@@END
+@@CASE 154|cb_c = {1, 2, 3}; cb_c(2) = 5; x = cb_c
+ERR Conversion to cell from double is not possible.
+@@END
+@@CASE 155|cb_c = {1, 2, 3}; cb_c(2:3) = 5; x = cb_c
+ERR Conversion to cell from double is not possible.
+@@END
+@@CASE 156|cb_c = {1, 2, 3}; cb_c{2} = 5; x = cb_c
+
+x = 
+
+    [1]    [5]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 157|cb_c = {1, 2, 3}; cb_c{2} = {5}; x = cb_c
+
+x = 
+
+    [1]    {1x1 cell}    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 158|cb_c = {1, 2, 3}; cb_c{end+1} = 'z'; x = cb_c
+
+x = 
+
+    [1]    [2]    [3]    'z'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 159|cb_c = {}; cb_c{end+1} = 1; cb_c{end+1} = 'ab'; x = cb_c
+
+x = 
+
+    [1]    'ab'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 160|cb_c = {1; 2}; cb_c{end+1} = 3; x = cb_c
+
+x = 
+
+    [1]
+    [2]
+    [3]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 161|cb_c = {1, 2; 3, 4}; cb_c{end+1} = 5; x = cb_c
+
+x = 
+
+    [1]
+    [3]
+    [2]
+    [4]
+    [5]
+
+@@CLASS cell [5 1]
+@@END
+@@CASE 162|cb_c = {1, 2}; cb_c{3,3} = 1; x = cb_c
+
+x = 
+
+    [1]    [2]     []
+     []     []     []
+     []     []    [1]
+
+@@CLASS cell [3 3]
+@@END
+@@CASE 163|cb_c = {}; cb_c{2,2} = 'q'; x = cb_c
+
+x = 
+
+    []     []
+    []    'q'
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 164|clear cb_u; cb_u{3} = 1; x = cb_u
+
+x = 
+
+    []    []    [1]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 165|cb_c = {1, 2; 3, 4}; cb_c(:) = {0}; x = cb_c
+
+x = 
+
+    [0]    [0]
+    [0]    [0]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 166|cb_c = {1, 2; 3, 4}; cb_c(:,2) = {7; 8}; x = cb_c
+
+x = 
+
+    [1]    [7]
+    [3]    [8]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 167|cb_c = {1, 2; 3, 4}; cb_c(:,2) = {7, 8, 9}; x = cb_c
+ERR Subscripted assignment dimension mismatch.
+@@END
+@@CASE 168|cb_c = {1, 2, 3}; cb_c{2:3} = 5; x = cb_c
+ERR Expected one output from a curly brace or dot indexing expression, but there were 2 results.
+@@END
+@@CASE 169|cb_c = {1, 2, 3}; x = [cb_c{:}]
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 170|cb_c = {1, [2 3], 4}; x = [cb_c{:}]
+
+x =
+
+     1     2     3     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 171|cb_c = {'ab', 'cd'}; x = [cb_c{:}]
+
+x =
+
+abcd
+
+@@CLASS char [1 4]
+@@END
+@@CASE 172|cb_c = {1, 'a'}; x = [cb_c{:}]
+
+x =
+
+a
+
+@@CLASS char [1 2]
+@@END
+@@CASE 173|cb_c = {}; x = [cb_c{:}]
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 174|cb_c = {1, 2, 3}; x = {cb_c{2:3}}
+
+x = 
+
+    [2]    [3]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 175|cb_c = {1, 2, 3}; x = cb_c{:}
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 176|cb_c = {1, [5 6 7], 3}; x = cb_c{2}(3)
+
+x =
+
+     7
+
+@@CLASS double [1 1]
+@@END
+@@CASE 177|cb_c = {1, {5, 'ab'}, 3}; x = cb_c{2}{2}
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 178|cb_c = {1, [5 6 7], 3}; cb_c{2}(5) = 1; x = cb_c
+
+x = 
+
+    [1]    [1x5 double]    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 179|cb_c = {1, {5, 'ab'}, 3}; cb_c{2}{1} = 'new'; x = cb_c
+
+x = 
+
+    [1]    {1x2 cell}    [3]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 180|cb_c = {1, [5 6 7], 3}; x = cb_c{2}(4)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 181|cb_c = {1, 2; 3, 4}; cb_c(3) = []; x = cb_c
+
+x = 
+
+    [1]    [3]    [4]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 182|cb_c = {1, 2, 3; 4, 5, 6}; cb_c([1 2]) = []; x = cb_c
+
+x = 
+
+    [2]    [5]    [3]    [6]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 183|cb_c = {1, 2, 3}; x = cb_c(2)
+
+x = 
+
+    [2]
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 184|cb_c = {1, 2, 3}; x = cb_c{2}
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 185|cb_c = {1, 'ab', 3}; x = cb_c([1 2])
+
+x = 
+
+    [1]    'ab'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 186|cb_c = {1, 2, 3}; x = cb_c(4)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 187|cb_c = {1, 2, 3}; x = cb_c{4}
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 188|cb_c = {1, 2, 3}; x = cb_c{2.5}
+ERR Subscript indices must either be real positive integers or logicals.
+@@END
+@@CASE 189|cb_c = {1, 2, 3}; x = cb_c(0)
+ERR Subscript indices must either be real positive integers or logicals.
+@@END
+@@CASE 190|cb_c = {1, 2; 3, 4}; x = cb_c(3, 1)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 191|cb_c = {1, 2; 3, 4}; x = cb_c(:)
+
+x = 
+
+    [1]
+    [3]
+    [2]
+    [4]
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 192|cb_c = {1, 2, 3}; x = cb_c([])
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 193|cb_st = struct('a', {1, 2, 3}); cb_st(2) = []; x = cb_st
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 194|cb_st = struct('a', {1, 2, 3}); cb_st(2) = []; x = [cb_st.a]
+
+x =
+
+     1     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 195|cb_st = struct('a', {1, 2}); cb_st(3).a = 1; x = cb_st
+
+x = 
+
+1x3 struct array with fields:
+
+    a
+
+@@CLASS struct [1 3]
+@@END
+@@CASE 196|cb_st = struct('a', {1, 2}); cb_st(4).a = 1; x = {cb_st.a}
+
+x = 
+
+    [1]    [2]    []    [1]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 197|cb_st = struct('a', 5); cb_st(2,2).a = 1; x = cb_st
+
+x = 
+
+2x2 struct array with fields:
+
+    a
+
+@@CLASS struct [2 2]
+@@END
+@@CASE 198|cb_st = struct('a', {1, 2}); cb_st(2).b = 'x'; x = cb_st
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+    b
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 199|cb_st = struct('a', {1, 2}); cb_st(2).b = 'x'; x = cb_st(1)
+
+x = 
+
+    a: 1
+    b: []
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 200|cb_st = struct('a', {1, 2, 3}); cb_st(logical([1 0 1])) = []; x = cb_st
+
+x = 
+
+    a: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 201|cb_st = struct('a', {1, 2, 3}); cb_st(:) = []; x = cb_st
+
+x = 
+
+0x0 struct array with fields:
+
+    a
+
+@@CLASS struct [0 0]
+@@END
+@@CASE 202|cb_st = struct('a', {1, 2, 3}); x = [cb_st.a]
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 203|cb_st = struct('a', {1, 'ab', [2 3]}); x = {cb_st.a}
+
+x = 
+
+    [1]    'ab'    [1x2 double]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 204|cb_st = struct('a', {'ab', 'cd'}); x = [cb_st.a]
+
+x =
+
+abcd
+
+@@CLASS char [1 4]
+@@END
+@@CASE 205|cb_st = struct('a', {1, 2}); x = cb_st.a
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 206|cb_st = struct('a', {1, 2, 3}); x = cb_st(2)
+
+x = 
+
+    a: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 207|cb_st = struct('a', {1, 2, 3}); x = cb_st(2:3)
+
+x = 
+
+1x2 struct array with fields:
+
+    a
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 208|cb_st = struct('a', {1, 2, 3}); x = cb_st(4)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 209|cb_st = struct('a', {1, 2}); cb_st(2) = struct('b', 3); x = cb_st
+ERR Subscripted assignment between dissimilar structures.
+@@END
+@@CASE 210|cb_st = struct('a', {1, 2}); cb_st(2) = struct('a', 9); x = [cb_st.a]
+
+x =
+
+     1     9
+
+@@CLASS double [1 2]
+@@END
+@@CASE 211|cb_st = struct('a', {1, 2}); cb_st(3) = struct('a', 7); x = cb_st
+
+x = 
+
+1x3 struct array with fields:
+
+    a
+
+@@CLASS struct [1 3]
+@@END
+@@CASE 212|cb_st = struct('a', {1, 2}); cb_st(2) = 5; x = cb_st
+ERR Assignment between unlike types is not allowed.
+@@END
+@@CASE 213|cb_st = struct('a', {1, 2}); [cb_st.a] = deal(0); x = [cb_st.a]
+
+x =
+
+     0     0
+
+@@CLASS double [1 2]
+@@END
+@@CASE 214|cb_st = struct('a', {1, 2}); x = cb_st.b
+ERR Reference to non-existent field 'b'.
+@@END
+@@CASE 215|cb_st = struct('a', {}); cb_st(1).a = 4; x = cb_st
+
+x = 
+
+    a: 4
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 216|cb_t = 'hello'; cb_t(2) = []; x = cb_t
+
+x =
+
+hllo
+
+@@CLASS char [1 4]
+@@END
+@@CASE 217|cb_t = 'hello'; cb_t(6) = 'z'; x = double(cb_t)
+
+x =
+
+   104   101   108   108   111   122
+
+@@CLASS double [1 6]
+@@END
+@@CASE 218|cb_t = 'hello'; cb_t(8) = 'z'; x = double(cb_t)
+
+x =
+
+   104   101   108   108   111     0     0   122
+
+@@CLASS double [1 8]
+@@END
+@@CASE 219|cb_t = 'hello'; cb_t(8) = 'z'; x = cb_t
+
+x =
+
+hello  z
+
+@@CLASS char [1 8]
+@@END
+@@CASE 220|cb_t = 'hello'; cb_t(2) = 65; x = cb_t
+
+x =
+
+hAllo
+
+@@CLASS char [1 5]
+@@END
+@@CASE 221|cb_t = 'hello'; cb_t(2) = {1}; x = cb_t
+ERR Conversion to char from cell is not possible.
+@@END
+@@CASE 222|cb_t = 'hello'; x = cb_t(7)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 223|cb_t = ['ab'; 'cd']; cb_t(1,:) = []; x = cb_t
+
+x =
+
+cd
+
+@@CLASS char [1 2]
+@@END
+@@CASE 224|cb_t = ['ab'; 'cd']; cb_t(3,1) = 'x'; x = double(cb_t)
+
+x =
+
+    97    98
+    99   100
+   120     0
+
+@@CLASS double [3 2]
+@@END
+@@CASE 225|cb_t = ['ab'; 'cd']; cb_t(2) = []; x = cb_t
+
+x =
+
+abd
+
+@@CLASS char [1 3]
+@@END
+@@CASE 226|cb_t = 'hello'; cb_t(2:3) = 'XYZ'; x = cb_t
+ERR In an assignment  A(:) = B, the number of elements in A and B must be the same.
+@@END
+@@CASE 227|cb_c = {1, 2, 3, 4, 5, 6}; x = reshape(cb_c, 2, 3)
+
+x = 
+
+    [1]    [3]    [5]
+    [2]    [4]    [6]
+
+@@CLASS cell [2 3]
+@@END
+@@CASE 228|cb_c = {1, 2, 3, 4, 5, 6}; x = reshape(cb_c, 4, 2)
+ERR To RESHAPE the number of elements must not change.
+@@END
+@@CASE 229|cb_c = {1, 2, 3, 4, 5, 6, 7, 8}; x = reshape(cb_c, 2, 2, 2)
+
+x(:,:,1) = 
+
+    [1]    [3]
+    [2]    [4]
+
+
+x(:,:,2) = 
+
+    [5]    [7]
+    [6]    [8]
+
+@@CLASS cell [2 2 2]
+@@END
+@@CASE 230|cb_st = struct('a', {1, 2, 3, 4}); x = reshape(cb_st, 2, 2)
+
+x = 
+
+2x2 struct array with fields:
+
+    a
+
+@@CLASS struct [2 2]
+@@END
+@@CASE 231|cb_t = 'abcdef'; x = reshape(cb_t, 2, 3)
+
+x =
+
+ace
+bdf
+
+@@CLASS char [2 3]
+@@END
+@@CASE 232|x = repmat({1}, 2, 2)
+
+x = 
+
+    [1]    [1]
+    [1]    [1]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 233|x = repmat({1}, [1 2 2])
+
+x(:,:,1) = 
+
+    [1]    [1]
+
+
+x(:,:,2) = 
+
+    [1]    [1]
+
+@@CLASS cell [1 2 2]
+@@END
+@@CASE 234|x = repmat({}, 2, 2)
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 235|x = repmat(struct('a', 1), 1, 3)
+
+x = 
+
+1x3 struct array with fields:
+
+    a
+
+@@CLASS struct [1 3]
+@@END
+@@CASE 236|x = repmat('ab', 2, 2)
+
+x =
+
+abab
+abab
+
+@@CLASS char [2 4]
+@@END
+@@CASE 237|cb_c = {1, 2, 3}; x = fliplr(cb_c)
+
+x = 
+
+    [3]    [2]    [1]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 238|cb_c = {1, 2; 3, 4}; x = flipud(cb_c)
+
+x = 
+
+    [3]    [4]
+    [1]    [2]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 239|cb_c = {1, 2; 3, 4}; x = flip(cb_c, 2)
+
+x = 
+
+    [2]    [1]
+    [4]    [3]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 240|cb_st = struct('a', {1, 2, 3}); x = fliplr(cb_st); x = [x.a]
+
+x =
+
+     3     2     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 241|cb_st = struct('a', {1, 2, 3}); x = fliplr(cb_st)
+
+x = 
+
+1x3 struct array with fields:
+
+    a
+
+@@CLASS struct [1 3]
+@@END
+@@CASE 242|cb_t = ['ab'; 'cd']; x = flipud(cb_t)
+
+x =
+
+cd
+ab
+
+@@CLASS char [2 2]
+@@END
+@@CASE 243|cb_c = {1, 2; 3, 4}; x = rot90(cb_c)
+
+x = 
+
+    [2]    [4]
+    [1]    [3]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 244|cb_c = {1, 2; 3, 4}; x = rot90(cb_c, 2)
+
+x = 
+
+    [4]    [3]
+    [2]    [1]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 245|cb_c = {1, 2, 3}; x = rot90(cb_c, -1)
+
+x = 
+
+    [1]
+    [2]
+    [3]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 246|cb_t = 'abc'; x = rot90(cb_t)
+
+x =
+
+c
+b
+a
+
+@@CLASS char [3 1]
+@@END
+@@CASE 247|cb_c = {1; 2; 3; 4}; x = circshift(cb_c, 1)
+
+x = 
+
+    [4]
+    [1]
+    [2]
+    [3]
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 248|cb_c = {1, 2, 3, 4}; x = circshift(cb_c, 1, 2)
+
+x = 
+
+    [4]    [1]    [2]    [3]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 249|cb_c = {1, 2; 3, 4; 5, 6}; x = circshift(cb_c, 1, 2)
+
+x = 
+
+    [2]    [1]
+    [4]    [3]
+    [6]    [5]
+
+@@CLASS cell [3 2]
+@@END
+@@CASE 250|cb_c = {1, 2; 3, 4; 5, 6}; x = circshift(cb_c, [1 1])
+
+x = 
+
+    [6]    [5]
+    [2]    [1]
+    [4]    [3]
+
+@@CLASS cell [3 2]
+@@END
+@@CASE 251|cb_st = struct('a', {1, 2, 3}); x = circshift(cb_st, 1, 2); x = [x.a]
+
+x =
+
+     3     1     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 252|cb_t = 'abcd'; x = circshift(cb_t, 1, 2)
+
+x =
+
+dabc
+
+@@CLASS char [1 4]
+@@END
+@@CASE 253|cb_c = reshape({1, 2, 3}, 1, 1, 3); x = squeeze(cb_c)
+
+x = 
+
+    [1]
+    [2]
+    [3]
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 254|cb_c = {1, 2; 3, 4}; x = squeeze(cb_c)
+
+x = 
+
+    [1]    [2]
+    [3]    [4]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 255|cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [2 1])
+
+x = 
+
+    [1]    [4]
+    [2]    [5]
+    [3]    [6]
+
+@@CLASS cell [3 2]
+@@END
+@@CASE 256|cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [1 3 2]); x = size(x)
+
+x =
+
+     2     1     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 257|cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [3 1 2])
+
+x(:,:,1) = 
+
+    [1]    [4]
+
+
+x(:,:,2) = 
+
+    [2]    [5]
+
+
+x(:,:,3) = 
+
+    [3]    [6]
+
+@@CLASS cell [1 2 3]
+@@END
+@@CASE 258|cb_c = {1, 2}; x = permute(cb_c, [1 1])
+ERR ORDER cannot contain repeated permutation indices.
+@@END
+@@CASE 259|cb_st = struct('a', {1, 2, 3}); x = permute(cb_st, [2 1])
+
+x = 
+
+3x1 struct array with fields:
+
+    a
+
+@@CLASS struct [3 1]
+@@END
+@@CASE 260|x = numel({1, 2, 3})
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 261|x = numel({})
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 262|x = numel(struct('a', {1, 2}))
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 263|x = size({1, 2; 3, 4})
+
+x =
+
+     2     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 264|x = size(cell(0, 3))
+
+x =
+
+     0     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 265|x = size(['ab'; 'cd'; 'ef'])
+
+x =
+
+     3     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 266|cb_c = {1, 2; 3, 4; 5, 6}; [cb_r, x] = size(cb_c)
+
+cb_r =
+
+     3
+
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 267|x = length(cell(0, 3))
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 268|x = length(['ab'; 'cd'; 'ef'])
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 269|x = ndims({1, 2})
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 270|x = ndims(cell(2, 2, 2))
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 271|x = isempty({})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 272|x = isempty(cell(0, 3))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 273|x = isempty(struct('a', {}))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 274|x = isempty('')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 275|x = isrow({1, 2, 3})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 276|x = isrow({})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 277|x = isrow('abc')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 278|x = iscolumn({1; 2})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 279|x = iscolumn(['a'; 'b'])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 280|x = isvector({1, 2})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 281|x = isvector({1, 2; 3, 4})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 282|x = isvector({})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 283|x = isvector('abc')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 284|x = isscalar({1})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 285|x = isscalar(struct('a', 1))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 286|x = isscalar(struct('a', {1, 2}))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 287|x = isscalar('a')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 288|x = ismatrix({1, 2; 3, 4})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 289|x = ismatrix({})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 290|x = ismatrix(cell(2, 2, 2))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 291|x = sort({'b','a','c'})
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 292|cc_c = {'pear','apple','fig'}; [x, cc_i] = sort(cc_c)
+
+x = 
+
+    'apple'    'fig'    'pear'
+
+
+cc_i =
+
+     2     3     1
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 293|cc_c = {'pear','apple','fig'}; [~, x] = sort(cc_c)
+
+x =
+
+     2     3     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 294|x = sort({'b','a','c'}, 'descend')
+ERR DIM and MODE arguments not supported for cell arrays.
+@@END
+@@CASE 295|x = sort({'b','B','a','A'})
+
+x = 
+
+    'A'    'B'    'a'    'b'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 296|cc_c = {'b','B','a','A'}; [~, x] = sort(cc_c)
+
+x =
+
+     4     2     3     1
+
+@@CLASS double [1 4]
+@@END
+@@CASE 297|x = sort({'b','','a',''})
+
+x = 
+
+    ''    ''    'a'    'b'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 298|cc_c = {'b','','a',''}; [~, x] = sort(cc_c)
+
+x =
+
+     2     4     3     1
+
+@@CLASS double [1 4]
+@@END
+@@CASE 299|x = sort({'b';'a';'c'})
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 300|cc_c = {'b';'a';'c'}; [~, x] = sort(cc_c)
+
+x =
+
+     2
+     1
+     3
+
+@@CLASS double [3 1]
+@@END
+@@CASE 301|x = sort({'ab','a','abc','b'})
+
+x = 
+
+    'a'    'ab'    'abc'    'b'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 302|x = sort({'a ','a','a  '})
+
+x = 
+
+    'a'    'a '    'a  '
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 303|cc_c = {'a ','a','a  '}; [~, x] = sort(cc_c)
+
+x =
+
+     2     1     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 304|x = sort({'d','b';'a','c'})
+
+x = 
+
+    'a'    'b'
+    'd'    'c'
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 305|x = sort({'d','b';'a','c'}, 1)
+ERR DIM and MODE arguments not supported for cell arrays.
+@@END
+@@CASE 306|x = sort({})
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 307|x = sort(cell(0,3))
+
+x = 
+
+   Empty cell array: 0-by-3
+
+@@CLASS cell [0 3]
+@@END
+@@CASE 308|x = sort({'only'})
+
+x = 
+
+    'only'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 309|x = sort({1,2})
+ERR Input argument must be a cell array of strings.
+@@END
+@@CASE 310|x = sort({'a',1})
+ERR Input argument must be a cell array of strings.
+@@END
+@@CASE 311|x = sort({'10','9','1'})
+
+x = 
+
+    '1'    '10'    '9'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 312|x = sort('hello')
+
+x =
+
+ehllo
+
+@@CLASS char [1 5]
+@@END
+@@CASE 313|[~, x] = sort('hello')
+
+x =
+
+     2     1     3     4     5
+
+@@CLASS double [1 5]
+@@END
+@@CASE 314|x = sort('hello', 'descend')
+
+x =
+
+ollhe
+
+@@CLASS char [1 5]
+@@END
+@@CASE 315|cc_c = 'hello'; [~, x] = sort(cc_c, 'descend')
+
+x =
+
+     5     3     4     1     2
+
+@@CLASS double [1 5]
+@@END
+@@CASE 316|x = sort('Hello World')
+
+x =
+
+ HWdellloor
+
+@@CLASS char [1 11]
+@@END
+@@CASE 317|x = sort(['db';'ca'])
+
+x =
+
+ca
+db
+
+@@CLASS char [2 2]
+@@END
+@@CASE 318|x = sort(['db';'ca'], 2)
+
+x =
+
+bd
+ac
+
+@@CLASS char [2 2]
+@@END
+@@CASE 319|x = sort('')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 320|x = sortrows({'pear';'apple';'fig'})
+
+x = 
+
+    'apple'
+    'fig'
+    'pear'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 321|cc_c = {'pear';'apple';'fig'}; [~, x] = sortrows(cc_c)
+
+x =
+
+     2
+     3
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 322|x = sortrows({'pear';'apple';'fig'}, -1)
+
+x = 
+
+    'pear'
+    'fig'
+    'apple'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 323|x = sortrows({'b';'a';'B';'a'})
+
+x = 
+
+    'B'
+    'a'
+    'a'
+    'b'
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 324|cc_c = {'b';'a';'B';'a'}; [~, x] = sortrows(cc_c)
+
+x =
+
+     3
+     2
+     4
+     1
+
+@@CLASS double [4 1]
+@@END
+@@CASE 325|x = sortrows({'pear','apple','fig'})
+
+x = 
+
+    'pear'    'apple'    'fig'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 326|x = sortrows({'b','x';'a','y'})
+
+x = 
+
+    'a'    'y'
+    'b'    'x'
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 327|x = sortrows(['db';'ca';'cb'])
+
+x =
+
+ca
+cb
+db
+
+@@CLASS char [3 2]
+@@END
+@@CASE 328|cc_c = ['db';'ca';'cb']; [~, x] = sortrows(cc_c)
+
+x =
+
+     2
+     3
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 329|x = sortrows(['db';'ca';'cb'], -1)
+
+x =
+
+db
+ca
+cb
+
+@@CLASS char [3 2]
+@@END
+@@CASE 330|x = sortrows(['db';'ca';'cb'], 2)
+
+x =
+
+ca
+db
+cb
+
+@@CLASS char [3 2]
+@@END
+@@CASE 331|x = sortrows(['db';'ca';'cb'], [1 -2])
+
+x =
+
+cb
+ca
+db
+
+@@CLASS char [3 2]
+@@END
+@@CASE 332|x = sortrows({'pear';'apple';'fig'}, 'descend')
+ERR COL must be numeric.
+@@END
+@@CASE 333|x = sortrows({})
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 334|x = issorted({'a','b','c'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 335|x = issorted({'b','a'})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 336|x = issorted({'a','a','b'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 337|x = issorted({'B','a'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 338|x = issorted({'a';'b'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 339|x = issorted('abc')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 340|x = issorted('cba')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 341|x = issorted(['ab';'ac'], 'rows')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 342|x = issorted(['ac';'ab'], 'rows')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 343|x = issorted({})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 344|x = issorted({'a','b'}, 'rows')
+ERR DIM argument not supported for cell arrays.
+@@END
+@@CASE 345|x = unique({'b','a','b','c'})
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 346|x = unique({'b','a','b','c'}, 'stable')
+
+x = 
+
+    'b'    'a'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 347|x = unique({'b','a','b','c'}, 'sorted')
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 348|cc_c = {'b','a','b','c'}; [x, cc_ia, cc_ic] = unique(cc_c)
+
+x = 
+
+    'a'    'b'    'c'
+
+
+cc_ia =
+
+     2
+     1
+     4
+
+
+cc_ic =
+
+     2
+     1
+     2
+     3
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 349|cc_c = {'b','a','b','c'}; [~, x] = unique(cc_c)
+
+x =
+
+     2
+     1
+     4
+
+@@CLASS double [3 1]
+@@END
+@@CASE 350|cc_c = {'b','a','b','c'}; [~, ~, x] = unique(cc_c)
+
+x =
+
+     2
+     1
+     2
+     3
+
+@@CLASS double [4 1]
+@@END
+@@CASE 351|cc_c = {'b','a','b','c'}; [~, x] = unique(cc_c, 'stable')
+
+x =
+
+     1
+     2
+     4
+
+@@CLASS double [3 1]
+@@END
+@@CASE 352|cc_c = {'b','a','b','c'}; [~, ~, x] = unique(cc_c, 'stable')
+
+x =
+
+     1
+     2
+     1
+     3
+
+@@CLASS double [4 1]
+@@END
+@@CASE 353|cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'first')
+
+x =
+
+     2
+     1
+     4
+
+@@CLASS double [3 1]
+@@END
+@@CASE 354|cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'last')
+
+x =
+
+     5
+     3
+     4
+
+@@CLASS double [3 1]
+@@END
+@@CASE 355|cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'legacy')
+
+x =
+
+     5     3     4
+
+@@CLASS double [1 3]
+@@END
+@@CASE 356|cc_c = {'b','a','b','c','a'}; [~, ~, x] = unique(cc_c, 'legacy')
+
+x =
+
+     2     1     2     3     1
+
+@@CLASS double [1 5]
+@@END
+@@CASE 357|x = unique({'b','a','b','c'}, 'legacy')
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 358|x = unique({'b';'a';'b'})
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 359|x = unique({'b';'a';'b'}, 'stable')
+
+x = 
+
+    'b'
+    'a'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 360|cc_c = {'b';'a';'b'}; [~, x] = unique(cc_c)
+
+x =
+
+     2
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 361|x = unique({'b','a';'a','c'})
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 362|x = unique({})
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 363|x = unique(cell(1,0))
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 364|x = unique({'','a',''})
+
+x = 
+
+    ''    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 365|x = unique({'a','A','a'})
+
+x = 
+
+    'A'    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 366|x = unique({'a ','a'})
+
+x = 
+
+    'a'    'a '
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 367|x = unique({1,'a'})
+ERR Input A must be a cell array of strings.
+@@END
+@@CASE 368|x = unique({1,2})
+ERR Input A must be a cell array of strings.
+@@END
+@@CASE 369|cc_w = warning('off','all'); x = unique({'b','a','b'}, 'rows'); warning(cc_w); x
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 370|cc_w = warning('off','all'); lastwarn(''); cc_t = unique({'b','a'}, 'rows'); warning(cc_w); x = lastwarn
+
+x =
+
+The 'rows' input is not supported for cell array inputs.
+
+@@CLASS char [1 56]
+@@END
+@@CASE 371|x = unique({'a','b'}, 'stable', 'sorted')
+ERR You can specify either 'sorted' or 'stable' but not both.
+@@END
+@@CASE 372|x = unique('hello')
+
+x =
+
+ehlo
+
+@@CLASS char [1 4]
+@@END
+@@CASE 373|x = unique('hello', 'stable')
+
+x =
+
+helo
+
+@@CLASS char [1 4]
+@@END
+@@CASE 374|cc_c = 'hello'; [~, x] = unique(cc_c)
+
+x =
+
+     2
+     1
+     3
+     5
+
+@@CLASS double [4 1]
+@@END
+@@CASE 375|cc_c = 'hello'; [~, ~, x] = unique(cc_c)
+
+x =
+
+     2
+     1
+     3
+     3
+     4
+
+@@CLASS double [5 1]
+@@END
+@@CASE 376|x = unique(['ab';'ab';'ac'], 'rows')
+
+x =
+
+ab
+ac
+
+@@CLASS char [2 2]
+@@END
+@@CASE 377|x = unique(['ba';'ab'])
+
+x =
+
+a
+b
+
+@@CLASS char [2 1]
+@@END
+@@CASE 378|x = unique('')
+
+x =
+
+   Empty matrix: 0-by-1
+
+
+@@CLASS char [0 1]
+@@END
+@@CASE 379|x = ismember('a', {'a','b'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 380|x = ismember('z', {'a','b'})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 381|x = ismember({'a','z','b'}, {'a','b'})
+
+x =
+
+     1     0     1
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 382|cc_c = {'a','z','b'}; [~, x] = ismember(cc_c, {'b','a','b'})
+
+x =
+
+     2     0     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 383|cc_c = {'a';'z'}; [x, cc_l] = ismember(cc_c, {'z','a'})
+
+x =
+
+     1
+     1
+
+
+cc_l =
+
+     2
+     1
+
+@@CLASS logical [2 1]
+@@END
+@@CASE 384|cc_c = 'b'; [~, x] = ismember(cc_c, {'a','b'})
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 385|x = ismember('a', 'abc')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 386|x = ismember('abc', 'b')
+
+x =
+
+     0     1     0
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 387|cc_c = 'abc'; [~, x] = ismember(cc_c, 'cb')
+
+x =
+
+     0     2     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 388|x = ismember({'abc'}, 'abc')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 389|x = ismember('abc', {'abc','x'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 390|x = ismember(['ab';'cd'], ['cd';'ef'], 'rows')
+
+x =
+
+     0
+     1
+
+@@CLASS logical [2 1]
+@@END
+@@CASE 391|cc_c = ['ab';'cd']; [~, x] = ismember(cc_c, ['cd';'ef'], 'rows')
+
+x =
+
+     0
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 392|x = ismember({}, {'a'})
+
+x =
+
+     []
+
+@@CLASS logical [0 0]
+@@END
+@@CASE 393|x = ismember('', {'a',''})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 394|x = ismember(1, {'a'})
+ERR Input A of class double and input B of class cell must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 395|x = ismember({'a'}, 1)
+ERR Input A of class cell and input B of class double must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 396|x = ismember({1}, {'a'})
+ERR Input A of class cell and input B of class cell must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 397|x = ismember({'a',1}, {'a'})
+ERR Input A of class cell and input B of class cell must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 398|x = ismember('a', 'A')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 399|x = ismember({'a','b';'c','d'}, {'d','a'})
+
+x =
+
+     1     0
+     0     1
+
+@@CLASS logical [2 2]
+@@END
+@@CASE 400|cc_w = warning('off','all'); x = ismember({'a','b'}, {'a'}, 'rows'); warning(cc_w); x
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 401|x = setdiff({'a','b','c'}, {'b'})
+
+x = 
+
+    'a'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 402|x = setdiff({'c','a','b'}, {'b'}, 'stable')
+
+x = 
+
+    'c'    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 403|x = setdiff({'c','a','b'}, {'b'}, 'sorted')
+
+x = 
+
+    'a'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 404|cc_c = {'c','a','b','a'}; [~, x] = setdiff(cc_c, {'b'})
+
+x =
+
+     2
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 405|x = setdiff({'c';'a';'b'}, {'b'})
+
+x = 
+
+    'a'
+    'c'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 406|x = setdiff({'c','a'}, {'b';'a'})
+
+x = 
+
+    'c'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 407|x = setdiff({'a'}, {'a'})
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 408|x = setdiff({}, {'a'})
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 409|x = setdiff({'b','a'}, {})
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 410|x = setdiff({'b','a'}, 'a')
+
+x = 
+
+    'b'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 411|x = setdiff({'c','a','d'}, {'b';'a'})
+
+x = 
+
+    'c'    'd'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 412|x = setdiff({'c';'a';'d'}, {'b','a'})
+
+x = 
+
+    'c'
+    'd'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 413|x = setdiff('abc', {'b'})
+
+x = 
+
+    'abc'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 414|x = setdiff('abc', 'b')
+
+x =
+
+ac
+
+@@CLASS char [1 2]
+@@END
+@@CASE 415|x = setdiff('cab', 'b', 'stable')
+
+x =
+
+ca
+
+@@CLASS char [1 2]
+@@END
+@@CASE 416|x = setdiff({'a'}, 1)
+ERR Input A of class cell and input B of class double must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 417|x = setdiff(['ab';'cd'], ['cd'], 'rows')
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 418|x = setdiff({'b','a','b'}, {'z'}, 'legacy')
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 419|x = intersect({'a','b','c'}, {'c','a','z'})
+
+x = 
+
+    'a'    'c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 420|x = intersect({'c','b','a'}, {'a','c'}, 'stable')
+
+x = 
+
+    'c'    'a'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 421|cc_c = {'c','b','a'}; [x, cc_ia, cc_ib] = intersect(cc_c, {'a','c'})
+
+x = 
+
+    'a'    'c'
+
+
+cc_ia =
+
+     3
+     1
+
+
+cc_ib =
+
+     1
+     2
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 422|cc_c = {'c','b','a'}; [~, x] = intersect(cc_c, {'a','c'})
+
+x =
+
+     3
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 423|cc_c = {'c','b','a'}; [~, ~, x] = intersect(cc_c, {'a','c'})
+
+x =
+
+     1
+     2
+
+@@CLASS double [2 1]
+@@END
+@@CASE 424|x = intersect({'a';'b'}, {'b';'a'})
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 425|x = intersect({'a';'b'}, {'b','a'})
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 426|x = intersect({'a'}, {'z'})
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 427|x = intersect({'b','a','c'}, {'c';'a'})
+
+x = 
+
+    'a'
+    'c'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 428|x = intersect({}, {'a'})
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 429|x = intersect('abc', 'bcd')
+
+x =
+
+bc
+
+@@CLASS char [1 2]
+@@END
+@@CASE 430|x = intersect('cba', 'bcd', 'stable')
+
+x =
+
+cb
+
+@@CLASS char [1 2]
+@@END
+@@CASE 431|x = intersect({'abc','x'}, 'abc')
+
+x = 
+
+    'abc'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 432|x = intersect({'a'}, 1)
+ERR Input A of class cell and input B of class double must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 433|x = intersect(['ab';'cd'], ['cd';'ef'], 'rows')
+
+x =
+
+cd
+
+@@CLASS char [1 2]
+@@END
+@@CASE 434|x = union({'b','a'}, {'c','a'})
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 435|x = union({'b','a'}, {'c','a'}, 'stable')
+
+x = 
+
+    'b'    'a'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 436|cc_c = {'b','a'}; [x, cc_ia, cc_ib] = union(cc_c, {'c','a'})
+
+x = 
+
+    'a'    'b'    'c'
+
+
+cc_ia =
+
+     2
+     1
+
+
+cc_ib =
+
+     1
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 437|cc_c = {'b','a'}; [~, x] = union(cc_c, {'c','a'})
+
+x =
+
+     2
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 438|cc_c = {'b','a'}; [~, ~, x] = union(cc_c, {'c','a'})
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 439|x = union({'b';'a'}, {'c';'a'})
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 440|x = union({'b';'a'}, {'c','a'})
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 441|x = union({}, {'b','a'})
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 442|x = union({'b','a'}, {'c';'a'})
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 443|x = union({}, {})
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 444|x = union('a', {'b'})
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 445|x = union({'a'}, 'b')
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 446|x = union('ab', 'bc')
+
+x =
+
+abc
+
+@@CLASS char [1 3]
+@@END
+@@CASE 447|x = union('ba', 'cb', 'stable')
+
+x =
+
+bac
+
+@@CLASS char [1 3]
+@@END
+@@CASE 448|x = union({'a'}, 1)
+ERR Input A of class cell and input B of class double must be cell arrays of strings, unless one is a string.
+@@END
+@@CASE 449|x = union(['ab';'cd'], ['cd';'ef'], 'rows')
+
+x =
+
+ab
+cd
+ef
+
+@@CLASS char [3 2]
+@@END
+@@CASE 450|x = setxor({'a','b','c'}, {'b','c','d'})
+
+x = 
+
+    'a'    'd'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 451|x = setxor({'c','a','b'}, {'d','b'}, 'stable')
+
+x = 
+
+    'c'    'a'    'd'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 452|cc_c = {'a','b','c'}; [x, cc_ia, cc_ib] = setxor(cc_c, {'b','c','d'})
+
+x = 
+
+    'a'    'd'
+
+
+cc_ia =
+
+     1
+
+
+cc_ib =
+
+     3
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 453|cc_c = {'a','b','c'}; [~, x] = setxor(cc_c, {'b','c','d'})
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 454|cc_c = {'a','b','c'}; [~, ~, x] = setxor(cc_c, {'b','c','d'})
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 455|x = setxor({'a';'b'}, {'b';'c'})
+
+x = 
+
+    'a'
+    'c'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 456|x = setxor({'a'}, {'a'})
+
+x = 
+
+   Empty cell array: 1-by-0
+
+@@CLASS cell [1 0]
+@@END
+@@CASE 457|x = setxor({'a','b'}, {'c';'b'})
+
+x = 
+
+    'a'
+    'c'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 458|x = setxor({}, {'b';'a'})
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 459|x = setxor('abc', 'bcd')
+
+x =
+
+ad
+
+@@CLASS char [1 2]
+@@END
+@@CASE 460|x = setxor({'a'}, 1)
+ERR Input A of class cell and input B of class double must be cell arrays of strings, unless one is a string.
+@@END

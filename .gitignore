@@ -1,0 +1,50 @@
+/target/
+/target-quick/
+/tmp/
+/tools/
+/rea-review/
+/research/*.log
+/research/*.csv
+/research/performance/data/
+/research/small-filter-oracle.mat
+/research/performance/*.log
+*.svg
+!tests/fixtures/svg_ordinary_795.svg
+
+# Reproducible build products and large generated benchmark payloads.
+*.exe
+*.dll
+/output/
+/research/plots/image-preview/large.bmp
+/research/plots/preview-export/
+/research/plots/figure-copy/
+/research/ui/preview-recovery/session.lock
+/research/ui/preview-navigation/session.lock
+/research/ui/workspace-recovery/session.lock
+/research/ui/workspace-recovery-inline/session.lock
+/research/ui/vector-canvas/session.lock
+/research/ui/opening-queue/session.lock
+/research/ui/folder-navigation/session.lock
+__pycache__/
+
+/research/ui/folder-resolution/session.lock
+
+/research/ui/model-write/*/session.lock
+
+/research/ui/script-io/*/session.lock
+
+# Release packages
+/dist/
+/a.txt
+/b.bin
+
+# MatRust static website
+/site/node_modules/
+/site/dist/
+/site/.astro/
+/site/test-results/
+/site/playwright-report/
+!site/public/favicon.svg
+
+# browser engine copied in by site/scripts/copy-engine.mjs
+/site/public/engine/

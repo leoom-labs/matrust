@@ -1,0 +1,214 @@
+# ode113
+LONG [o2t, o2y] = ode113(@(t,y) -y, [0 0.5 1], 1); x = o2y
+LONG [o2t, o2y] = ode113(@(t,y) -y, [0 0.5 1], 1); x = o2t
+[o2t, o2y] = ode113(@(t,y) -y, [0 1], 1); x = size(o2t)
+LONG [o2t, o2y] = ode113(@(t,y) -y, [0 1], 1); x = o2y(end)
+LONG [o2t, o2y] = ode113(@(t,y) [y(2); (1-y(1)^2)*y(2)-y(1)], [0 0.5 1 2], [2; 0]); x = o2y(end,:)
+LONG [o2t, o2y] = ode113(@(t,y) -y, [0 0.5 1], 1, odeset('RelTol', 1e-8, 'AbsTol', 1e-10)); x = o2y(end)
+[o2t, o2y] = ode113(@(t,y) -y, [0 1], 1, odeset('RelTol', 1e-8, 'AbsTol', 1e-10)); x = size(o2t)
+LONG [o2t, o2y] = ode113(@(t,y) [-y(1); -2*y(2)], [0 0.5 1], [1 1]); x = o2y
+LONG [o2t, o2y] = ode113(@(t,y) -y, [1 0.5 0], 1); x = o2y
+[o2t, o2y] = ode113(@(t,y) -y, [0 1], 1, odeset('MaxStep', 0.1)); x = size(o2t)
+o2sol = ode113(@(t,y) -y, [0 1], 1); x = fieldnames(o2sol)'
+o2sol = ode113(@(t,y) -y, [0 1], 1); x = o2sol.solver
+o2sol = ode113(@(t,y) -y, [0 1], 1); x = o2sol.stats
+o2sol = ode113(@(t,y) -y, [0 1], 1); x = size(o2sol.x)
+LONG o2sol = ode113(@(t,y) -y, [0 1], 1); x = deval(o2sol, [0.25 0.5 1])
+LONG [o2t, o2y, o2te, o2ye, o2ie] = ode113(@(t,y) -y, [0 2], 1, odeset('Events', @(t,y) deal(y(1)-0.5, 1, 0))); x = [o2te o2ye o2ie o2t(end)]
+LONG fid = fopen('h_o2ev.m', 'w'); fprintf(fid, 'function [v, term, dr] = h_o2ev(t, y)\nv = y(1) - 0.5;\nterm = 1;\ndr = 0;\n'); fclose(fid); rehash; [o2t, o2y, o2te, o2ye, o2ie] = ode113(@(t,y) -y, [0 2], 1, odeset('Events', @h_o2ev)); delete('h_o2ev.m'); clear h_o2ev; x = [o2te o2ye o2ie o2t(end)]
+[o2t, o2y] = ode113(@(t,y) -y, [0 0.5 1], 1, odeset('Stats', 'on')); x = size(o2t)
+x = ode113(@(t,y) -y)
+x = ode113(@(t,y) -y, [0 1])
+[o2t, o2y] = ode113(@(t,y) -y, [1 1], 1); x = o2y
+[o2t, o2y] = ode113(@(t,y) -y, [0 1 0.5], 1); x = o2y
+[o2t, o2y] = ode113(@(t,y) [-y; 1], [0 1], 1); x = o2y
+# ode15s
+LONG [o2t, o2y] = ode15s(@(t,y) -y, [0 0.5 1], 1); x = o2y
+[o2t, o2y] = ode15s(@(t,y) -y, [0 1], 1); x = size(o2t)
+LONG [o2t, o2y] = ode15s(@(t,y) [y(2); (1-y(1)^2)*y(2)-y(1)], [0 0.5 1 2], [2; 0]); x = o2y(end,:)
+LONG [o2t, o2y] = ode15s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0]); x = o2y
+o2sol = ode15s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 3000], [2; 0]); x = o2sol.stats
+LONG [o2t, o2y] = ode15s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0], odeset('Jacobian', @(t,y) [0 1; -2000*y(1)*y(2)-1, 1000*(1-y(1)^2)])); x = o2y(end,:)
+LONG [o2t, o2y] = ode15s(@(t,y) [-y(1); -100*y(2)], [0 0.5 1], [1; 1], odeset('Jacobian', [-1 0; 0 -100])); x = o2y
+LONG [o2t, o2y] = ode15s(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 2])); x = o2y
+LONG [o2t, o2y] = ode15s(@(t,y) [-y(1); y(2)-y(1)], [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 0])); x = o2y
+LONG [o2t, o2y] = ode15s(@(t,y) -y, [0 0.5 1], 1, odeset('RelTol', 1e-8, 'AbsTol', 1e-10, 'MaxOrder', 2, 'BDF', 'on')); x = o2y(end)
+o2sol = ode15s(@(t,y) -y, [0 1], 1); x = fieldnames(o2sol)'
+o2sol = ode15s(@(t,y) -y, [0 1], 1); x = o2sol.solver
+o2sol = ode15s(@(t,y) -y, [0 1], 1); x = o2sol.stats
+LONG o2sol = ode15s(@(t,y) -y, [0 1], 1); x = deval(o2sol, [0.5 1])
+[o2t, o2y] = ode15s(@(t,y) -y, [0 0.5 1], 1, odeset('Stats', 'on')); x = size(o2t)
+LONG [o2t, o2y, o2te, o2ye, o2ie] = ode15s(@(t,y) -y, [0 2], 1, odeset('Events', @(t,y) deal(y(1)-0.5, 1, 0))); x = [o2te o2ye o2ie o2t(end)]
+LONG fid = fopen('h_o2ev.m', 'w'); fprintf(fid, 'function [v, term, dr] = h_o2ev(t, y)\nv = y(1) - 0.5;\nterm = 1;\ndr = 0;\n'); fclose(fid); rehash; [o2t, o2y, o2te, o2ye, o2ie] = ode15s(@(t,y) -y, [0 2], 1, odeset('Events', @h_o2ev)); delete('h_o2ev.m'); clear h_o2ev; x = [o2te o2ye o2ie o2t(end)]
+LONG fid = fopen('h_o2ev2.m', 'w'); fprintf(fid, 'function [v, term, dr] = h_o2ev2(t, y)\nv = [y(1) - 0.5; y(1) - 0.25];\nterm = [0; 0];\ndr = [-1; -1];\n'); fclose(fid); rehash; [o2t, o2y, o2te, o2ye, o2ie] = ode15s(@(t,y) -y, [0 2], 1, odeset('Events', @h_o2ev2)); delete('h_o2ev2.m'); clear h_o2ev2; x = [o2te o2ye o2ie]
+x = ode15s(@(t,y) -y, 1, 1)
+[o2t, o2y] = ode15s(@(t,y) -y, [0 1], [1; 1], odeset('Mass', [1 0 0; 0 1 0; 0 0 1])); x = o2y
+x = ode15s()
+# ode23s
+LONG [o2t, o2y] = ode23s(@(t,y) -y, [0 0.5 1], 1); x = o2y
+[o2t, o2y] = ode23s(@(t,y) -y, [0 1], 1); x = size(o2t)
+LONG [o2t, o2y] = ode23s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0]); x = o2y
+LONG [o2t, o2y] = ode23s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0], odeset('Jacobian', @(t,y) [0 1; -2000*y(1)*y(2)-1, 1000*(1-y(1)^2)])); x = o2y(end,:)
+o2sol = ode23s(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 3000], [2; 0]); x = o2sol.stats
+LONG [o2t, o2y] = ode23s(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 2])); x = o2y
+o2sol = ode23s(@(t,y) -y, [0 1], 1); x = fieldnames(o2sol)'
+o2sol = ode23s(@(t,y) -y, [0 1], 1); x = o2sol.solver
+LONG o2sol = ode23s(@(t,y) -y, [0 1], 1); x = deval(o2sol, [0.5 1])
+LONG [o2t, o2y] = ode23s(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', @(t,y) [1 0; 0 1+t])); x = o2y
+x = ode23s(@(t,y) -y, [0 1])
+# ode23t
+LONG [o2t, o2y] = ode23t(@(t,y) -y, [0 0.5 1], 1); x = o2y
+[o2t, o2y] = ode23t(@(t,y) -y, [0 1], 1); x = size(o2t)
+LONG [o2t, o2y] = ode23t(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0]); x = o2y
+o2sol = ode23t(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 3000], [2; 0]); x = o2sol.stats
+LONG [o2t, o2y] = ode23t(@(t,y) [-y(1); y(2)-y(1)], [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 0])); x = o2y
+LONG [o2t, o2y] = ode23t(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 2])); x = o2y
+o2sol = ode23t(@(t,y) -y, [0 1], 1); x = fieldnames(o2sol)'
+o2sol = ode23t(@(t,y) -y, [0 1], 1); x = o2sol.solver
+LONG o2sol = ode23t(@(t,y) -y, [0 1], 1); x = deval(o2sol, [0.5 1])
+x = ode23t(@(t,y) -y, [0 0], 1)
+# ode23tb
+LONG [o2t, o2y] = ode23tb(@(t,y) -y, [0 0.5 1], 1); x = o2y
+[o2t, o2y] = ode23tb(@(t,y) -y, [0 1], 1); x = size(o2t)
+LONG [o2t, o2y] = ode23tb(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 1500 3000], [2; 0]); x = o2y
+o2sol = ode23tb(@(t,y) [y(2); 1000*(1-y(1)^2)*y(2)-y(1)], [0 3000], [2; 0]); x = o2sol.stats
+LONG [o2t, o2y] = ode23tb(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', [1 0; 0 2], 'RelTol', 1e-6)); x = o2y
+o2sol = ode23tb(@(t,y) -y, [0 1], 1); x = fieldnames(o2sol)'
+o2sol = ode23tb(@(t,y) -y, [0 1], 1); x = o2sol.solver
+LONG o2sol = ode23tb(@(t,y) -y, [0 1], 1); x = deval(o2sol, [0.5 1])
+LONG [o2t, o2y] = ode23tb(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', @(t,y) [1 0; 0 1+t])); x = o2y
+[o2t, o2y] = ode23tb(@(t,y) -y, [0 0.5 1], [1; 1], odeset('Mass', @(t) [1 0; 0 1+t])); x = o2y
+x = ode23tb(@(t,y) -y)
+# decic
+LONG [o2y0, o2yp0] = decic(@(t,y,yp) yp + y, 0, 1, 1, 0, 0); x = [o2y0 o2yp0]
+LONG [o2y0, o2yp0, o2res] = decic(@(t,y,yp) yp + y, 0, 1, 1, 0, 0); x = o2res
+LONG [o2y0, o2yp0] = decic(@(t,y,yp) yp + y, 0, 3, 0, 0, 1); x = [o2y0 o2yp0]
+LONG [o2y0, o2yp0] = decic(@(t,y,yp) [yp(1) + y(1); y(2) - 2*y(1)], 0, [1; 0], [1; 0], [0; 0], [0; 0]); x = [o2y0 o2yp0]
+LONG [o2y0, o2yp0] = decic(@(t,y,yp) yp + y, 0, 1, 1, 0, 0, odeset('RelTol', 1e-8)); x = [o2y0 o2yp0]
+x = decic(@(t,y,yp) yp + y, 0, 1, 1, 0)
+x = decic(@(t,y,yp) yp + y, 0, 1, 1, 1, 1)
+# ode15i
+LONG [o2y0, o2yp0] = decic(@(t,y,yp) yp + y, 0, 1, 1, 0, 0); [o2t, o2y] = ode15i(@(t,y,yp) yp + y, [0 0.5 1], o2y0, o2yp0); x = o2y
+[o2t, o2y] = ode15i(@(t,y,yp) yp + y, [0 1], 1, -1); x = size(o2t)
+LONG [o2t, o2y] = ode15i(@(t,y,yp) [yp(1) + y(1); y(2) - 2*y(1)], [0 0.5 1], [1; 2], [-1; 0]); x = o2y
+LONG [o2t, o2y] = ode15i(@(t,y,yp) yp + y, [0 0.5 1], 1, -1, odeset('RelTol', 1e-8, 'AbsTol', 1e-10)); x = o2y(end)
+o2sol = ode15i(@(t,y,yp) yp + y, [0 1], 1, -1); x = fieldnames(o2sol)'
+o2sol = ode15i(@(t,y,yp) yp + y, [0 1], 1, -1); x = o2sol.solver
+o2sol = ode15i(@(t,y,yp) yp + y, [0 1], 1, -1); x = o2sol.stats
+LONG o2sol = ode15i(@(t,y,yp) yp + y, [0 1], 1, -1); x = deval(o2sol, [0.5 1])
+x = ode15i(@(t,y,yp) yp + y, [0 1], 1)
+LONG [o2t, o2y] = ode15i(@(t,y,yp) yp + y, [0 1], 1, 0); x = [size(o2t) o2y(end)]
+# deval
+LONG o2sol = ode45(@(t,y) -y, [0 1], 1); x = deval(o2sol, 0.5)
+LONG o2sol = ode45(@(t,y) -y, [0 1], 1); x = deval(0.5, o2sol)
+LONG o2sol = ode45(@(t,y) [-y(1); -2*y(2)], [0 1], [1; 1]); x = deval(o2sol, [0.5 1], 2)
+LONG o2sol = ode45(@(t,y) [-y(1); -2*y(2)], [0 1], [1; 1]); [o2sx, x] = deval(o2sol, [0.5 1])
+LONG o2sol = ode45(@(t,y) [-y(1); -2*y(2)], [0 1], [1; 1]); x = deval(o2sol, [0.5; 1])
+LONG o2sol = ode45(@(t,y) -y, [0 1], 1); x = deval(o2sol, [])
+o2sol = ode45(@(t,y) -y, [0 1], 1); x = deval(o2sol, 2)
+o2sol = ode45(@(t,y) -y, [0 1], 1); x = deval(o2sol, 0.5, 3)
+x = deval(5, 1)
+x = deval(struct('a', 1), 1)
+# odextend
+o2sol = ode45(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, [], 2); x = [o2sol.x(end) o2sol2.x(end)]
+LONG o2sol = ode45(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, [], 2); x = deval(o2sol2, [0.5 1.5 2])
+LONG o2sol = ode15s(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, [], 2); x = deval(o2sol2, [1.5 2])
+LONG o2sol = ode113(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, @(t,y) -2*y, 2); x = deval(o2sol2, [1 2])
+LONG o2sol = ode23t(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, [], 2, 1); x = deval(o2sol2, 2)
+o2sol = ode45(@(t,y) -y, [0 1], 1); o2sol2 = odextend(o2sol, [], 2); x = fieldnames(o2sol2)'
+o2sol = ode45(@(t,y) -y, [0 1], 1); x = odextend(o2sol, [], 0.5)
+o2sol = ode45(@(t,y) -y, [0 1], 1); x = odextend(o2sol)
+x = odextend(5, [], 2)
+# bvpinit
+o2si = bvpinit([0 0.5 1], [1 2]); x = fieldnames(o2si)'
+o2si = bvpinit([0 0.5 1], [1 2]); x = o2si.y
+o2si = bvpinit([0 0.5 1], [1 2]); x = o2si.x
+LONG o2si = bvpinit(linspace(0, pi/2, 3), @(t) [sin(t); cos(t)]); x = o2si.y
+o2si = bvpinit([0 1], [1; 2], 0.5); x = o2si
+o2si = bvpinit([0 0.5 0.5 1], [1 2]); x = o2si.x
+o2si = bvpinit([1 0.5 0], 3); x = o2si
+x = bvpinit(1, 1)
+x = bvpinit([0 1])
+x = bvpinit([0 1 0.5], 1)
+# bvpset
+x = bvpset('RelTol', 1e-4)
+x = fieldnames(bvpset)'
+o2bo = bvpset('RelTol', 1e-4); o2bo2 = bvpset(o2bo, 'AbsTol', 1e-8); x = [o2bo2.RelTol o2bo2.AbsTol]
+o2bo = bvpset('rel', 1e-3, 'stats', 'on'); x = {o2bo.RelTol, o2bo.Stats}
+o2bo = bvpset(bvpset('Nmax', 100), bvpset('RelTol', 1e-5)); x = {o2bo.Nmax, o2bo.RelTol}
+x = bvpset('Bogus', 1)
+x = bvpset('RelTol')
+# bvpget
+o2bo = bvpset('RelTol', 1e-4); x = bvpget(o2bo, 'RelTol')
+o2bo = bvpset('RelTol', 1e-4); x = bvpget(o2bo, 'AbsTol')
+o2bo = bvpset('RelTol', 1e-4); x = bvpget(o2bo, 'AbsTol', 1e-7)
+o2bo = bvpset('RelTol', 1e-4); x = bvpget(o2bo, 'reltol')
+o2bo = bvpset('RelTol', 1e-4); x = bvpget(o2bo, 'Bogus')
+x = bvpget(5, 'RelTol')
+# bvp4c
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = deval(o2sol, [0.5 1])
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = fieldnames(o2sol)'
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = o2sol.solver
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = o2sol.stats
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = size(o2sol.x)
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0]), bvpset('RelTol', 1e-6, 'AbsTol', 1e-8)); x = deval(o2sol, [0.5 1])
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0]), bvpset('Stats', 'on')); x = size(o2sol.x)
+LONG o2sol = bvp4c(@(t,y,lam) [y(2); -lam*y(1)], @(ya,yb,lam) [ya(1); ya(2)-1; yb(1)], bvpinit(linspace(0, pi, 10), @(t) [sin(t); cos(t)], 0.8)); x = o2sol.parameters
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0]), bvpset('FJacobian', @(t,y) [0 1; -1 0])); x = o2sol.y(:, end)'
+x = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1])
+x = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) ya(1), bvpinit(linspace(0, pi/2, 5), [0 0]))
+# bvp5c
+LONG o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = deval(o2sol, [0.5 1])
+o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = fieldnames(o2sol)'
+o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = o2sol.solver
+o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = o2sol.stats
+o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = size(o2sol.x)
+LONG o2sol = bvp5c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0]), bvpset('RelTol', 1e-6)); x = deval(o2sol, [0.5 1])
+LONG o2sol = bvp5c(@(t,y,lam) [y(2); -lam*y(1)], @(ya,yb,lam) [ya(1); ya(2)-1; yb(1)], bvpinit(linspace(0, pi, 10), @(t) [sin(t); cos(t)], 0.8)); x = o2sol.parameters
+x = bvp5c(@(t,y) [y(2); -y(1)])
+# bvpxtend
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, pi); x = fieldnames(o2si)'
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, pi); x = [o2si.x(end); o2si.y(:, end)]
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, pi, [0; -1]); x = [o2si.x(end); o2si.y(:, end)]
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, 2, 'linear'); x = [o2si.x(end); o2si.y(:, end)]
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, 2, 'solution'); x = [o2si.x(end); o2si.y(:, end)]
+LONG o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); o2si = bvpxtend(o2sol, -1, 'constant'); x = [o2si.x(1); o2si.y(:, 1)]
+o2sol = bvp4c(@(t,y) [y(2); -y(1)], @(ya,yb) [ya(1); yb(1)-1], bvpinit(linspace(0, pi/2, 5), [0 0])); x = bvpxtend(o2sol, 1)
+x = bvpxtend(5, 1)
+# dde23
+LONG o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = deval(o2sol, [0.5 1 1.5 2])
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = fieldnames(o2sol)'
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = o2sol.solver
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = o2sol.stats
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = o2sol.discont
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = o2sol.history
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2]); x = size(o2sol.x)
+LONG o2sol = dde23(@(t,y,Z) -Z, 1, @(t) 1 + t, [0 2]); x = deval(o2sol, [1 2])
+LONG o2sol = dde23(@(t,y,Z) [-Z(1,1); -Z(2,2)], [1 0.5], [1; 2], [0 2]); x = deval(o2sol, 2)
+LONG o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2], ddeset('RelTol', 1e-6, 'AbsTol', 1e-9)); x = deval(o2sol, [1.5 2])
+LONG o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 3], ddeset('Events', @(t,y,Z) deal(y, 1, 0))); x = [o2sol.xe o2sol.ye o2sol.ie o2sol.x(end)]
+LONG fid = fopen('h_o2ev3.m', 'w'); fprintf(fid, 'function [v, term, dr] = h_o2ev3(t, y, Z)\nv = y(1) + 0.25;\nterm = 1;\ndr = 0;\n'); fclose(fid); rehash; o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 3], ddeset('Events', @h_o2ev3)); delete('h_o2ev3.m'); clear h_o2ev3; x = [o2sol.xe o2sol.ye o2sol.ie o2sol.x(end)]
+o2sol = dde23(@(t,y,Z) -Z, 1, 1, [0 2], ddeset('Jumps', 0.5)); x = o2sol.discont
+x = dde23(@(t,y,Z) -Z, 1, 1)
+x = dde23(@(t,y,Z) -Z, 0, 1, [0 2])
+x = dde23(@(t,y,Z) -Z, 1, 1, [2 0])
+# ddesd
+LONG o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t - 1, 1, [0 2]); x = deval(o2sol, [0.5 1 1.5 2])
+o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t - 1, 1, [0 2]); x = fieldnames(o2sol)'
+o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t - 1, 1, [0 2]); x = o2sol.solver
+o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t - 1, 1, [0 2]); x = o2sol.stats
+LONG o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t - 1 - 0.1*abs(y), 1, [0 2]); x = deval(o2sol, [1 2])
+LONG o2sol = ddesd(@(t,y,Z) -Z, 1, 1, [0 2]); x = deval(o2sol, [1 2])
+LONG o2sol = ddesd(@(t,y,Z) -Z, @(t,y) t/2, 1, [0 2], ddeset('RelTol', 1e-6)); x = deval(o2sol, 2)
+x = ddesd(@(t,y,Z) -Z, @(t,y) t - 1, 1)
+# ddeset / ddeget
+x = ddeset('RelTol', 1e-4)
+x = fieldnames(ddeset)'
+o2dop = ddeset('rel', 1e-3, 'InitialY', 2); x = {o2dop.RelTol, o2dop.InitialY}
+o2dop = ddeset(ddeset('RelTol', 1e-4), 'AbsTol', 1e-8); x = [o2dop.RelTol o2dop.AbsTol]
+x = ddeset('Bogus', 1)
+o2dop = ddeset('RelTol', 1e-4); x = ddeget(o2dop, 'RelTol')
+o2dop = ddeset('RelTol', 1e-4); x = ddeget(o2dop, 'AbsTol')
+o2dop = ddeset('RelTol', 1e-4); x = ddeget(o2dop, 'AbsTol', 1e-7)
+o2dop = ddeset('RelTol', 1e-4); x = ddeget(o2dop, 'Bogus')
+x = ddeget(5, 'RelTol')

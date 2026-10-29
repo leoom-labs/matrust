@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=MatRust
+Comment=Numerical workspace for MATLAB-style scripts
+Exec=matrust-desktop %F
+Icon=matrust
+Categories=Science;Math;Education;
+Terminal=false
+MimeType=text/x-matlab;

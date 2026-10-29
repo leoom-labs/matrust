@@ -1,0 +1,1125 @@
+@@CASE 1|x = movmax([4 8 6 -1 -2 -3 -1 3 4 5], 3)
+
+x =
+
+     8     8     8     6    -1    -1     3     4     5     5
+
+@@CLASS double [1 10]
+@@END
+@@CASE 2|x = movmax([4 8 6 -1 -2 -3 -1 3 4 5], [2 0])
+
+x =
+
+     4     8     8     8     6    -1    -1     3     4     5
+
+@@CLASS double [1 10]
+@@END
+@@CASE 3|x = movmax([4 8 6 -1 -2 -3 -1 3 4 5], 3, 'Endpoints', 'discard')
+
+x =
+
+     8     8     6    -1    -1     3     4     5
+
+@@CLASS double [1 8]
+@@END
+@@CASE 4|x = movmax([4 8 6 -1 -2], 3, 'Endpoints', 'fill')
+
+x =
+
+     8     8     8     6    -1
+
+@@CLASS double [1 5]
+@@END
+@@CASE 5|x = movmax([4 8 6 -1 -2], 3, 'Endpoints', 7)
+
+x =
+
+     8     8     8     6     7
+
+@@CLASS double [1 5]
+@@END
+@@CASE 6|x = movmax([4 8 6 -1 -2], 3, 'Endpoints', 'shrink')
+
+x =
+
+     8     8     8     6    -1
+
+@@CLASS double [1 5]
+@@END
+@@CASE 7|x = movmax([1 2; 3 4; 5 6], 2)
+
+x =
+
+     1     2
+     3     4
+     5     6
+
+@@CLASS double [3 2]
+@@END
+@@CASE 8|x = movmax([1 2; 3 4; 5 6], 2, 2)
+
+x =
+
+     1     2
+     3     4
+     5     6
+
+@@CLASS double [3 2]
+@@END
+@@CASE 9|x = movmax([1 NaN 3 4], 3)
+
+x =
+
+     1     3     4     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 10|x = movmax([1 NaN 3 4], 3, 'omitnan')
+
+x =
+
+     1     3     4     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 11|x = movmax([], 3)
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 12|x = movmax(int8([1 5 3]), 2)
+
+x =
+
+    1    5    5
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 13|x = movmax([1 2 3], 0)
+ERR Window length must be a finite scalar positive integer or 2-element vector of finite nonnegative integers.
+@@END
+@@CASE 14|x = movmax([1 2 3], -1)
+ERR Window length must be a finite scalar positive integer or 2-element vector of finite nonnegative integers.
+@@END
+@@CASE 15|x = movmin([4 8 6 -1 -2 -3 -1 3 4 5], 3)
+
+x =
+
+     4     4    -1    -2    -3    -3    -3    -1     3     4
+
+@@CLASS double [1 10]
+@@END
+@@CASE 16|x = movmin([4 8 6 -1 -2 -3 -1 3 4 5], [0 2])
+
+x =
+
+     4    -1    -2    -3    -3    -3    -1     3     4     5
+
+@@CLASS double [1 10]
+@@END
+@@CASE 17|x = movmin([4 8 6 -1 -2 -3], 4)
+
+x =
+
+     4     4    -1    -2    -3    -3
+
+@@CLASS double [1 6]
+@@END
+@@CASE 18|x = movmin([4 8 6 -1 -2], 3, 'Endpoints', 'discard')
+
+x =
+
+     4    -1    -2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 19|x = movmin([4 8 6 -1 -2], 3, 'Endpoints', 'fill')
+
+x =
+
+     4     4    -1    -2    -2
+
+@@CLASS double [1 5]
+@@END
+@@CASE 20|x = movmin([1 2; 3 4; 5 6], 3, 2)
+
+x =
+
+     1     1
+     3     3
+     5     5
+
+@@CLASS double [3 2]
+@@END
+@@CASE 21|x = movmin([NaN 2 NaN 4], 2, 'omitnan')
+
+x =
+
+   NaN     2     2     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 22|x = movmin([NaN 2 NaN 4], 2, 'includenan')
+
+x =
+
+   NaN   NaN   NaN   NaN
+
+@@CLASS double [1 4]
+@@END
+@@CASE 23|x = movmin([3; 1; 2], 2)
+
+x =
+
+     3
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 24|x = movmedian([4 8 6 -1 -2 -3 -1 3 4 5], 3)
+
+x =
+
+    6.0000    6.0000    6.0000   -1.0000   -2.0000   -2.0000   -1.0000    3.0000    4.0000    4.5000
+
+@@CLASS double [1 10]
+@@END
+@@CASE 25|x = movmedian([4 8 6 -1 -2 -3 -1 3 4 5], 4)
+
+x =
+
+    6.0000    6.0000    5.0000    2.5000   -1.5000   -1.5000   -1.5000    1.0000    3.5000    4.0000
+
+@@CLASS double [1 10]
+@@END
+@@CASE 26|x = movmedian([4 8 6 -1 -2 -3], [1 1], 'Endpoints', 'discard')
+
+x =
+
+     6     6    -1    -2
+
+@@CLASS double [1 4]
+@@END
+@@CASE 27|x = movmedian([4 8 6 -1 -2], 3, 'Endpoints', 0)
+
+x =
+
+     4     6     6    -1    -1
+
+@@CLASS double [1 5]
+@@END
+@@CASE 28|x = movmedian([1 2; 3 4; 5 6], 3)
+
+x =
+
+     2     3
+     3     4
+     4     5
+
+@@CLASS double [3 2]
+@@END
+@@CASE 29|x = movmedian([1 2; 3 4; 5 6], 2, 2)
+
+x =
+
+    1.0000    1.5000
+    3.0000    3.5000
+    5.0000    5.5000
+
+@@CLASS double [3 2]
+@@END
+@@CASE 30|x = movmedian([1 NaN 3 4 5], 3)
+
+x =
+
+       NaN       NaN       NaN    4.0000    4.5000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 31|x = movmedian([1 NaN 3 4 5], 3, 'omitnan')
+
+x =
+
+    1.0000    2.0000    3.5000    4.0000    4.5000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 32|x = movmedian(5, 3)
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 33|x = movstd([4 8 6 -1 -2 -3 -1 3 4 5], 3)
+
+x =
+
+  Columns 1 through 5
+
+   2.828427124746190   2.000000000000000   4.725815626252608   4.358898943540674   1.000000000000000
+
+  Columns 6 through 10
+
+   1.000000000000000   3.055050463303893   2.645751311064591   1.000000000000000   0.707106781186548
+
+@@CLASS double [1 10]
+@@END
+@@CASE 34|x = movstd([4 8 6 -1 -2], 3, 1)
+
+x =
+
+   2.000000000000000   1.632993161855452   3.858612300930075   3.559026084010437   0.500000000000000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 35|x = movstd([4 8 6 -1 -2], [1 0])
+
+x =
+
+                   0   2.828427124746190   1.414213562373095   4.949747468305833   0.707106781186548
+
+@@CLASS double [1 5]
+@@END
+@@CASE 36|x = movstd([4 8 6 -1 -2], 3, 0, 'Endpoints', 'discard')
+
+x =
+
+   2.000000000000000   4.725815626252608   4.358898943540674
+
+@@CLASS double [1 3]
+@@END
+@@CASE 37|x = movstd([1 2; 3 5; 6 9], 2, 0, 2)
+
+x =
+
+                   0   0.707106781186548
+                   0   1.414213562373095
+                   0   2.121320343559642
+
+@@CLASS double [3 2]
+@@END
+@@CASE 38|x = movstd([1 NaN 3 4 5], 3, 'omitnan')
+
+x =
+
+                   0   1.414213562373095   0.707106781186548   1.000000000000000   0.707106781186548
+
+@@CLASS double [1 5]
+@@END
+@@CASE 39|x = movstd([1 NaN 3 4 5], 3)
+
+x =
+
+                 NaN                 NaN                 NaN   1.000000000000000   0.707106781186548
+
+@@CLASS double [1 5]
+@@END
+@@CASE 40|x = movstd([1 2 3], 3, 2)
+ERR Normalization argument must be 0 or 1.
+@@END
+@@CASE 41|x = movvar([4 8 6 -1 -2 -3 -1 3 4 5], 3)
+
+x =
+
+  Columns 1 through 5
+
+   8.000000000000000   4.000000000000000  22.333333333333332  19.000000000000000   1.000000000000000
+
+  Columns 6 through 10
+
+   1.000000000000000   9.333333333333332   7.000000000000000   1.000000000000000   0.500000000000000
+
+@@CLASS double [1 10]
+@@END
+@@CASE 42|x = movvar([4 8 6 -1 -2], 3, 1)
+
+x =
+
+   4.000000000000000   2.666666666666667  14.888888888888888  12.666666666666666   0.250000000000000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 43|x = movvar([4 8 6 -1 -2], [0 2], 'Endpoints', 'fill')
+
+x =
+
+   4.000000000000000  22.333333333333332  19.000000000000000                 NaN                 NaN
+
+@@CLASS double [1 5]
+@@END
+@@CASE 44|x = movvar([1 2; 3 5; 6 9], 3)
+
+x =
+
+   2.000000000000000   4.500000000000000
+   6.333333333333334  12.333333333333334
+   4.500000000000000   8.000000000000000
+
+@@CLASS double [3 2]
+@@END
+@@CASE 45|x = movvar([1 2; 3 5; 6 9], 3, 0, 2)
+
+x =
+
+   0.500000000000000   0.500000000000000
+   2.000000000000000   2.000000000000000
+   4.500000000000000   4.500000000000000
+
+@@CLASS double [3 2]
+@@END
+@@CASE 46|x = movvar([1 NaN 3 4 5], 3, 'omitnan')
+
+x =
+
+                   0   2.000000000000000   0.500000000000000   1.000000000000000   0.500000000000000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 47|x = movvar([1 2 3 4], 1)
+
+x =
+
+     0     0     0     0
+
+@@CLASS double [1 4]
+@@END
+@@CASE 48|x = repelem([1 2 3], 2)
+
+x =
+
+     1     1     2     2     3     3
+
+@@CLASS double [1 6]
+@@END
+@@CASE 49|x = repelem([1 2 3], [1 0 3])
+
+x =
+
+     1     3     3     3
+
+@@CLASS double [1 4]
+@@END
+@@CASE 50|x = repelem([1; 2], 3)
+
+x =
+
+     1
+     1
+     1
+     2
+     2
+     2
+
+@@CLASS double [6 1]
+@@END
+@@CASE 51|x = repelem([1 2; 3 4], 2, 3)
+
+x =
+
+     1     1     1     2     2     2
+     1     1     1     2     2     2
+     3     3     3     4     4     4
+     3     3     3     4     4     4
+
+@@CLASS double [4 6]
+@@END
+@@CASE 52|x = repelem([1 2; 3 4], [1 2], [2 1])
+
+x =
+
+     1     1     2
+     3     3     4
+     3     3     4
+
+@@CLASS double [3 3]
+@@END
+@@CASE 53|x = repelem('ab', 3)
+
+x =
+
+aaabbb
+
+@@CLASS char [1 6]
+@@END
+@@CASE 54|x = repelem({1, 'a'}, 2)
+
+x = 
+
+    [1]    [1]    'a'    'a'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 55|x = repelem(5, 3)
+
+x =
+
+     5     5     5
+
+@@CLASS double [1 3]
+@@END
+@@CASE 56|x = repelem([1 2; 3 4], 2)
+ERR With two inputs, the first argument must be a vector. Use three-input syntax for matrices.
+@@END
+@@CASE 57|x = repelem([1 2 3], [1 2])
+ERR In repelem(v, N), N must be a scalar or a vector of length equal to v.
+@@END
+@@CASE 58|x = isequaln([1 NaN], [1 NaN])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 59|x = isequaln([1 NaN], [1 NaN], [1 NaN])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 60|x = isequaln(NaN, 1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 61|x = isequaln(struct('a', NaN), struct('a', NaN))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 62|x = isequaln({NaN, 'a'}, {NaN, 'a'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 63|x = isequaln([1 2], [1; 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 64|x = isequaln(1)
+ERR Not enough input arguments.
+@@END
+@@CASE 65|x = isdiag([1 0; 0 2])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 66|x = isdiag([1 2; 0 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 67|x = isdiag(5)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 68|x = isdiag([])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 69|x = isdiag([1 0 0; 0 2 0])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 70|x = isdiag(zeros(3))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 71|x = isdiag({1})
+ERR Undefined function 'isdiag' for input arguments of type 'cell'.
+@@END
+@@CASE 72|x = istril([1 0; 2 3])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 73|x = istril([1 2; 0 3])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 74|x = istril([1 0 0; 2 3 0])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 75|x = istril([1 2 3])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 76|x = istril([])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 77|x = istril('a')
+ERR Undefined function 'istril' for input arguments of type 'char'.
+@@END
+@@CASE 78|x = istriu([1 2; 0 3])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 79|x = istriu([1 0; 2 3])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 80|x = istriu([1 2; 0 3; 0 0])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 81|x = istriu([1; 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 82|x = istriu(magic(3))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 83|x = isbanded([1 2 0; 3 4 5; 0 6 7], 1, 1)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 84|x = isbanded([1 2 0; 3 4 5; 0 6 7], 0, 1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 85|x = isbanded(eye(3), 0, 0)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 86|x = isbanded([], 0, 0)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 87|x = isbanded([1 2 3; 4 5 6], 1, 2)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 88|x = isbanded([1 2; 3 4], -1, 1)
+ERR Second and third inputs must be nonnegative integer scalars.
+@@END
+@@CASE 89|x = isbanded([1 2; 3 4], 1)
+ERR Not enough input arguments.
+@@END
+@@CASE 90|x = issymmetric([1 2; 2 1])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 91|x = issymmetric([1 2; 3 1])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 92|x = issymmetric([1 2+1i; 2+1i 1])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 93|x = issymmetric([1 2; 2 1], 'skew')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 94|x = issymmetric([0 2; -2 0], 'skew')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 95|x = issymmetric([1 2.0001; 2 1], 1e-3)
+ERR Second input must be 'skew' or 'nonskew'.
+@@END
+@@CASE 96|x = issymmetric([1 2 3])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 97|x = issymmetric([])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 98|x = issymmetric([1 2; 2 1], 'bogus')
+ERR Second input must be 'skew' or 'nonskew'.
+@@END
+@@CASE 99|x = ishermitian([1 2+1i; 2-1i 3])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 100|x = ishermitian([1 2+1i; 2+1i 3])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 101|x = ishermitian([1i 2; -2 1i], 'skew')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 102|x = ishermitian([1 2; 2 1])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 103|x = ishermitian([1i 0; 0 1])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 104|x = ishermitian([1 1; 1.0001 1], 1e-3)
+ERR Second input must be 'skew' or 'nonskew'.
+@@END
+@@CASE 105|x = ishermitian([1 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 106|x = bandwidth([1 2 0; 3 4 5; 0 6 7])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 107|[lo, up] = bandwidth([1 2 3; 0 4 5; 0 0 6]); x = [lo up]
+
+x =
+
+     0     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 108|x = bandwidth([1 0 0; 2 3 0; 4 5 6], 'lower')
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 109|x = bandwidth([1 0 0; 2 3 0; 4 5 6], 'upper')
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 110|x = bandwidth(eye(4))
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 111|x = bandwidth([])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 112|x = bandwidth([0 0 1 0])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 113|x = bandwidth([1 2], 'middle')
+ERR Second input must be 'lower' or 'upper'.
+@@END
+@@CASE 114|x = ismissing([1 NaN 3])
+ERR Undefined function 'ismissing' for input arguments of type 'double'.
+@@END
+@@CASE 115|x = ismissing({'a', ''})
+ERR Undefined function 'ismissing' for input arguments of type 'cell'.
+@@END
+@@CASE 116|x = standardizeMissing([1 -99 3], -99)
+ERR Undefined function 'standardizeMissing' for input arguments of type 'double'.
+@@END
+@@CASE 117|x = uniquetol([1 1.1 1.0000001 2])
+
+x =
+
+    1.0000    1.0000    1.1000    2.0000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 118|x = uniquetol([1 1.1 1.2 2], 0.05)
+
+x =
+
+    1.0000    1.1000    2.0000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 119|x = uniquetol([0.05 0.1 0.11 0.2], 0.01, 'DataScale', 1)
+
+x =
+
+    0.0500    0.1000    0.2000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 120|x = uniquetol([1 2; 1.0000001 2.0000001; 3 4], 'ByRows', true)
+
+x =
+
+    1.0000    2.0000
+    1.0000    2.0000
+    3.0000    4.0000
+
+@@CLASS double [3 2]
+@@END
+@@CASE 121|[c, ia, ic] = uniquetol([3 1 1.0000001 2]); x = [ia' ic']
+
+x =
+
+     2     3     4     1     4     1     2     3
+
+@@CLASS double [1 8]
+@@END
+@@CASE 122|x = uniquetol([1 NaN 2 NaN])
+
+x =
+
+     1     2   NaN   NaN
+
+@@CLASS double [1 4]
+@@END
+@@CASE 123|x = uniquetol([])
+
+x =
+
+   Empty matrix: 0-by-1
+
+@@CLASS double [0 1]
+@@END
+@@CASE 124|x = uniquetol([1 2; 3 4])
+
+x =
+
+     1
+     2
+     3
+     4
+
+@@CLASS double [4 1]
+@@END
+@@CASE 125|x = uniquetol([1 2], 'abc')
+ERR Tolerance value TOL must be a real, full (non-sparse), positive numeric scalar of type single or double.
+@@END
+@@CASE 126|x = uniquetol({1})
+ERR Input A must be a real full matrix of type single or double.
+@@END
+@@CASE 127|x = ismembertol([1 1.0000001 2 5], [1 2 3])
+
+x =
+
+     1     0     1     0
+
+@@CLASS logical [1 4]
+@@END
+@@CASE 128|x = ismembertol([1 1.1 2], [1 2], 0.05)
+
+x =
+
+     1     0     1
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 129|[tf, loc] = ismembertol([2 1.0000001 7], [1 2 3]); x = loc
+
+x =
+
+     2     0     0
+
+@@CLASS double [1 3]
+@@END
+@@CASE 130|x = ismembertol([1 2; 3 4], [1 2; 5 6], 'ByRows', true)
+
+x =
+
+     1
+     0
+
+@@CLASS logical [2 1]
+@@END
+@@CASE 131|x = ismembertol([0.1 0.2], [0.10001 0.3], 1e-3, 'DataScale', 1)
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 132|x = ismembertol([NaN 1], [NaN 1])
+
+x =
+
+     0     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 133|x = ismembertol([], [1 2])
+
+x =
+
+     []
+
+@@CLASS logical [0 0]
+@@END
+@@CASE 134|x = ismembertol({1}, [1 2])
+ERR Input A must be a real full matrix of type single or double.
+@@END
+@@CASE 135|x = histcounts2([1 2 3 4], [1 2 3 4])
+
+x =
+
+     1     0     0     0
+     0     1     0     0
+     0     0     1     0
+     0     0     0     1
+
+@@CLASS double [4 4]
+@@END
+@@CASE 136|x = histcounts2([1 2 3 4 5], [5 4 3 2 1], 2)
+
+x =
+
+     0     2
+     2     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 137|x = histcounts2([1 2 3 4 5], [5 4 3 2 1], [2 3])
+
+x =
+
+     0     0     2
+     2     1     0
+
+@@CLASS double [2 3]
+@@END
+@@CASE 138|x = histcounts2([0.5 1.5 2.5], [0.5 0.5 2.5], [0 1 2 3], [0 1 2 3])
+
+x =
+
+     1     0     0
+     1     0     0
+     0     0     1
+
+@@CLASS double [3 3]
+@@END
+@@CASE 139|[n, xe, ye] = histcounts2([1 2 3 4], [1 2 3 4]); x = xe
+
+x =
+
+    0.5000    1.5000    2.5000    3.5000    4.5000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 140|[n, xe, ye] = histcounts2([1 2 3 4], [1 2 3 4]); x = ye
+
+x =
+
+    0.5000    1.5000    2.5000    3.5000    4.5000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 141|x = histcounts2([0.5 1.5 2.5], [0.5 0.5 2.5], [0 1 2 3], [0 1 2 3], 'Normalization', 'probability')
+
+x =
+
+    0.3333         0         0
+    0.3333         0         0
+         0         0    0.3333
+
+@@CLASS double [3 3]
+@@END
+@@CASE 142|x = histcounts2([0.5 1.5 2.5], [0.5 0.5 2.5], [0 1 2 3], [0 1 2 3], 'Normalization', 'cdf')
+
+x =
+
+    0.3333    0.3333    0.3333
+    0.6667    0.6667    0.6667
+    0.6667    0.6667    1.0000
+
+@@CLASS double [3 3]
+@@END
+@@CASE 143|x = histcounts2([1 2 NaN 4], [1 NaN 3 4])
+
+x =
+
+     1     0     0     0
+     0     0     0     0
+     0     0     0     0
+     0     0     0     1
+
+@@CLASS double [4 4]
+@@END
+@@CASE 144|x = histcounts2([1 2 3 4 5 6], [1 2 3 4 5 6], 'BinWidth', [2 3])
+
+x =
+
+     1     0
+     1     1
+     0     3
+
+@@CLASS double [3 2]
+@@END
+@@CASE 145|x = histcounts2([], [])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 146|x = histcounts2([1 2 3], [1 2])
+ERR Expected input number 2, y, to be of size 1x3 when it is actually size 1x2.
+@@END

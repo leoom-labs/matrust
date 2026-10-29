@@ -1,0 +1,46 @@
+---
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+interface Props { title: string; description?: string; app?: boolean; }
+const { title, description = 'Numerical computing, built in Rust. Run .m scripts in a free, open-source native desktop workspace or in your browser.', app = false } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+// Cloudflare Web Analytics: no cookies, counts visits only (privacy page). Set at build time.
+// Never on the console page: its share links keep code in the URL fragment.
+const beacon = import.meta.env.PUBLIC_CF_BEACON_TOKEN;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#F7F5F2" />
+    <title>{title === 'MatRust' ? 'MatRust — Numerical computing. Built in Rust.' : `${title} · MatRust`}</title>
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:title" content={title === 'MatRust' ? 'MatRust — Numerical computing. Built in Rust.' : `${title} · MatRust`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content="https://matrust.dev/social-card.png" />
+    <meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script is:inline>
+      (() => {
+        let saved; try { saved = localStorage.getItem('matrust-theme'); } catch {}
+        const theme = saved === 'light' || saved === 'dark' ? saved : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <Header wide={app} />
+    <main id="main" tabindex="-1" class:list={{'app-main':app}}><slot /></main>
+    {!app && <Footer />}
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script>import '../scripts/site';</script>
+    {beacon && !app && <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon={JSON.stringify({ token: beacon })}></script>}
+  </body>
+</html>

@@ -1,0 +1,2350 @@
+@@CASE 1|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv)
+pcg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 2|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [x, t_sv] = pcg(A_sv, b_sv)
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+
+t_sv =
+
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 3|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, x] = pcg(A_sv, b_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 4|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, x] = pcg(A_sv, b_sv)
+
+x =
+
+     5.934391687221749e-17
+
+@@CLASS double [1 1]
+@@END
+@@CASE 5|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, x] = pcg(A_sv, b_sv)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 6|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, ~, x] = pcg(A_sv, b_sv)
+
+x =
+
+   3.741657386773941
+   1.296148139681572
+   0.586232581023312
+   0.000000000000000
+
+@@CLASS double [4 1]
+@@END
+@@CASE 7|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-12, 1)
+pcg stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.35.
+
+x =
+
+   0.280000000000000
+   0.560000000000000
+   0.840000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 8|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, x] = pcg(A_sv, b_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 9|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, x] = pcg(A_sv, b_sv, 1e-12, 1)
+
+x =
+
+   0.346410161513776
+
+@@CLASS double [1 1]
+@@END
+@@CASE 10|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, ~, x] = pcg(A_sv, b_sv, 1e-12, 2)
+
+x =
+
+   3.741657386773941
+   1.296148139681572
+   0.586232581023312
+
+@@CLASS double [3 1]
+@@END
+@@CASE 11|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, [], [])
+pcg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 12|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, [], 0)
+ERR In 'MATLAB:itermsg:IterationInteger', parameter {1} must be a scalar.
+@@END
+@@CASE 13|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, x] = pcg(A_sv, b_sv, [], 0)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 14|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, x] = pcg(A_sv, b_sv, [], 0)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 15|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, A_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so pcg returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 16|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, x] = pcg(A_sv, A_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 17|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-6, 10, [], [], [1; 1])
+ERR Initial guess must be a column vector of length 3 to match the problem size.
+@@END
+@@CASE 18|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, x] = pcg(A_sv, b_sv, 1e-3)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 19|P_sv = gallery('poisson', 3); p_sv = (1:9)'; x = pcg(P_sv, p_sv)
+pcg converged at iteration 5 to a solution with relative residual 1.6e-16.
+
+x =
+
+   2.008928571428571
+   3.089285714285714
+   2.723214285714286
+   3.946428571428571
+   5.625000000000000
+   4.803571428571429
+   4.151785714285714
+   5.660714285714286
+   4.866071428571429
+
+@@CLASS double [9 1]
+@@END
+@@CASE 20|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, ~, x] = pcg(P_sv, p_sv)
+
+x =
+
+  16.881943016134130
+   8.708007526700133
+   3.708548058957318
+   1.250660466316840
+   0.270896038675555
+   0.000000000000003
+
+@@CLASS double [6 1]
+@@END
+@@CASE 21|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(@(v) A_sv * v, b_sv)
+pcg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 22|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-10, 10, diag(diag(A_sv)))
+pcg converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 23|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, ~, x] = pcg(A_sv, b_sv, 1e-10, 10, diag(diag(A_sv)))
+
+x =
+
+   3.741657386773941
+   0.817873206708891
+   0.342331074635354
+   0.000000000000000
+
+@@CLASS double [4 1]
+@@END
+@@CASE 24|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-10, 10, @(v) v ./ diag(A_sv))
+pcg converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 25|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(A_sv))); x = pcg(A_sv, b_sv, 1e-10, 10, m_sv, m_sv)
+pcg converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444445
+
+@@CLASS double [3 1]
+@@END
+@@CASE 26|P_sv = gallery('poisson', 3); p_sv = (1:9)'; l_sv = ichol(P_sv); x = pcg(P_sv, p_sv, 1e-10, 20, l_sv, l_sv')
+pcg converged at iteration 7 to a solution with relative residual 4.9e-16.
+
+x =
+
+   2.008928571428571
+   3.089285714285714
+   2.723214285714286
+   3.946428571428571
+   5.625000000000000
+   4.803571428571427
+   4.151785714285714
+   5.660714285714286
+   4.866071428571429
+
+@@CLASS double [9 1]
+@@END
+@@CASE 27|P_sv = gallery('poisson', 3); p_sv = (1:9)'; l_sv = ichol(P_sv); [~, ~, ~, x] = pcg(P_sv, p_sv, 1e-10, 20, l_sv, l_sv')
+
+x =
+
+     7
+
+@@CLASS double [1 1]
+@@END
+@@CASE 28|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-10, 10, [], [], [0.2; 0.1; 1.4])
+pcg converged at iteration 3 to a solution with relative residual 1.3e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 29|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-10, 10, [], [], [2; 1; 14] / 9)
+pcg converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 30|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, ~, x] = pcg(A_sv, b_sv, 1e-10, 10, [], [], [2; 1; 14] / 9)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 31|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, zeros(3, 1))
+The right hand side vector is all zero so pcg
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 32|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, ~, x] = pcg(A_sv, zeros(3, 1))
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 33|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-20)
+[Warning: Input tol may not be achievable by PCG
+         Try to use a bigger tolerance] 
+[> In pcg (line 88)
+  In snippet (line 34)
+  In runner (line 2)] 
+pcg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 34|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 2)
+[Warning: Input tol is bigger than 1
+         Try to use a smaller tolerance] 
+[> In pcg (line 92)
+  In snippet (line 35)
+  In runner (line 2)] 
+pcg converged at iteration 1 to a solution with relative residual 0.35.
+
+x =
+
+   0.280000000000000
+   0.560000000000000
+   0.840000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 35|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = pcg(S_sv, d_sv)
+pcg stopped at iteration 2 without converging to the desired tolerance 1e-06
+because a scalar quantity became too small or too large to continue computing.
+The iterate returned (number 0) has relative residual 1.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 36|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = pcg(S_sv, d_sv)
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 37|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, x] = pcg(A_sv, b_sv, 1e-10, 10, -eye(3))
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 38|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-10, 10, -eye(3))
+pcg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 39|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; [~, x] = pcg(A_sv, [NaN; 1; 1])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 40|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, [Inf; 1; 1])
+The right hand side vector is all zero so pcg
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 41|x = pcg(4, 2)
+pcg converged at iteration 1 to a solution with relative residual 0.
+
+x =
+
+   0.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 42|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = pcg(N_sv, c_sv)
+pcg stopped at iteration 3 without converging to the desired tolerance 1e-06
+because the maximum number of iterations was reached.
+The iterate returned (number 3) has relative residual 0.0033.
+
+x =
+
+   0.220169910270888
+   0.122037068332986
+   0.955984591218019
+
+@@CLASS double [3 1]
+@@END
+@@CASE 43|x = pcg()
+ERR Not enough input arguments.
+@@END
+@@CASE 44|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 45|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 46|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = pcg(R_sv, r_sv)
+ERR Matrix must be square.
+@@END
+@@CASE 47|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv', 1e-6)
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 48|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = pcg(A_sv, b_sv, 1e-6, 10, eye(2))
+ERR Preconditioner must be a square matrix of size 3 to match the problem size.
+@@END
+@@CASE 49|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv)
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 50|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [x, t_sv] = gmres(N_sv, c_sv)
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+
+t_sv =
+
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 51|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = gmres(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 52|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = gmres(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 53|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = gmres(N_sv, c_sv)
+
+x =
+
+     1     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 54|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = gmres(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.239616559529473
+   0.174126443631274
+                   0
+
+@@CLASS double [4 1]
+@@END
+@@CASE 55|P_sv = gallery('poisson', 3); p_sv = (1:9)'; x = gmres(P_sv, p_sv, 2)
+gmres(2) stopped at outer iteration 5 (inner iteration 2) without converging to the desired tolerance 1e-06
+because the maximum number of iterations was reached.
+The iterate returned (number 5(2)) has relative residual 0.00066.
+
+x =
+
+   2.007208004093685
+   3.086490035896910
+   2.721587273850289
+   3.944542609071602
+   5.622448258095785
+   4.802595182246296
+   4.150345813363495
+   5.660647755420989
+   4.864725083120098
+
+@@CLASS double [9 1]
+@@END
+@@CASE 56|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = gmres(P_sv, p_sv, 2)
+
+x =
+
+     5     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 57|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, ~, x] = gmres(P_sv, p_sv, 2)
+
+x =
+
+  16.881943016134130
+   7.739096654085448
+   3.344389195640340
+   1.737127690784464
+   0.787374934047505
+   0.515764308221995
+   0.188476805325594
+   0.094008086181669
+   0.045445371580811
+   0.029331716850919
+   0.011197876948217
+
+@@CLASS double [11 1]
+@@END
+@@CASE 58|P_sv = gallery('poisson', 3); p_sv = (1:9)'; x = gmres(P_sv, p_sv, 2, 1e-12, 1)
+gmres(2) stopped at outer iteration 1 (inner iteration 2) without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1(2)) has relative residual 0.2.
+
+x =
+
+   1.315060908084163
+   2.096068660022148
+   2.165005537098561
+   3.302048726467332
+   4.795127353266889
+   4.508028792912515
+   3.864894795127354
+   5.714008859357698
+   4.714839424141751
+
+@@CLASS double [9 1]
+@@END
+@@CASE 59|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, x] = gmres(P_sv, p_sv, 2, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 60|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = gmres(P_sv, p_sv, 2, 1e-12, 1)
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 61|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, 5)
+[Warning: RESTART is 5 but it should be bounded by SIZE(A,1).
+  Setting RESTART to 3.] 
+[> In gmres (line 133)
+  In snippet (line 62)
+  In runner (line 2)] 
+gmres(3) converged at outer iteration 1 (inner iteration 3) to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 62|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-10, 5)
+[Warning: MAXIT is 5 but it should be bounded by SIZE(A,1).
+ Setting MAXIT to 3.] 
+[> In gmres (line 140)
+  In snippet (line 63)
+  In runner (line 2)] 
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 63|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, 3, 1e-10, 3)
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 64|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-12, 1)
+gmres stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.33.
+
+x =
+
+   0.180628272251309
+   0.361256544502618
+   0.541884816753927
+
+@@CLASS double [3 1]
+@@END
+@@CASE 65|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-10, 3, diag(diag(N_sv)))
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 66|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = gmres(N_sv, c_sv, [], 1e-10, 3, diag(diag(N_sv)))
+
+x =
+
+   1.105667219374799
+   0.187253034504195
+   0.037975229241745
+                   0
+
+@@CLASS double [4 1]
+@@END
+@@CASE 67|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = gmres(N_sv, c_sv, [], 1e-10, 3, m_sv, m_sv)
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 68|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-10, 3, [], [], [1; 1; 1])
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000001
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 69|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(@(v) N_sv * v, c_sv)
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 70|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, N_sv * [1; 1; 1], [], 1e-10, 3, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so gmres returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 71|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-6, 3, [], [], [1; 1])
+ERR Initial guess must be a column vector of length 3 to match the problem size.
+@@END
+@@CASE 72|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-10, 3, @(v) v ./ diag(N_sv))
+gmres converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 73|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, zeros(3, 1))
+The right hand side vector is all zero so gmres
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 74|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, 0)
+ERR Matrix dimensions must agree.
+@@END
+@@CASE 75|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-20)
+[Warning: Input tol may not be achievable by GMRES.
+ Try to use a bigger tolerance.] 
+[> In gmres (line 114)
+  In snippet (line 76)
+  In runner (line 2)] 
+gmres stopped at iteration 3 without converging to the desired tolerance 2.2e-16
+because the method stagnated.
+The iterate returned (number 3) has relative residual 4.7e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 76|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 77|x = gmres()
+ERR Not enough input arguments.
+@@END
+@@CASE 78|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = gmres(N_sv, c_sv, [], 1e-6, 3, eye(2))
+ERR Preconditioner must be a square matrix of size 3 to match the problem size.
+@@END
+@@CASE 79|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, c_sv)
+bicg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 80|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicg(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 81|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = bicg(N_sv, c_sv)
+
+x =
+
+     5.934391687221749e-17
+
+@@CLASS double [1 1]
+@@END
+@@CASE 82|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = bicg(N_sv, c_sv)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 83|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicg(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+   0.178458554943863
+   0.000000000000000
+
+@@CLASS double [4 1]
+@@END
+@@CASE 84|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, c_sv, 1e-12, 1)
+bicg stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.35.
+
+x =
+
+   0.202898550724638
+   0.405797101449275
+   0.608695652173913
+
+@@CLASS double [3 1]
+@@END
+@@CASE 85|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicg(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 86|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicg(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+
+@@CLASS double [2 1]
+@@END
+@@CASE 87|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+bicg converged at iteration 3 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 88|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = bicg(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+bicg converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 89|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+bicg converged at iteration 3 to a solution with relative residual 1.7e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 90|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; op_sv = {N_sv, N_sv'}; af_sv = @(v, t) op_sv{1 + strcmp(t, 'transp')} * v; x = bicg(af_sv, c_sv)
+bicg converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 91|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, c_sv, 1e-10, 10, @(v, t) v ./ diag(N_sv))
+bicg converged at iteration 3 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 92|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(@(v) N_sv * v, c_sv)
+ERR user supplied function ==> @(v)N_sv*v failed with the following error:
+ 
+ Too many input arguments.
+@@END
+@@CASE 93|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, zeros(3, 1))
+The right hand side vector is all zero so bicg
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 94|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so bicg returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 95|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 96|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicg(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 97|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, c_sv)
+bicgstab converged at iteration 2.5 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 98|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicgstab(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 99|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = bicgstab(N_sv, c_sv)
+
+x =
+
+     2.967195843610875e-17
+
+@@CLASS double [1 1]
+@@END
+@@CASE 100|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = bicgstab(N_sv, c_sv)
+
+x =
+
+   2.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 101|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicgstab(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+   0.531946353044963
+   0.074754674940068
+   0.021380465612169
+   0.000000000000000
+
+@@CLASS double [6 1]
+@@END
+@@CASE 102|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, c_sv, 1e-12, 1)
+bicgstab stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.14.
+
+x =
+
+   0.154489833358750
+   0.173435258093013
+   0.779739786866717
+
+@@CLASS double [3 1]
+@@END
+@@CASE 103|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicgstab(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 104|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicgstab(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+   0.531946353044963
+
+@@CLASS double [3 1]
+@@END
+@@CASE 105|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+bicgstab converged at iteration 2.5 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 106|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = bicgstab(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+bicgstab converged at iteration 2.5 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 107|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+bicgstab converged at iteration 2.5 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 108|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(@(v) N_sv * v, c_sv)
+bicgstab converged at iteration 2.5 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 109|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, c_sv, 1e-10, 10, @(v) v ./ diag(N_sv))
+bicgstab converged at iteration 2.5 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 110|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, zeros(3, 1))
+The right hand side vector is all zero so bicgstab
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 111|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so bicgstab returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 112|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 113|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstab(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 114|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, c_sv)
+bicgstabl converged at iteration 1.3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 115|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicgstabl(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 116|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = bicgstabl(N_sv, c_sv)
+
+x =
+
+     5.934391687221749e-17
+
+@@CLASS double [1 1]
+@@END
+@@CASE 117|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = bicgstabl(N_sv, c_sv)
+
+x =
+
+   1.250000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 118|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicgstabl(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+   0.178458554943863
+   0.171488527980772
+   0.021051226250932
+   0.000000000000000
+
+@@CLASS double [6 1]
+@@END
+@@CASE 119|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, c_sv, 1e-12, 1)
+bicgstabl stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.0056.
+
+x =
+
+   0.218854544830591
+   0.121110744406699
+   0.952832227500518
+
+@@CLASS double [3 1]
+@@END
+@@CASE 120|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = bicgstabl(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 121|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = bicgstabl(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   1.313814279307581
+   0.178458554943863
+   0.171488527980772
+   0.021051226250932
+
+@@CLASS double [5 1]
+@@END
+@@CASE 122|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+bicgstabl converged at iteration 1.3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 123|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = bicgstabl(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+bicgstabl converged at iteration 1.3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 124|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+bicgstabl converged at iteration 1.3 to a solution with relative residual 3e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 125|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(@(v) N_sv * v, c_sv)
+bicgstabl converged at iteration 1.3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 126|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, c_sv, 1e-10, 10, @(v) v ./ diag(N_sv))
+bicgstabl converged at iteration 1.3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 127|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, zeros(3, 1))
+The right hand side vector is all zero so bicgstabl
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 128|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so bicgstabl returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 129|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 130|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = bicgstabl(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 131|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, c_sv)
+cgs converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 132|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = cgs(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 133|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = cgs(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 134|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = cgs(N_sv, c_sv)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 135|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = cgs(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   0.542545319245014
+   0.024299272816881
+                   0
+
+@@CLASS double [4 1]
+@@END
+@@CASE 136|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, c_sv, 1e-12, 1)
+cgs stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.15.
+
+x =
+
+   0.158790170132325
+   0.194076874606175
+   0.764545263600084
+
+@@CLASS double [3 1]
+@@END
+@@CASE 137|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = cgs(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 138|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = cgs(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   0.542545319245014
+
+@@CLASS double [2 1]
+@@END
+@@CASE 139|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+cgs converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 140|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = cgs(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+cgs converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 141|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+cgs converged at iteration 3 to a solution with relative residual 5.9e-17.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 142|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(@(v) N_sv * v, c_sv)
+cgs converged at iteration 3 to a solution with relative residual 0.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 143|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, c_sv, 1e-10, 10, @(v) v ./ diag(N_sv))
+cgs converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 144|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, zeros(3, 1))
+The right hand side vector is all zero so cgs
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 145|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so cgs returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 146|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 147|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = cgs(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 148|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, c_sv)
+qmr converged at iteration 3 to a solution with relative residual 2.7e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 149|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = qmr(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 150|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = qmr(N_sv, c_sv)
+
+x =
+
+     2.719479911021037e-16
+
+@@CLASS double [1 1]
+@@END
+@@CASE 151|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = qmr(N_sv, c_sv)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 152|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = qmr(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.239616559529473
+   0.184500024342452
+   0.000000000000001
+
+@@CLASS double [4 1]
+@@END
+@@CASE 153|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, c_sv, 1e-12, 1)
+qmr stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.33.
+
+x =
+
+   0.180628272251309
+   0.361256544502618
+   0.541884816753927
+
+@@CLASS double [3 1]
+@@END
+@@CASE 154|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = qmr(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 155|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = qmr(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   1.239616559529473
+
+@@CLASS double [2 1]
+@@END
+@@CASE 156|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+qmr converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 157|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = qmr(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+qmr converged at iteration 3 to a solution with relative residual 3.4e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 158|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+qmr converged at iteration 3 to a solution with relative residual 1.1e-15.
+
+x =
+
+   0.220000000000000
+   0.119999999999999
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 159|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; op_sv = {N_sv, N_sv'}; af_sv = @(v, t) op_sv{1 + strcmp(t, 'transp')} * v; x = qmr(af_sv, c_sv)
+qmr converged at iteration 3 to a solution with relative residual 2.1e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 160|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, c_sv, 1e-10, 10, @(v, t) v ./ diag(N_sv))
+qmr converged at iteration 3 to a solution with relative residual 1.2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 161|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(@(v) N_sv * v, c_sv)
+ERR user supplied function ==> @(v)N_sv*v failed with the following error:
+ 
+ Too many input arguments.
+@@END
+@@CASE 162|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, zeros(3, 1))
+The right hand side vector is all zero so qmr
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 163|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so qmr returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 164|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 165|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = qmr(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 166|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, c_sv)
+tfqmr converged at iteration 2 to a solution with relative residual 2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 167|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = tfqmr(N_sv, c_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 168|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, x] = tfqmr(N_sv, c_sv)
+
+x =
+
+     1.990455482660625e-16
+
+@@CLASS double [1 1]
+@@END
+@@CASE 169|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, x] = tfqmr(N_sv, c_sv)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 170|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = tfqmr(N_sv, c_sv)
+
+x =
+
+   3.741657386773941
+   1.239616559529472
+   0.627111264445580
+   0.091297457768649
+   0.025125526345106
+   0.000000000000001
+
+@@CLASS double [6 1]
+@@END
+@@CASE 171|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, c_sv, 1e-12, 1)
+tfqmr stopped at iteration 2 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.17.
+
+x =
+
+   0.162300900614654
+   0.220952963010436
+   0.728749991021328
+
+@@CLASS double [3 1]
+@@END
+@@CASE 172|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = tfqmr(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 173|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, ~, ~, ~, x] = tfqmr(N_sv, c_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   1.239616559529472
+   0.627111264445580
+
+@@CLASS double [3 1]
+@@END
+@@CASE 174|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, c_sv, 1e-10, 10, diag(diag(N_sv)))
+tfqmr converged at iteration 2 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 175|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(N_sv))); x = tfqmr(N_sv, c_sv, 1e-10, 10, m_sv, m_sv)
+tfqmr converged at iteration 2 to a solution with relative residual 6.5e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000001
+   0.959999999999999
+
+@@CLASS double [3 1]
+@@END
+@@CASE 176|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, c_sv, 1e-10, 10, [], [], [1; 1; 1])
+tfqmr converged at iteration 2 to a solution with relative residual 2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 177|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(@(v) N_sv * v, c_sv)
+tfqmr converged at iteration 2 to a solution with relative residual 2e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 178|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, c_sv, 1e-10, 10, @(v) v ./ diag(N_sv))
+tfqmr converged at iteration 2 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.220000000000000
+   0.120000000000000
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 179|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, zeros(3, 1))
+The right hand side vector is all zero so tfqmr
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 180|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, N_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so tfqmr returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 181|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 182|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = tfqmr(N_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 183|P_sv = gallery('poisson', 3); p_sv = (1:9)'; x = bicgstab(P_sv, p_sv)
+bicgstab converged at iteration 4.5 to a solution with relative residual 6.7e-16.
+
+x =
+
+   2.008928571428572
+   3.089285714285714
+   2.723214285714287
+   3.946428571428571
+   5.624999999999998
+   4.803571428571430
+   4.151785714285715
+   5.660714285714286
+   4.866071428571429
+
+@@CLASS double [9 1]
+@@END
+@@CASE 184|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = bicgstabl(P_sv, p_sv)
+
+x =
+
+   2.250000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 185|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = tfqmr(P_sv, p_sv)
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 186|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, ~, x] = cgs(P_sv, p_sv)
+
+x =
+
+  16.881943016134130
+  11.887614083290087
+   7.510827198328019
+   1.704518439308606
+   0.059615102178636
+   0.000000000000008
+
+@@CLASS double [6 1]
+@@END
+@@CASE 187|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, d_sv)
+minres converged at iteration 3 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333333
+   2.666666666666667
+
+@@CLASS double [3 1]
+@@END
+@@CASE 188|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = minres(S_sv, d_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 189|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, x] = minres(S_sv, d_sv)
+
+x =
+
+     2.446812375020268e-16
+
+@@CLASS double [1 1]
+@@END
+@@CASE 190|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, x] = minres(S_sv, d_sv)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 191|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, x] = minres(S_sv, d_sv)
+
+x =
+
+   3.741657386773941
+   3.000000000000000
+   1.556540648986177
+   0.000000000000001
+
+@@CLASS double [4 1]
+@@END
+@@CASE 192|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, ~, x] = minres(S_sv, d_sv)
+
+x =
+
+   3.741657386773941
+   3.492849839314596
+                   0
+   3.169676599688058
+   3.741657386773941
+
+@@CLASS double [5 1]
+@@END
+@@CASE 193|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, d_sv, 1e-12, 1)
+minres stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.8.
+
+x =
+
+   0.333333333333333
+   0.666666666666667
+   1.000000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 194|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = minres(S_sv, d_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 195|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, x] = minres(S_sv, d_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   3.000000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 196|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = minres(A_sv, b_sv, 1e-10, 10, diag(diag(A_sv)))
+minres converged at iteration 3 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 197|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(A_sv))); x = minres(A_sv, b_sv, 1e-10, 10, m_sv, m_sv)
+minres converged at iteration 3 to a solution with relative residual 2.7e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 198|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, d_sv, 1e-10, 10, [], [], [1; 1; 1])
+minres converged at iteration 3 to a solution with relative residual 4.3e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333334
+   2.666666666666667
+
+@@CLASS double [3 1]
+@@END
+@@CASE 199|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(@(v) S_sv * v, d_sv)
+minres converged at iteration 3 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333333
+   2.666666666666667
+
+@@CLASS double [3 1]
+@@END
+@@CASE 200|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = minres(P_sv, p_sv)
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 201|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, zeros(3, 1))
+The right hand side vector is all zero so minres
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 202|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = minres(N_sv, c_sv)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 203|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = minres(S_sv, d_sv, 1e-10, 10, -eye(3))
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 204|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, S_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so minres returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 205|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 206|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = minres(S_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 207|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, d_sv)
+symmlq converged at iteration 2 to a solution with relative residual 5.1e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333333
+   2.666666666666667
+
+@@CLASS double [3 1]
+@@END
+@@CASE 208|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = symmlq(S_sv, d_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 209|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, x] = symmlq(S_sv, d_sv)
+
+x =
+
+     5.070346480180385e-16
+
+@@CLASS double [1 1]
+@@END
+@@CASE 210|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, x] = symmlq(S_sv, d_sv)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 211|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, x] = symmlq(S_sv, d_sv)
+
+x =
+
+   3.741657386773941
+   3.483293460696835
+   2.566225665452779
+
+@@CLASS double [3 1]
+@@END
+@@CASE 212|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, ~, x] = symmlq(S_sv, d_sv)
+
+x =
+
+   3.741657386773941
+   5.019960159204453
+   1.820798210249829
+   0.000000000000000
+
+@@CLASS double [4 1]
+@@END
+@@CASE 213|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, d_sv, 1e-12, 1)
+symmlq stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.49.
+
+x =
+
+   1.147619047619048
+   0.152380952380952
+   1.942857142857143
+
+@@CLASS double [3 1]
+@@END
+@@CASE 214|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = symmlq(S_sv, d_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 215|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, ~, ~, ~, x] = symmlq(S_sv, d_sv, 1e-12, 1)
+
+x =
+
+   3.741657386773941
+   3.483293460696835
+
+@@CLASS double [2 1]
+@@END
+@@CASE 216|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; x = symmlq(A_sv, b_sv, 1e-10, 10, diag(diag(A_sv)))
+symmlq converged at iteration 2 to a solution with relative residual 2.4e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 217|A_sv = [4 1 0; 1 3 1; 0 1 2]; b_sv = [1; 2; 3]; m_sv = diag(sqrt(diag(A_sv))); x = symmlq(A_sv, b_sv, 1e-10, 10, m_sv, m_sv)
+symmlq converged at iteration 2 to a solution with relative residual 2e-16.
+
+x =
+
+   0.222222222222222
+   0.111111111111111
+   1.444444444444444
+
+@@CLASS double [3 1]
+@@END
+@@CASE 218|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, d_sv, 1e-10, 10, [], [], [1; 1; 1])
+symmlq converged at iteration 2 to a solution with relative residual 5.8e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333334
+   2.666666666666666
+
+@@CLASS double [3 1]
+@@END
+@@CASE 219|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(@(v) S_sv * v, d_sv)
+symmlq converged at iteration 2 to a solution with relative residual 5.1e-16.
+
+x =
+
+   0.333333333333333
+   0.333333333333333
+   2.666666666666667
+
+@@CLASS double [3 1]
+@@END
+@@CASE 220|P_sv = gallery('poisson', 3); p_sv = (1:9)'; [~, ~, ~, x] = symmlq(P_sv, p_sv)
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 221|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, zeros(3, 1))
+The right hand side vector is all zero so symmlq
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+     0
+
+@@CLASS double [3 1]
+@@END
+@@CASE 222|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; [~, x] = symmlq(N_sv, c_sv)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 223|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; [~, x] = symmlq(S_sv, d_sv, 1e-10, 10, -eye(3))
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 224|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, S_sv * [1; 1; 1], 1e-10, 10, [], [], [1; 1; 1])
+The initial guess has relative residual 0 which is within
+the desired tolerance 1e-10 so symmlq returned it without iterating.
+
+x =
+
+     1
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 225|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3 to match the coefficient matrix.
+@@END
+@@CASE 226|S_sv = [2 1 0; 1 -3 1; 0 1 1]; d_sv = [1; 2; 3]; x = symmlq(S_sv)
+ERR Not enough input arguments.
+@@END
+@@CASE 227|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, r_sv)
+lsqr converged at iteration 2 to a solution with relative residual 0.089.
+
+x =
+
+   0.666666666666665
+   0.083333333333330
+
+@@CLASS double [2 1]
+@@END
+@@CASE 228|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, x] = lsqr(R_sv, r_sv)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 229|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, ~, x] = lsqr(R_sv, r_sv)
+
+x =
+
+   0.089087080637475
+
+@@CLASS double [1 1]
+@@END
+@@CASE 230|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, ~, ~, x] = lsqr(R_sv, r_sv)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 231|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, ~, ~, ~, x] = lsqr(R_sv, r_sv)
+
+x =
+
+   4.582575694955840
+   0.474508791562794
+   0.408248290463863
+
+@@CLASS double [3 1]
+@@END
+@@CASE 232|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, ~, ~, ~, ~, x] = lsqr(R_sv, r_sv)
+
+x =
+
+   4.557942672602368
+   0.013039053556818
+
+@@CLASS double [2 1]
+@@END
+@@CASE 233|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, r_sv, 1e-12, 1)
+lsqr stopped at iteration 1 without converging to the desired tolerance 1e-12
+because the maximum number of iterations was reached.
+The iterate returned (number 1) has relative residual 0.1.
+
+x =
+
+   0.297570672669337
+   0.374718624842868
+
+@@CLASS double [2 1]
+@@END
+@@CASE 234|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, x] = lsqr(R_sv, r_sv, 1e-12, 1)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 235|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; [~, ~, ~, ~, x] = lsqr(R_sv, r_sv, 1e-12, 1)
+
+x =
+
+   4.582575694955840
+   0.474508791562794
+
+@@CLASS double [2 1]
+@@END
+@@CASE 236|N_sv = [4 1 0; 2 5 1; 0 1 3]; c_sv = [1; 2; 3]; x = lsqr(N_sv, c_sv)
+lsqr converged at iteration 3 to a solution with relative residual 1.8e-15.
+
+x =
+
+   0.219999999999999
+   0.119999999999999
+   0.960000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 237|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, r_sv, 1e-10, 10, diag([2 3]))
+lsqr converged at iteration 2 to a solution with relative residual 0.089.
+
+x =
+
+   0.666666666666706
+   0.083333333333356
+
+@@CLASS double [2 1]
+@@END
+@@CASE 238|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; m_sv = diag([2 3]); x = lsqr(R_sv, r_sv, 1e-10, 10, m_sv, eye(2))
+lsqr converged at iteration 2 to a solution with relative residual 0.089.
+
+x =
+
+   0.666666666666706
+   0.083333333333356
+
+@@CLASS double [2 1]
+@@END
+@@CASE 239|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, r_sv, 1e-10, 10, [], [], [1; 1])
+lsqr converged at iteration 2 to a solution with relative residual 0.089.
+
+x =
+
+   0.666666666666680
+   0.083333333333350
+
+@@CLASS double [2 1]
+@@END
+@@CASE 240|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; op_sv = {R_sv, R_sv'}; af_sv = @(v, t) op_sv{1 + strcmp(t, 'transp')} * v; x = lsqr(af_sv, r_sv)
+lsqr converged at iteration 2 to a solution with relative residual 0.089.
+
+x =
+
+   0.666666666666665
+   0.083333333333330
+
+@@CLASS double [2 1]
+@@END
+@@CASE 241|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; op_sv = {R_sv, R_sv'}; af_sv = @(v, t) op_sv{1 + strcmp(t, 'transp')} * v; [~, ~, ~, x] = lsqr(af_sv, r_sv)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 242|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, zeros(3, 1))
+The right hand side vector is all zero so lsqr
+returned an all zero solution without iterating.
+
+x =
+
+     0
+     0
+
+@@CLASS double [2 1]
+@@END
+@@CASE 243|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv', [1; 2])
+lsqr converged at iteration 2 to a solution with relative residual 2.1e-14.
+
+x =
+
+   0.833333333333333
+   0.333333333333330
+  -0.166666666666671
+
+@@CLASS double [3 1]
+@@END
+@@CASE 244|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(@(v) R_sv * v, r_sv)
+ERR user supplied function ==> @(v)R_sv*v failed with the following error:
+ 
+ Too many input arguments.
+@@END
+@@CASE 245|R_sv = [1 2; 3 4; 5 6]; r_sv = [1; 2; 4]; x = lsqr(R_sv, [1; 2])
+ERR Right hand side must be a column vector of length 3.
+@@END
+@@CASE 246|x = lsqr()
+ERR Not enough input arguments.
+@@END

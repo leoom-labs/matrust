@@ -1,0 +1,1062 @@
+@@CASE 1|x = bitget(5, 1:4)
+
+x =
+
+     1     0     1     0
+
+@@CLASS double [1 4]
+@@END
+@@CASE 2|x = bitget(uint8(255), 8)
+
+x =
+
+    1
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 3|x = bitget([1 2 3], 2)
+
+x =
+
+     0     1     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 4|x = bitget(int8(-1), 8)
+
+x =
+
+    1
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 5|x = bitget(2^52, 53)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 6|x = bitget(5, 0)
+ERR The BIT input is out of range for the datatype specified.
+@@END
+@@CASE 7|x = bitget(uint8(1), 9)
+ERR The BIT input is out of range for the datatype specified.
+@@END
+@@CASE 8|x = bitget(1.5, 1)
+ERR Double inputs must have integer values in the range of ASSUMEDTYPE.
+@@END
+@@CASE 9|x = bitset(0, 3)
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 10|x = bitset(uint8(0), 1:3)
+
+x =
+
+    1    2    4
+
+@@CLASS uint8 [1 3]
+@@END
+@@CASE 11|x = bitset(7, 1, 0)
+
+x =
+
+     6
+
+@@CLASS double [1 1]
+@@END
+@@CASE 12|x = bitset(int8(5), 8, 1)
+
+x =
+
+ -123
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 13|x = bitset([1 2 4], 1)
+
+x =
+
+     1     3     5
+
+@@CLASS double [1 3]
+@@END
+@@CASE 14|x = bitset(uint8(1), 9)
+ERR The BIT input is out of range for the datatype specified.
+@@END
+@@CASE 15|x = bitset(-1, 1)
+ERR Double inputs must have integer values in the range of ASSUMEDTYPE.
+@@END
+@@CASE 16|x = swapbytes(uint16(1))
+
+x =
+
+    256
+
+@@CLASS uint16 [1 1]
+@@END
+@@CASE 17|x = swapbytes(uint32([1 256]))
+
+x =
+
+    16777216       65536
+
+@@CLASS uint32 [1 2]
+@@END
+@@CASE 18|x = swapbytes(int16(-2))
+
+x =
+
+   -257
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 19|x = swapbytes(uint8(5))
+
+x =
+
+    5
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 20|x = swapbytes(single(1))
+
+x =
+
+  4.6006e-41
+
+@@CLASS single [1 1]
+@@END
+@@CASE 21|x = swapbytes(1)
+
+x =
+
+  3.0387e-319
+
+@@CLASS double [1 1]
+@@END
+@@CASE 22|x = swapbytes('a')
+ERR The first input argument must be a full, non-complex numeric value.
+@@END
+@@CASE 23|x = num2hex(1)
+
+x =
+
+3ff0000000000000
+
+@@CLASS char [1 16]
+@@END
+@@CASE 24|x = num2hex([0 -1 Inf NaN])
+
+x =
+
+0000000000000000
+bff0000000000000
+7ff0000000000000
+fff8000000000000
+
+@@CLASS char [4 16]
+@@END
+@@CASE 25|x = num2hex(single(1))
+
+x =
+
+3f800000
+
+@@CLASS char [1 8]
+@@END
+@@CASE 26|x = num2hex(-0)
+
+x =
+
+8000000000000000
+
+@@CLASS char [1 16]
+@@END
+@@CASE 27|x = num2hex(realmin)
+
+x =
+
+0010000000000000
+
+@@CLASS char [1 16]
+@@END
+@@CASE 28|x = num2hex(int8(1))
+ERR Inputs must be floating point, and may not be of class int8.
+@@END
+@@CASE 29|x = num2hex(1i)
+ERR Input must be real.
+@@END
+@@CASE 30|x = hex2num('3ff0000000000000')
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 31|x = hex2num({'4000000000000000', 'c008000000000000'})
+
+x =
+
+     2
+    -3
+
+@@CLASS double [2 1]
+@@END
+@@CASE 32|x = hex2num('3ff')
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 33|x = hex2num(['3ff0000000000000'; '7ff0000000000000'])
+
+x =
+
+     1
+   Inf
+
+@@CLASS double [2 1]
+@@END
+@@CASE 34|x = hex2num('fff8000000000000')
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 35|x = hex2num('zz')
+ERR Input string to hex2num should have just 0-9, a-f, or A-F.
+@@END
+@@CASE 36|x = flipdim([1 2 3], 2)
+
+x =
+
+     3     2     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 37|x = flipdim([1 2; 3 4], 1)
+
+x =
+
+     3     4
+     1     2
+
+@@CLASS double [2 2]
+@@END
+@@CASE 38|x = flipdim([1 2; 3 4], 2)
+
+x =
+
+     2     1
+     4     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 39|x = flipdim([1 2 3], 1)
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 40|x = flipdim([1 2; 3 4], 3)
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 41|x = flipdim([1 2 3])
+ERR Requires two arguments.
+@@END
+@@CASE 42|x = shiftdim([1 2; 3 4], 1)
+
+x =
+
+     1     3
+     2     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 43|x = shiftdim(reshape(1:6, [1 1 6]))
+
+x =
+
+     1
+     2
+     3
+     4
+     5
+     6
+
+@@CLASS double [6 1]
+@@END
+@@CASE 44|[b, n] = shiftdim(reshape(1:6, [1 1 6])); x = n
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 45|x = shiftdim([1 2 3], -1)
+
+x(:,:,1) =
+
+     1
+
+
+x(:,:,2) =
+
+     2
+
+
+x(:,:,3) =
+
+     3
+
+@@CLASS double [1 1 3]
+@@END
+@@CASE 46|x = size(shiftdim([1 2; 3 4], -1))
+
+x =
+
+     1     2     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 47|x = shiftdim([1 2 3])
+
+x =
+
+     1
+     2
+     3
+
+@@CLASS double [3 1]
+@@END
+@@CASE 48|x = shiftdim(5, 1)
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 49|x = size(shiftdim(reshape(1:24, [2 3 4]), 1))
+
+x =
+
+     3     4     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 50|x = permute([1 2; 3 4], [2 1])
+
+x =
+
+     1     3
+     2     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 51|x = permute([1 2 3; 4 5 6], [1 2])
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 52|x = permute([1 2 3], [2 1])
+
+x =
+
+     1
+     2
+     3
+
+@@CLASS double [3 1]
+@@END
+@@CASE 53|x = permute(reshape(1:8, [2 2 2]), [3 1 2])
+
+x(:,:,1) =
+
+     1     2
+     5     6
+
+
+x(:,:,2) =
+
+     3     4
+     7     8
+
+@@CLASS double [2 2 2]
+@@END
+@@CASE 54|x = permute([1 2], [1 1])
+ERR ORDER cannot contain repeated permutation indices.
+@@END
+@@CASE 55|x = permute([1 2], 1)
+ERR ORDER must have at least N elements for an N-D array.
+@@END
+@@CASE 56|x = ipermute([1 2; 3 4], [2 1])
+
+x =
+
+     1     3
+     2     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 57|x = ipermute([1 2 3; 4 5 6], [1 2])
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 58|x = ipermute(permute(reshape(1:8, [2 2 2]), [3 1 2]), [3 1 2])
+
+x(:,:,1) =
+
+     1     3
+     2     4
+
+
+x(:,:,2) =
+
+     5     7
+     6     8
+
+@@CLASS double [2 2 2]
+@@END
+@@CASE 59|x = ipermute([1 2], [1 3])
+ERR ORDER contains an invalid permutation index.
+@@END
+@@CASE 60|x = filter2([1 1; 1 1], magic(3))
+
+x =
+
+    17    19    13
+    21    23     9
+    13    11     2
+
+@@CLASS double [3 3]
+@@END
+@@CASE 61|x = filter2([1 2 1], [1 2 3 4])
+
+x =
+
+     4     8    12    11
+
+@@CLASS double [1 4]
+@@END
+@@CASE 62|x = filter2([1 1; 1 1], magic(3), 'valid')
+
+x =
+
+    17    19
+    21    23
+
+@@CLASS double [2 2]
+@@END
+@@CASE 63|x = filter2([1 1; 1 1], magic(3), 'full')
+
+x =
+
+     8     9     7     6
+    11    17    19    13
+     7    21    23     9
+     4    13    11     2
+
+@@CLASS double [4 4]
+@@END
+@@CASE 64|x = filter2([1 1; 1 1], magic(3), 'same')
+
+x =
+
+    17    19    13
+    21    23     9
+    13    11     2
+
+@@CLASS double [3 3]
+@@END
+@@CASE 65|x = filter2([0 1; 2 0], [1 2; 3 4])
+
+x =
+
+     8     8
+     4     0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 66|x = filter2(ones(3), [1 2])
+
+x =
+
+     3     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 67|x = filter2([1 1], magic(3), 'bogus')
+ERR SHAPE must be 'full', 'same', or 'valid'.
+@@END
+@@CASE 68|x = interpft([1 2 3 2], 8)
+
+x =
+
+  Columns 1 through 5
+
+   1.000000000000000   1.292893218813453   2.000000000000000   2.707106781186548   3.000000000000000
+
+  Columns 6 through 8
+
+   2.707106781186548   2.000000000000000   1.292893218813453
+
+@@CLASS double [1 8]
+@@END
+@@CASE 69|x = interpft([1; 0; -1; 0], 6)
+
+x =
+
+   1.000000000000000
+   0.500000000000000
+  -0.500000000000000
+  -1.000000000000000
+  -0.500000000000000
+   0.500000000000000
+
+@@CLASS double [6 1]
+@@END
+@@CASE 70|x = interpft([1 2; 3 4; 5 6], 6)
+
+x =
+
+   1.000000000000000   2.000000000000000
+   1.000000000000000   2.000000000000000
+   3.000000000000000   4.000000000000000
+   5.000000000000000   6.000000000000000
+   5.000000000000000   6.000000000000000
+   3.000000000000000   4.000000000000000
+
+@@CLASS double [6 2]
+@@END
+@@CASE 71|x = interpft([1 2 3; 4 5 6], 4, 2)
+
+x =
+
+   1.000000000000000   1.422649730810375   3.000000000000000   2.577350269189626
+   4.000000000000000   4.422649730810375   6.000000000000000   5.577350269189626
+
+@@CLASS double [2 4]
+@@END
+@@CASE 72|x = interpft([1 2 3 4], 2)
+
+x =
+
+     1     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 73|x = interpft([], 4)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 74|x = interpft([1 2 3], 0)
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 75|x = interp1q([1; 2; 3], [10; 20; 30], [1.5; 2.5])
+
+x =
+
+    15
+    25
+
+@@CLASS double [2 1]
+@@END
+@@CASE 76|x = interp1q([1; 2; 3], [10 1; 20 2; 30 3], [1.5; 2.5])
+
+x =
+
+  15.000000000000000   1.500000000000000
+  25.000000000000000   2.500000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 77|x = interp1q([1; 2; 3], [10; 20; 30], [0; 4])
+
+x =
+
+   NaN
+   NaN
+
+@@CLASS double [2 1]
+@@END
+@@CASE 78|x = interp1q([1; 2; 3], [10; 20; 30], 2)
+
+x =
+
+    20
+
+@@CLASS double [1 1]
+@@END
+@@CASE 79|x = interp1q([1 2 3], [10 20 30], 1.5)
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 80|x = interp1q([1; 2; 3], [10; 20; 30], NaN)
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 81|x = rectint([0 0 2 2], [1 1 2 2])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 82|x = rectint([0 0 1 1], [2 2 1 1])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 83|x = rectint([0 0 2 2; 1 1 1 1], [1 1 2 2; 0 0 4 4])
+
+x =
+
+     1     4
+     1     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 84|x = rectint([0 0 2 2], [0 0 2 2])
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 85|x = rectint([0 0 2 2], [2 0 1 1])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 86|x = rectint([0 0 2], [1 1 2 2])
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 87|x = polyarea([0 1 1 0], [0 0 1 1])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 88|x = polyarea([0 1 0], [0 0 1])
+
+x =
+
+   0.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 89|x = polyarea([0 0 1 1], [0 1 1 0])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 90|x = polyarea([0 2; 1 3; 0 2], [0 0; 0 0; 1 1])
+
+x =
+
+   0.500000000000000   0.500000000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 91|x = polyarea([0 2 1; 1 3 1; 0 2 2], [0 0 0; 0 0 1; 1 1 0], 2)
+
+x =
+
+     0
+     1
+     1
+
+@@CLASS double [3 1]
+@@END
+@@CASE 92|x = polyarea([], [])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 93|x = polyarea([0 1 2], [0 1])
+ERR X and Y must be the same size.
+@@END
+@@CASE 94|x = inpolygon(0.5, 0.5, [0 1 1 0], [0 0 1 1])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 95|x = inpolygon([0.5 2 1 0], [0.5 2 0.5 0], [0 1 1 0], [0 0 1 1])
+
+x =
+
+     1     0     1     1
+
+@@CLASS logical [1 4]
+@@END
+@@CASE 96|[in, on] = inpolygon([0.5 1 0], [0.5 0.5 0], [0 1 1 0], [0 0 1 1]); x = [in; on]
+
+x =
+
+     1     1     1
+     0     1     1
+
+@@CLASS logical [2 3]
+@@END
+@@CASE 97|x = inpolygon([0.5; 1.5], [0.5; 0.5], [0 2 2 0 0 NaN 1 1.6 1.6 1], [0 0 1 1 0 NaN 0.2 0.2 0.8 0.8])
+
+x =
+
+     1
+     1
+
+@@CLASS logical [2 1]
+@@END
+@@CASE 98|x = inpolygon(NaN, 0.5, [0 1 1 0], [0 0 1 1])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 99|x = inpolygon([], [], [0 1 1 0], [0 0 1 1])
+
+x =
+
+     []
+
+@@CLASS logical [0 0]
+@@END
+@@CASE 100|x = inpolygon([1 2], 1, [0 1 1 0], [0 0 1 1])
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 101|x = peaks(3)
+
+x =
+
+   0.000066712802967  -0.244954040574350  -0.000005864187873
+  -0.036506204613196   0.981011843123846   0.033124949924308
+   0.000032235359613   0.299871028226235   0.000041029727458
+
+@@CLASS double [3 3]
+@@END
+@@CASE 102|x = size(peaks)
+
+x =
+
+    49    49
+
+@@CLASS double [1 2]
+@@END
+@@CASE 103|x = peaks(0.5, 1)
+
+x =
+
+   2.934447607304790
+
+@@CLASS double [1 1]
+@@END
+@@CASE 104|x = peaks([0 1], [0 1])
+
+x =
+
+   0.981011843123846   2.433789115926000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 105|[X, Y, Z] = peaks(2); x = X
+
+x =
+
+    -3     3
+    -3     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 106|x = peaks(1)
+
+x =
+
+   4.1030e-05
+
+@@CLASS double [1 1]
+@@END
+@@CASE 107|x = peaks(0)
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 108|x = hsv2rgb([0 1 1])
+
+x =
+
+     1     0     0
+
+@@CLASS double [1 3]
+@@END
+@@CASE 109|x = hsv2rgb([1/3 1 1; 2/3 0.5 0.5; 0 0 0.7])
+
+x =
+
+                   0   1.000000000000000                   0
+   0.250000000000000   0.250000000000000   0.500000000000000
+   0.700000000000000   0.700000000000000   0.700000000000000
+
+@@CLASS double [3 3]
+@@END
+@@CASE 110|x = hsv2rgb([0.1 0.2 0.3])
+
+x =
+
+   0.300000000000000   0.276000000000000   0.240000000000000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 111|x = hsv2rgb(1, 1, 1)
+
+x(:,:,1) =
+
+     1
+
+
+x(:,:,2) =
+
+     0
+
+
+x(:,:,3) =
+
+     0
+
+@@CLASS double [1 1 3]
+@@END
+@@CASE 112|x = size(hsv2rgb(rand(2, 2, 3)))
+
+x =
+
+     2     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 113|x = hsv2rgb([0 1])
+ERR MAP must be a Mx3 array.
+@@END
+@@CASE 114|x = rgb2hsv([1 0 0])
+
+x =
+
+     0     1     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 115|x = rgb2hsv([0 1 0; 0 0 1; 0.5 0.5 0.5])
+
+x =
+
+   0.333333333333333   1.000000000000000   1.000000000000000
+   0.666666666666667   1.000000000000000   1.000000000000000
+                   0                   0   0.500000000000000
+
+@@CLASS double [3 3]
+@@END
+@@CASE 116|x = rgb2hsv([0.2 0.4 0.6])
+
+x =
+
+   0.583333333333333   0.666666666666667   0.600000000000000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 117|x = rgb2hsv([0 0 0])
+
+x =
+
+     0     0     0
+
+@@CLASS double [1 3]
+@@END
+@@CASE 118|x = rgb2hsv(uint8([255 128 0]))
+ERR Expected M to be one of these types:
+
+double
+
+Instead its type was uint8.
+@@END
+@@CASE 119|x = rgb2hsv([1 0])
+ERR MAP must be a Mx3 array.
+@@END
+@@CASE 120|x = atan2d(1, 1)
+
+x =
+
+    45
+
+@@CLASS double [1 1]
+@@END
+@@CASE 121|x = atan2d([1 -1 0 0], [0 0 -1 1])
+
+x =
+
+    90   -90   180     0
+
+@@CLASS double [1 4]
+@@END
+@@CASE 122|x = atan2d(0, -0)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 123|x = atan2d([1; 2], 1)
+
+x =
+
+   45.0000
+   63.4349
+
+@@CLASS double [2 1]
+@@END
+@@CASE 124|x = atan2d(Inf, Inf)
+
+x =
+
+    45
+
+@@CLASS double [1 1]
+@@END
+@@CASE 125|x = atan2d(NaN, 1)
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 126|x = atan2d(single(1), 1)
+
+x =
+
+    45
+
+@@CLASS single [1 1]
+@@END
+@@CASE 127|x = atan2d(1i, 1)
+ERR Inputs must be real.
+@@END
+@@CASE 128|x = full(sparse([1 0; 0 2]))
+
+x =
+
+     1     0
+     0     2
+
+@@CLASS double [2 2]
+@@END
+@@CASE 129|x = full([1 2 3])
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 130|x = full(sparse(3, 2))
+
+x =
+
+     0     0
+     0     0
+     0     0
+
+@@CLASS double [3 2]
+@@END
+@@CASE 131|x = full(sparse([true false]))
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 132|x = full('ab')
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 133|x = class(full(sparse(2)))
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 134|x = full({1})
+ERR Undefined function 'full' for input arguments of type 'cell'.
+@@END

@@ -1,0 +1,26 @@
+name: Benchmark result
+description: >-
+  Share MatRust timings made with `matrust bench --share`.
+  Do not add timings from MATLAB.
+title: "Benchmark: "
+labels: ["benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste the text that `matrust bench --share FILE.json` printed. It is also saved next to
+        your result file as `FILE.json.share.md`. What it holds: docs/privacy.md in this repository.
+  - type: textarea
+    id: result
+    attributes:
+      label: Result
+      description: The text from the .share.md file. You may remove anything; please do not add MATLAB timings.
+    validations:
+      required: true
+  - type: checkboxes
+    id: public
+    attributes:
+      label: This issue is public
+      options:
+        - label: I removed anything I do not want public
+          required: true

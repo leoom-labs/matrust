@@ -1,0 +1,1 @@
+<ConfigSet><P Name="Solver">FixedStepDiscrete</P><P Name="FixedStep">.25</P><P Name="StartTime">0</P><P Name="StopTime">1</P><P Name="SolverMode">SingleTasking</P><P Name="ConcurrentTasks">off</P><P Name="LoadExternalInput">off</P><P Name="LoadInitialState">off</P></ConfigSet>

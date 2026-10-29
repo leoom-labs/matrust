@@ -1,0 +1,213 @@
+# lang3: bsxfun builtin which what isobject ismethod iskeyword genvarname namelengthmax clearvars functions
+# localfunctions dbstack isequalwithequalnans bitmax inline mexext maxNumCompThreads usejava isstudent diary
+# bsxfun
+x = bsxfun(@plus, [1 2 3], [10; 20])
+x = bsxfun(@times, [1 2; 3 4], [10 100])
+x = bsxfun(@max, [1 5 3], [2; 4])
+x = bsxfun(@eq, [1 2 3], [1; 2])
+x = bsxfun(@(a, b) a - 2*b, [1 2 3], [1; 2])
+x = bsxfun(@minus, [1 2 3; 4 5 6], [1; 2])
+x = bsxfun(@rdivide, [1 0 -1], 0)
+x = bsxfun(@max, [NaN 1], [2; NaN])
+x = bsxfun(@and, [true false], [true; false])
+x = bsxfun(@plus, int8([100 120]), int8(10))
+x = bsxfun(@plus, zeros(0, 3), [1 2 3])
+x = bsxfun(@plus, 5, 6)
+x = bsxfun(@minus, [1 2 3], [1 2])
+x = bsxfun('plus', 1, 2)
+x = bsxfun(@plus, 1)
+x = bsxfun(@(a, b) [a b], [1 2], [3; 4])
+# builtin
+x = builtin('sum', [1 2 3])
+x = builtin('size', ones(2, 3))
+[~, x] = builtin('max', [3 9 2])
+x = builtin('sin', 0)
+x = evalc('builtin(''disp'', 5)')
+x = builtin('mean', [1 2 3])
+x = builtin('no_such_zz_fn', 1)
+x = builtin(@sum, 1)
+x = builtin()
+# which
+x = which('zz_nonexistent_fn')
+x = evalc('which zz_nonexistent_fn')
+x = which('zz_nonexistent_fn', '-all')
+x = which('sin', '-all'); x = class(x)
+x = class(which('sin'))
+x = isempty(which('ismethod'))
+[~, l3_n, l3_e] = fileparts(which('ismethod')); x = [l3_n l3_e]
+l3_wv = 1; x = which('l3_wv')
+l3_wv = 1; x = evalc('which l3_wv')
+l3_wv = 1; x = which('l3_wv', '-all')
+fid = fopen('h_l3_w.m', 'w'); fprintf(fid, 'function y = h_l3_w()\ny = 1;\n'); fclose(fid); rehash; [~, l3_n, l3_e] = fileparts(which('h_l3_w')); x = [l3_n l3_e]; delete('h_l3_w.m'); clear h_l3_w; x
+x = which(5)
+x = which()
+# what
+x = fieldnames(what(tempdir))'
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); fclose(fopen(fullfile(l3_d, 'l3b.m'), 'w')); fclose(fopen(fullfile(l3_d, 'l3a.m'), 'w')); fclose(fopen(fullfile(l3_d, 'l3c.txt'), 'w')); l3_y = 1; save(fullfile(l3_d, 'l3m.mat'), 'l3_y'); l3_w = what(l3_d); rmdir(l3_d, 's'); x = [l3_w.m; l3_w.mat]'
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); mkdir(fullfile(l3_d, '@l3cls')); mkdir(fullfile(l3_d, '+l3pkg')); l3_w = what(l3_d); rmdir(l3_d, 's'); x = [l3_w.classes; l3_w.packages]'
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_w = what(l3_d); rmdir(l3_d, 's'); x = size(l3_w)
+x = what('zz_nonexistent_dir_l3')
+x = what(5)
+x = what('a', 'b')
+# isobject
+x = isobject(1)
+x = isobject(containers.Map)
+x = isobject(struct('a', 1))
+x = isobject(inline('t + 1'))
+x = isobject(@sin)
+x = isobject(MException('a:b', 'c'))
+x = isobject()
+x = isobject(1, 2)
+# ismethod
+x = ismethod(containers.Map, 'keys')
+x = ismethod(containers.Map, 'zz')
+x = ismethod(1, 'plus')
+x = ismethod(inline('t'), 'formula')
+x = ismethod(MException('a:b', 'c'), 'throw')
+x = ismethod('containers.Map', 'keys')
+x = ismethod(containers.Map, 5)
+x = ismethod(containers.Map)
+# iskeyword
+x = iskeyword('for')
+x = iskeyword('sin')
+x = iskeyword('FOR')
+x = [iskeyword('spmd') iskeyword('parfor') iskeyword('classdef') iskeyword('methods') iskeyword('end') iskeyword('otherwise')]
+x = iskeyword('')
+x = iskeyword
+x = iskeyword({'for', 'zz'})
+x = iskeyword(5)
+x = iskeyword('for', 'if')
+# genvarname
+x = genvarname('my var')
+x = genvarname('1abc')
+x = genvarname('for')
+x = genvarname('a-b.c')
+x = genvarname('')
+x = genvarname('a', {'a', 'a1'})
+x = genvarname('x', 'x')
+x = genvarname({'a', 'a', 'b'})
+x = numel(genvarname(repmat('a', 1, 70)))
+x = genvarname(5)
+# namelengthmax
+x = namelengthmax
+x = namelengthmax(1)
+# clearvars
+cv_l3a = 1; cv_l3b = 2; clearvars cv_l3a; x = [exist('cv_l3a') exist('cv_l3b')]
+cv_l3a = 1; cv_l3ab = 2; cv_l3c = 3; clearvars cv_l3a*; x = [exist('cv_l3a') exist('cv_l3ab') exist('cv_l3c')]
+cv_l3d1 = 1; cv_l3d2 = 2; cv_l3e = 3; clearvars cv_l3d* -except cv_l3d2; x = [exist('cv_l3d1') exist('cv_l3d2') exist('cv_l3e')]
+cv_l3r1 = 1; cv_l3r12 = 2; clearvars -regexp ^cv_l3r\d$; x = [exist('cv_l3r1') exist('cv_l3r12')]
+cv_l3q1 = 1; cv_l3q2 = 2; clearvars -regexp ^cv_l3q -except cv_l3q2; x = [exist('cv_l3q1') exist('cv_l3q2')]
+cv_l3f = 1; clearvars('cv_l3f'); x = exist('cv_l3f')
+x = 5; clearvars x; x = exist('x')
+clearvars cv_l3zz_nonexistent; x = 1
+global cv_l3g; cv_l3g = 4; clearvars cv_l3g; t1 = exist('cv_l3g'); global cv_l3g; x = [t1 cv_l3g]; clear global cv_l3g; x
+global cv_l3h; cv_l3h = 4; clearvars -global cv_l3h; t1 = exist('cv_l3h'); global cv_l3h; x = {t1, cv_l3h}; clear global cv_l3h; x
+x = 1; clearvars(5)
+# functions
+x = functions(@sin)
+x = functions(@(t) t + 1)
+l3_k = 3; l3_f = @(t) t + l3_k; l3_fi = functions(l3_f); x = l3_fi.workspace{1}
+l3_fi = functions(@(t) t); x = l3_fi.workspace{1}
+l3_fi = functions(@(t) t); x = fieldnames(l3_fi)'
+l3_fi = functions(@ismethod); x = {l3_fi.function, l3_fi.type}
+x = functions(@zz_l3_nonexistent_fn)
+fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_f = h_l3_fh(); l3_fi = functions(l3_f); x = {l3_fi.function, l3_fi.type, l3_f(4)}; delete('h_l3_fh.m'); clear h_l3_fh; x
+fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = fieldnames(l3_fi)'; delete('h_l3_fh.m'); clear h_l3_fh; x
+fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = l3_fi.parentage; delete('h_l3_fh.m'); clear h_l3_fh; x
+fid = fopen('h_l3_nf.m', 'w'); fprintf(fid, 'function f = h_l3_nf()\nk = 5;\nf = @l3nest;\nfunction y = l3nest(t)\ny = t + k;\nend\nend\n'); fclose(fid); rehash; l3_f = h_l3_nf(); l3_fi = functions(l3_f); x = {l3_fi.function, l3_fi.type, l3_f(1)}; delete('h_l3_nf.m'); clear h_l3_nf; x
+fid = fopen('h_l3_nf.m', 'w'); fprintf(fid, 'function f = h_l3_nf()\nk = 5;\nf = @l3nest;\nfunction y = l3nest(t)\ny = t + k;\nend\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_nf()); x = fieldnames(l3_fi)'; delete('h_l3_nf.m'); clear h_l3_nf; x
+x = functions(5)
+x = functions(@sin, 1)
+# localfunctions
+fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; x = h_l3_lf(); delete('h_l3_lf.m'); clear h_l3_lf; x
+fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; l3_c = h_l3_lf(); x = cellfun(@func2str, l3_c, 'UniformOutput', false); delete('h_l3_lf.m'); clear h_l3_lf; x
+fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; l3_c = h_l3_lf(); x = [l3_c{1}() l3_c{2}()]; delete('h_l3_lf.m'); clear h_l3_lf; x
+fid = fopen('h_l3_lf0.m', 'w'); fprintf(fid, 'function y = h_l3_lf0()\ny = localfunctions;\n'); fclose(fid); rehash; x = h_l3_lf0(); delete('h_l3_lf0.m'); clear h_l3_lf0; x
+x = localfunctions
+x = localfunctions(1)
+# dbstack
+fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = {l3_st(1:2).name}; delete('h_l3_ds.m'); clear h_l3_ds; x
+fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = [l3_st(1:2).line]; delete('h_l3_ds.m'); clear h_l3_ds; x
+fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = [{l3_st(1).file}, fieldnames(l3_st)']; delete('h_l3_ds.m'); clear h_l3_ds; x
+fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(1); x = {l3_st(1).name, l3_st(1).line}; delete('h_l3_ds.m'); clear h_l3_ds; x
+fid = fopen('h_l3_dk.m', 'w'); fprintf(fid, 'function [st, k] = h_l3_dk()\n[st, k] = dbstack;\n'); fclose(fid); rehash; [l3_st, x] = h_l3_dk(); delete('h_l3_dk.m'); clear h_l3_dk; x
+x = dbstack('zz')
+# isequalwithequalnans
+x = isequalwithequalnans([1 NaN], [1 NaN])
+x = isequalwithequalnans([1 NaN], [1 2])
+x = isequalwithequalnans(NaN, NaN, NaN)
+x = isequalwithequalnans(struct('a', NaN), struct('a', NaN))
+x = isequalwithequalnans({NaN, 'a'}, {NaN, 'a'})
+x = isequalwithequalnans([1 2], [1 2]')
+x = isequalwithequalnans(int8(1), 1)
+x = isequalwithequalnans(1)
+# bitmax
+x = bitmax
+x = bitmax('double')
+# inline
+x = inline('t^2 + 1')
+x = inline('a*t + b', 't', 'a', 'b')
+l3_f = inline('a*x + b'); x = argnames(l3_f)
+l3_f = inline('pi*r^2 + sin(r)'); x = argnames(l3_f)
+l3_f = inline('3'); x = argnames(l3_f)
+l3_f = inline('x^2 + P1*x', 1); x = argnames(l3_f)
+l3_f = inline('t^2', 't'); x = l3_f(3)
+l3_f = inline('a*t + b', 't', 'a', 'b'); x = l3_f(2, 3, 4)
+l3_f = inline('t + 1'); x = feval(l3_f, 2)
+l3_f = inline('sin(t)'); x = formula(l3_f)
+l3_f = inline('t^2 + t*u'); x = vectorize(l3_f)
+l3_f = inline('t^2 + t*u'); x = formula(vectorize(l3_f))
+l3_f = inline('t^2'); x = char(l3_f)
+l3_f = inline('t^2 + u'); x = nargin(l3_f)
+l3_f = inline('t^2'); x = l3_f([1 2 3])
+l3_f = inline('t + 1'); x = l3_f(1, 2)
+x = inline(5)
+x = inline()
+# mexext
+l3_ma = mexext('all'); x = [{l3_ma.arch}; {l3_ma.ext}]
+x = mexext('zz')
+# maxNumCompThreads
+lastwarn(''); l3_t = maxNumCompThreads; [~, x] = lastwarn
+l3_old = maxNumCompThreads(1); x = maxNumCompThreads; maxNumCompThreads('automatic'); x
+x = maxNumCompThreads(0)
+x = maxNumCompThreads('zz')
+# usejava
+x = usejava('zz')
+x = usejava()
+x = usejava(5)
+# isstudent
+x = isstudent(1)
+# diary
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); disp(42); fprintf('abc\n'); diary off; x = exist(l3_df, 'file'); if x, x = fileread(l3_df); end; rmdir(l3_d, 's'); x
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); x = get(0, 'Diary'); diary off; rmdir(l3_d, 's'); x
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); diary; x = get(0, 'Diary'); diary off; rmdir(l3_d, 's'); x
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); diary off; diary on; t1 = get(0, 'Diary'); diary off; [~, l3_n, l3_e] = fileparts(get(0, 'DiaryFile')); x = {t1, [l3_n l3_e]}; rmdir(l3_d, 's'); x
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); fid = fopen(l3_df, 'w'); fprintf(fid, 'old\n'); fclose(fid); diary(l3_df); disp(7); diary off; x = fileread(l3_df); rmdir(l3_d, 's'); x
+x = get(0, 'Diary')
+x = 1; diary(5)
+x = 1; diary('a', 'b')
+# clearvars -except and a bare -regexp clear every other variable in the shared workspace: keep them last
+cv_l3k = 5; clearvars -except cv_l3k; x = cv_l3k
+cv_l3s = 1; clearvars -regexp; x = exist('cv_l3s')
+# ENV - compare class and size only
+x = which('sin')
+x = evalc('which sin')
+x = which('ismethod')
+x = which('for')
+x = numel(which('plus', '-all'))
+fid = fopen('h_l3_w.m', 'w'); fprintf(fid, 'function y = h_l3_w()\ny = 1;\n'); fclose(fid); rehash; x = which('h_l3_w'); delete('h_l3_w.m'); clear h_l3_w; x
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_w = what(l3_d); rmdir(l3_d, 's'); x = l3_w.path
+l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); fclose(fopen(fullfile(l3_d, 'l3a.m'), 'w')); x = evalc('what(l3_d)'); rmdir(l3_d, 's'); x
+x = functions(@ismethod)
+fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = l3_fi.file; delete('h_l3_fh.m'); clear h_l3_fh; x
+fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = dbstack(''-completenames'');\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = l3_st(1).file; delete('h_l3_ds.m'); clear h_l3_ds; x
+fid = fopen('h_l3_dp.m', 'w'); fprintf(fid, 'function y = h_l3_dp()\ny = evalc(''dbstack'');\n'); fclose(fid); rehash; x = h_l3_dp(); delete('h_l3_dp.m'); clear h_l3_dp; x
+x = numel(dbstack)
+x = get(0, 'DiaryFile')
+x = mexext
+x = maxNumCompThreads
+x = usejava('jvm')
+x = usejava('desktop')
+x = usejava('awt')
+x = usejava('swing')
+x = isstudent

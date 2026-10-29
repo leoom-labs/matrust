@@ -1,0 +1,1606 @@
+@@CASE 1|x = evalc('disp(5)')
+
+x =
+
+     5
+
+
+
+@@CLASS char [1 8]
+@@END
+@@CASE 2|x = evalc('y1 = 3')
+
+x =
+
+
+y1 =
+
+     3
+
+
+
+@@CLASS char [1 15]
+@@END
+@@CASE 3|x = evalc('1 + 1;')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 4|x = evalc('fprintf(''a\nb'')')
+
+x =
+
+a
+b
+
+@@CLASS char [1 3]
+@@END
+@@CASE 5|x = evalc('error(''boom'')')
+ERR boom
+@@END
+@@CASE 6|x = evalc('undefined_zz_fn(1)')
+ERR Undefined function 'undefined_zz_fn' for input arguments of type 'double'.
+@@END
+@@CASE 7|[t1, x] = evalc('size([1 2 3])')
+
+t1 =
+
+     ''
+
+
+
+x =
+
+     1     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 8|x = evalc()
+ERR Not enough input arguments.
+@@END
+@@CASE 9|x = evalin('base', '1 + 2')
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 10|y0 = 7; x = evalin('base', 'y0')
+
+x =
+
+     7
+
+@@CLASS double [1 1]
+@@END
+@@CASE 11|x = evalin('caller', '5')
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 12|x = evalin('base', 'undefined_zz_var')
+ERR Undefined function or variable 'undefined_zz_var'.
+@@END
+@@CASE 13|x = evalin('base', 'undefined_zz_var', '-1')
+
+x =
+
+    -1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 14|x = evalin('nowhere', '1')
+ERR Unknown command option.
+@@END
+@@CASE 15|x = 1; evalin('base', 'ev_set = 4;'); x = ev_set
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 16|fid = fopen('h_ev.m', 'w'); fprintf(fid, 'function y = h_ev()\ny = evalin(''caller'', ''q_ev'');\n'); fclose(fid); rehash; q_ev = 11; x = h_ev(); delete('h_ev.m'); clear h_ev; x
+
+x =
+
+    11
+
+@@CLASS double [1 1]
+@@END
+@@CASE 17|fid = fopen('h_ev2.m', 'w'); fprintf(fid, 'function y = h_ev2()\nq_ev2 = 1;\ny = evalin(''caller'', ''q_ev2'');\n'); fclose(fid); rehash; clear q_ev2; try, x = h_ev2(); catch e2, x = e2.message; end; delete('h_ev2.m'); clear h_ev2; x
+
+x =
+
+Undefined function or variable 'q_ev2'.
+
+@@CLASS char [1 39]
+@@END
+@@CASE 18|assignin('base', 'aa1', 5); x = aa1
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 19|x = 1; assignin('base', 'x', [1 2])
+@@CLASS double [1 2]
+@@END
+@@CASE 20|fid = fopen('h_as.m', 'w'); fprintf(fid, 'function h_as()\nassignin(''caller'', ''bb1'', 9);\n'); fclose(fid); rehash; h_as(); x = bb1; delete('h_as.m'); clear h_as; x
+
+x =
+
+     9
+
+@@CLASS double [1 1]
+@@END
+@@CASE 21|x = 1; assignin('base', '1bad', 1)
+ERR Invalid variable name "1bad" in ASSIGNIN.
+@@END
+@@CASE 22|x = 1; assignin('nowhere', 'a', 1)
+ERR Unknown command option.
+@@END
+@@CASE 23|x = 1; assignin('base', 'a')
+ERR Not enough input arguments.
+@@END
+@@CASE 24|global gg1; gg1 = 3; x = gg1
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 25|global gg2; x = gg2
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 26|clear global gg3; gg3 = 5; global gg3; x = gg3
+[Warning: The value of local variables may have been changed to match the globals.  Future versions of
+MATLAB will require that you declare a variable to be global before you use that variable.] 
+[> In snippet (line 27)
+  In runner (line 2)] 
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 27|clear global; global gg1; x = gg1
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 28|fid = fopen('h_glob.m', 'w'); fprintf(fid, 'function y = h_glob()\nglobal GG4\ny = GG4;\nGG4 = GG4 + 1;\n'); fclose(fid); rehash; global GG4; GG4 = 42; t1 = h_glob(); x = [t1 GG4]; delete('h_glob.m'); clear h_glob; clear global GG4; x
+
+x =
+
+    42    43
+
+@@CLASS double [1 2]
+@@END
+@@CASE 29|fid = fopen('h_glob2.m', 'w'); fprintf(fid, 'function y = h_glob2()\nglobal GG5\ny = GG5;\n'); fclose(fid); rehash; clear global GG5; x = h_glob2(); delete('h_glob2.m'); clear h_glob2; x
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 30|global gg6 gg7; gg6 = 1; gg7 = 2; x = [gg6 gg7]; clear global gg6 gg7; x
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 31|x = 1; persistent pp1
+ERR A PERSISTENT declaration is only allowed in a function.
+@@END
+@@CASE 32|fid = fopen('h_cnt.m', 'w'); fprintf(fid, 'function y = h_cnt()\npersistent n\nif isempty(n), n = 0; end\nn = n + 1;\ny = n;\n'); fclose(fid); rehash; a1 = h_cnt(); a2 = h_cnt(); a3 = h_cnt(); clear h_cnt; a4 = h_cnt(); x = [a1 a2 a3 a4]; delete('h_cnt.m'); clear h_cnt; x
+
+x =
+
+     1     2     3     1
+
+@@CLASS double [1 4]
+@@END
+@@CASE 33|fid = fopen('h_pe.m', 'w'); fprintf(fid, 'function y = h_pe()\npersistent q\ny = q;\n'); fclose(fid); rehash; x = h_pe(); delete('h_pe.m'); clear h_pe; x
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 34|fid = fopen('h_pe2.m', 'w'); fprintf(fid, 'function y = h_pe2(v)\npersistent q\nif nargin, q = v; end\ny = q;\n'); fclose(fid); rehash; h_pe2(8); x = h_pe2(); delete('h_pe2.m'); clear h_pe2; x
+
+x =
+
+     8
+
+@@CLASS double [1 1]
+@@END
+@@CASE 35|fid = fopen('h_in.m', 'w'); fprintf(fid, 'function y = h_in(a, b)\ny = {inputname(1), inputname(2)};\n'); fclose(fid); rehash; v1 = 1; v2 = 2; x = h_in(v1, v2); delete('h_in.m'); clear h_in; x
+
+x = 
+
+    'v1'    'v2'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 36|fid = fopen('h_in.m', 'w'); fprintf(fid, 'function y = h_in(a, b)\ny = {inputname(1), inputname(2)};\n'); fclose(fid); rehash; v1 = 1; x = h_in(3, v1 + 1); delete('h_in.m'); clear h_in; x
+
+x = 
+
+    ''    ''
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 37|fid = fopen('h_in.m', 'w'); fprintf(fid, 'function y = h_in(a, b)\ny = {inputname(1), inputname(2)};\n'); fclose(fid); rehash; st1.f = 1; v1 = 1; try, x = h_in(st1.f, v1); catch e2, x = e2.message; end; delete('h_in.m'); clear h_in; x
+
+x = 
+
+    ''    ''
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 38|fid = fopen('h_in3.m', 'w'); fprintf(fid, 'function y = h_in3(a)\ny = inputname(2);\n'); fclose(fid); rehash; v1 = 1; try, x = h_in3(v1); catch e2, x = e2.message; end; delete('h_in3.m'); clear h_in3; x
+
+x =
+
+Argument number is not valid.
+
+@@CLASS char [1 29]
+@@END
+@@CASE 39|x = inputname(1)
+ERR Cannot return input name if not in an active function.
+@@END
+@@CASE 40|fid = fopen('h_noc.m', 'w'); fprintf(fid, 'function varargout = h_noc()\nnargoutchk(1, 2);\nvarargout = num2cell(1:nargout);\n'); fclose(fid); rehash; [a1, a2] = h_noc(); x = [a1 a2]; delete('h_noc.m'); clear h_noc; x
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 41|fid = fopen('h_noc.m', 'w'); fprintf(fid, 'function varargout = h_noc()\nnargoutchk(1, 2);\nvarargout = num2cell(1:nargout);\n'); fclose(fid); rehash; try, [a1, a2, a3] = h_noc(); x = 0; catch e2, x = {e2.identifier, e2.message}; end; delete('h_noc.m'); clear h_noc; x
+
+x = 
+
+    'MATLAB:nargoutchk:tooManyOutputs'    'Too many output arguments.'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 42|fid = fopen('h_noc.m', 'w'); fprintf(fid, 'function varargout = h_noc()\nnargoutchk(1, 2);\nvarargout = num2cell(1:nargout);\n'); fclose(fid); rehash; try, h_noc(); x = 0; catch e2, x = {e2.identifier, e2.message}; end; delete('h_noc.m'); clear h_noc; x
+
+x = 
+
+    'MATLAB:nargoutchk:notEnoughOutputs'    'Not enough output arguments.'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 43|x = nargoutchk(1, 2, 3)
+
+x =
+
+Too many output arguments.
+
+@@CLASS char [1 26]
+@@END
+@@CASE 44|x = nargoutchk(1, 2, 0)
+
+x =
+
+Not enough output arguments.
+
+@@CLASS char [1 28]
+@@END
+@@CASE 45|x = nargoutchk(1, 2, 1)
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 46|x = nargoutchk(1, 2, 3, 'struct')
+
+x = 
+
+       message: 'Too many output arguments.'
+    identifier: 'MATLAB:nargoutchk:tooManyOutputs'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 47|x = nargoutchk(1, 2, 3, 'string')
+
+x =
+
+Too many output arguments.
+
+@@CLASS char [1 26]
+@@END
+@@CASE 48|x = nargoutchk(1)
+ERR Not enough input arguments.
+@@END
+@@CASE 49|x = nargchk(1, 2, 3)
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In snippet (line 50)
+  In runner (line 2)] 
+
+x =
+
+Too many input arguments.
+
+@@CLASS char [1 25]
+@@END
+@@CASE 50|x = nargchk(1, 2, 0)
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In snippet (line 51)
+  In runner (line 2)] 
+
+x =
+
+Not enough input arguments.
+
+@@CLASS char [1 27]
+@@END
+@@CASE 51|x = nargchk(1, 2, 1)
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In snippet (line 52)
+  In runner (line 2)] 
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 52|x = nargchk(1, 2, 3, 'struct')
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In snippet (line 53)
+  In runner (line 2)] 
+
+x = 
+
+       message: 'Too many input arguments.'
+    identifier: 'MATLAB:nargchk:tooManyInputs'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 53|x = nargchk(1, 2, 0, 'string')
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In snippet (line 54)
+  In runner (line 2)] 
+
+x =
+
+Not enough input arguments.
+
+@@CLASS char [1 27]
+@@END
+@@CASE 54|x = nargchk(1)
+ERR Not enough input arguments.
+@@END
+@@CASE 55|fid = fopen('h_nc.m', 'w'); fprintf(fid, 'function y = h_nc(varargin)\nerror(nargchk(1, 2, nargin));\ny = nargin;\n'); fclose(fid); rehash; try, x = h_nc(1, 2, 3); catch e2, x = {e2.identifier, e2.message}; end; delete('h_nc.m'); clear h_nc; x
+[Warning: NARGCHK will be removed in a future release. Use NARGINCHK or NARGOUTCHK instead.] 
+[> In h_nc (line 2)
+  In snippet (line 56)
+  In runner (line 2)] 
+
+x = 
+
+    ''    'Too many input arguments.'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 56|x = 1; validateattributes(5, {'numeric'}, {'positive'})
+@@CLASS double [1 1]
+@@END
+@@CASE 57|x = 1; validateattributes(-5, {'numeric'}, {'positive'})
+ERR Expected input to be positive.
+@@END
+@@CASE 58|x = 1; validateattributes('a', {'numeric'}, {})
+ERR Expected input to be one of these types:
+
+double, single, uint8, uint16, uint32, uint64, int8, int16, int32, int64
+
+Instead its type was char.
+@@END
+@@CASE 59|x = 1; validateattributes('a', {'numeric', 'logical'}, {})
+ERR Expected input to be one of these types:
+
+double, single, uint8, uint16, uint32, uint64, int8, int16, int32, int64, logical
+
+Instead its type was char.
+@@END
+@@CASE 60|x = 1; validateattributes([1 2 3], {'double'}, {'size', [1 2]})
+ERR Expected input to be of size 1x2 when it is actually size 1x3.
+@@END
+@@CASE 61|x = 1; validateattributes([1 2 3], {'double'}, {'size', [1 NaN]})
+@@CLASS double [1 1]
+@@END
+@@CASE 62|x = 1; validateattributes(1.5, {'numeric'}, {'integer'}, 'myfun', 'count', 2)
+ERR Expected input number 2, count, to be integer-valued.
+@@END
+@@CASE 63|x = 1; validateattributes([1 2], {'numeric'}, {'scalar'})
+ERR Expected input to be a scalar.
+@@END
+@@CASE 64|x = 1; validateattributes(5, {'numeric'}, {'>=', 6})
+ERR Expected input to be an array with all of the values >= 6.
+@@END
+@@CASE 65|x = 1; validateattributes([3 1 2], {'numeric'}, {'increasing'})
+ERR Expected input to be increasing valued.
+@@END
+@@CASE 66|x = 1; validateattributes(NaN, {'numeric'}, {'nonnan'})
+ERR Expected input to be non-NaN.
+@@END
+@@CASE 67|x = 1; validateattributes([1 2; 3 4], {'numeric'}, {'vector'})
+ERR Expected input to be a vector.
+@@END
+@@CASE 68|x = 1; validateattributes(5, {'numeric'}, {'bogusattr'})
+[Warning: Attribute bogusattr not supported.] 
+[> In snippet (line 69)
+  In runner (line 2)] 
+@@CLASS double [1 1]
+@@END
+@@CASE 69|x = 1; validateattributes(5)
+ERR Not enough input arguments.
+@@END
+@@CASE 70|try, validateattributes(-1, {'numeric'}, {'nonnegative'}, 'fn', 'arg'); catch e2, x = e2.identifier; end; x
+
+x =
+
+MATLAB:fn:expectedNonnegative
+
+@@CLASS char [1 29]
+@@END
+@@CASE 71|lasterr(''); try, error('my:id', 'Boom %d', 1); catch, end; x = lasterr
+
+x =
+
+Error using snippet (line 72)
+Boom 1
+
+@@CLASS char [1 36]
+@@END
+@@CASE 72|lasterr(''); try, error('my:id', 'Boom %d', 1); catch, end; [m1, id1] = lasterr; x = id1
+
+x =
+
+my:id
+
+@@CLASS char [1 5]
+@@END
+@@CASE 73|lasterr('first'); x = lasterr('second')
+
+x =
+
+first
+
+@@CLASS char [1 5]
+@@END
+@@CASE 74|lasterr('m1', 'a:b'); [m1, id1] = lasterr; x = {m1, id1}
+
+x = 
+
+    'm1'    'a:b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 75|lasterr(''); x = lasterr
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 76|lastwarn(''); warning('my:w', 'Careful %d', 3); x = lastwarn
+[Warning: Careful 3] 
+[> In snippet (line 77)
+  In runner (line 2)] 
+
+x =
+
+Careful 3
+
+@@CLASS char [1 9]
+@@END
+@@CASE 77|lastwarn(''); warning('my:w', 'Careful %d', 3); [m1, id1] = lastwarn; x = id1
+[Warning: Careful 3] 
+[> In snippet (line 78)
+  In runner (line 2)] 
+
+x =
+
+my:w
+
+@@CLASS char [1 4]
+@@END
+@@CASE 78|lastwarn('set msg', 'a:b'); [m1, id1] = lastwarn; x = {m1, id1}
+
+x = 
+
+    'set msg'    'a:b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 79|warning('off', 'my:w2'); lastwarn(''); warning('my:w2', 'hidden'); x = lastwarn; warning('on', 'my:w2'); x
+
+x =
+
+hidden
+
+@@CLASS char [1 6]
+@@END
+@@CASE 80|lastwarn('old'); x = lastwarn('new')
+
+x =
+
+old
+
+@@CLASS char [1 3]
+@@END
+@@CASE 81|me = MException('a:b', 'Value %d', 5); x = me.message
+
+x =
+
+Value 5
+
+@@CLASS char [1 7]
+@@END
+@@CASE 82|x = MException('a:b', 'msg')
+
+x = 
+
+  MException with properties:
+
+    identifier: 'a:b'
+       message: 'msg'
+         cause: {}
+         stack: [0x1 struct]
+
+@@CLASS MException [1 1]
+@@END
+@@CASE 83|me = MException('a:b', 'm'); x = me.identifier
+
+x =
+
+a:b
+
+@@CLASS char [1 3]
+@@END
+@@CASE 84|me = MException('a:b', 'm'); x = size(me.stack)
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 85|me = MException('a:b', 'm'); x = me.cause
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 86|x = MException('noid', 'm')
+ERR IDENTIFIER input must be a valid MATLAB message identifier.  For more information, search for "message identifier" in the MATLAB Help.
+@@END
+@@CASE 87|x = MException('a:b')
+ERR Not enough input arguments.
+@@END
+@@CASE 88|x = MException('', 'empty id')
+
+x = 
+
+  MException with properties:
+
+    identifier: ''
+       message: 'empty id'
+         cause: {}
+         stack: [0x1 struct]
+
+@@CLASS MException [1 1]
+@@END
+@@CASE 89|try, error('x:y', 'hi'); catch e2, x = class(e2); end; x
+
+x =
+
+MException
+
+@@CLASS char [1 10]
+@@END
+@@CASE 90|me = MException('a:b', 'outer'); me = addCause(me, MException('c:d', 'inner')); x = me.cause{1}.message
+
+x =
+
+inner
+
+@@CLASS char [1 5]
+@@END
+@@CASE 91|x = getReport(MException('a:b', 'text'))
+
+x =
+
+text
+
+
+@@CLASS char [1 5]
+@@END
+@@CASE 92|x = properties('MException')
+
+x = 
+
+    'identifier'
+    'message'
+    'cause'
+    'stack'
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 93|try, throw(MException('a:b', 'thrown %s', 'here')); catch e2, x = {e2.identifier, e2.message}; end; x
+
+x = 
+
+    'a:b'    'thrown here'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 94|x = 1; throw(MException('a:b', 'direct'))
+ERR direct
+@@END
+@@CASE 95|x = 1; throw(5)
+ERR Undefined function 'throw' for input arguments of type 'double'.
+@@END
+@@CASE 96|try, rethrow(MException('r:t', 'again')); catch e2, x = e2.message; end; x
+
+x =
+
+RETHROW can only throw a previously caught exception.
+
+@@CLASS char [1 53]
+@@END
+@@CASE 97|fid = fopen('h_tac.m', 'w'); fprintf(fid, 'function h_tac()\nthrowAsCaller(MException(''t:c'', ''from helper''));\n'); fclose(fid); rehash; try, h_tac(); catch e2, x = {e2.identifier, e2.message, e2.stack(1).name}; end; delete('h_tac.m'); clear h_tac; x
+
+x = 
+
+    't:c'    'from helper'    'snippet'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 98|fid = fopen('h_thr.m', 'w'); fprintf(fid, 'function h_thr()\nthrow(MException(''t:c'', ''from helper''));\n'); fclose(fid); rehash; try, h_thr(); catch e2, x = {e2.identifier, e2.message, e2.stack(1).name}; end; delete('h_thr.m'); clear h_thr; x
+
+x = 
+
+    't:c'    'from helper'    'h_thr'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 99|x = 1; throwAsCaller(MException('a:b', 'top level'))
+ERR top level
+@@END
+@@CASE 100|c1 = onCleanup(@() disp('cleaned')); clear c1; x = 1
+cleaned
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 101|c1 = onCleanup(@() disp('cleaned2')); x = class(c1); clear c1; x
+cleaned2
+
+x =
+
+onCleanup
+
+@@CLASS char [1 9]
+@@END
+@@CASE 102|c1 = onCleanup(@() []); x = class(c1.task); clear c1; x
+
+x =
+
+function_handle
+
+@@CLASS char [1 15]
+@@END
+@@CASE 103|fid = fopen('h_oc.m', 'w'); fprintf(fid, 'function h_oc()\nc = onCleanup(@() fprintf(''bye\\n''));\nfprintf(''in\\n'');\n'); fclose(fid); rehash; h_oc(); x = 1; delete('h_oc.m'); clear h_oc
+in
+bye
+@@CLASS double [1 1]
+@@END
+@@CASE 104|fid = fopen('h_oc2.m', 'w'); fprintf(fid, 'function h_oc2()\nc = onCleanup(@() fprintf(''cleanup ran\\n''));\nerror(''oc:e'', ''failed'');\n'); fclose(fid); rehash; try, h_oc2(); catch e2, x = e2.message; end; delete('h_oc2.m'); clear h_oc2; x
+cleanup ran
+
+x =
+
+failed
+
+@@CLASS char [1 6]
+@@END
+@@CASE 105|x = onCleanup(5)
+
+x = 
+
+  onCleanup with properties:
+
+    task: 5
+
+@@CLASS onCleanup [1 1]
+@@END
+@@CASE 106|x = cell2struct({1; 'a'}, {'n', 's'}, 1)
+
+x = 
+
+    n: 1
+    s: 'a'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 107|x = cell2struct({1, 'a'; 2, 'b'}, {'n', 's'}, 2)
+
+x = 
+
+2x1 struct array with fields:
+
+    n
+    s
+
+@@CLASS struct [2 1]
+@@END
+@@CASE 108|c1 = cell2struct({1, 'a'; 2, 'b'}, {'n', 's'}, 2); x = c1(2).s
+
+x =
+
+b
+
+@@CLASS char [1 1]
+@@END
+@@CASE 109|x = cell2struct({1 2}, ['a'; 'b'], 2)
+
+x = 
+
+    a: 1
+    b: 2
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 110|x = cell2struct({1 2}, 'f', 1)
+
+x = 
+
+2x1 struct array with fields:
+
+    f
+
+@@CLASS struct [2 1]
+@@END
+@@CASE 111|x = cell2struct(cell(0, 1), {}, 1)
+
+x = 
+
+struct with no fields.
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 112|x = cell2struct({1 2}, {'a'}, 2)
+ERR Number of field names must match number of fields in new structure.
+@@END
+@@CASE 113|x = cell2struct({1}, {'1bad'}, 1)
+ERR Invalid field name "1bad"
+@@END
+@@CASE 114|x = struct2cell(struct('a', 1, 'b', 'hi'))
+
+x = 
+
+    [ 1]
+    'hi'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 115|x = struct2cell(struct('a', {1, 2}))
+
+x(:,:,1) = 
+
+    [1]
+
+
+x(:,:,2) = 
+
+    [2]
+
+@@CLASS cell [1 1 2]
+@@END
+@@CASE 116|x = struct2cell(struct())
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 117|x = struct2cell(struct('a', {}))
+
+x = 
+
+   Empty cell array: 1-by-0-by-0
+
+@@CLASS cell [1 0 0]
+@@END
+@@CASE 118|x = struct2cell(5)
+ERR Undefined function 'struct2cell' for input arguments of type 'double'.
+@@END
+@@CASE 119|x = substruct('.', 'a')
+
+x = 
+
+    type: '.'
+    subs: 'a'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 120|x = substruct('()', {1, 2}, '.', 'f')
+
+x = 
+
+1x2 struct array with fields:
+
+    type
+    subs
+
+@@CLASS struct [1 2]
+@@END
+@@CASE 121|st1 = struct('a', [10 20 30]); x = subsref(st1, substruct('.', 'a', '()', {2}))
+
+x =
+
+    20
+
+@@CLASS double [1 1]
+@@END
+@@CASE 122|x = substruct('{}', {3})
+
+x = 
+
+    type: '{}'
+    subs: {[3]}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 123|x = substruct('.')
+ERR SUBSTRUCT takes at least two arguments.
+@@END
+@@CASE 124|x = substruct('x', 'a')
+
+x = 
+
+    type: 'x'
+    subs: 'a'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 125|x = 1; celldisp({1, 'ab'})
+ 
+ans{1} =
+ 
+     1
+
+ 
+ 
+ans{2} =
+ 
+ab
+ 
+@@CLASS double [1 1]
+@@END
+@@CASE 126|x = 1; celldisp({1, {2, 3}}, 'C')
+ 
+C{1} =
+ 
+     1
+
+ 
+ 
+C{2}{1} =
+ 
+     2
+
+ 
+ 
+C{2}{2} =
+ 
+     3
+
+ 
+@@CLASS double [1 1]
+@@END
+@@CASE 127|x = 1; celldisp({[1 2; 3 4]})
+ 
+ans{1} =
+ 
+     1     2
+     3     4
+
+ 
+@@CLASS double [1 1]
+@@END
+@@CASE 128|x = 1; celldisp({})
+@@CLASS double [1 1]
+@@END
+@@CASE 129|x = 1; celldisp(5)
+ERR Must be a cell array.
+@@END
+@@CASE 130|x = mat2cell(magic(4), [2 2], [3 1])
+
+x = 
+
+    [2x3 double]    [2x1 double]
+    [2x3 double]    [2x1 double]
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 131|c1 = mat2cell(magic(4), [2 2], [3 1]); x = c1{2, 1}
+
+x =
+
+     9     7     6
+     4    14    15
+
+@@CLASS double [2 3]
+@@END
+@@CASE 132|x = mat2cell([1 2 3 4], 1, [1 3])
+
+x = 
+
+    [1]    [1x3 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 133|x = mat2cell([1; 2; 3], [1 2])
+
+x = 
+
+    [         1]
+    [2x1 double]
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 134|x = mat2cell('abcd', 1, [2 2])
+
+x = 
+
+    'ab'    'cd'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 135|x = mat2cell(magic(3), [1 2])
+
+x = 
+
+    [1x3 double]
+    [2x3 double]
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 136|x = mat2cell([1 2 3], 1, [1 1])
+ERR Input arguments, D1 through D2, must sum to each dimension of the input matrix size, [1  3].'
+@@END
+@@CASE 137|x = sscanf('3 4 5', '%d')
+
+x =
+
+     3
+     4
+     5
+
+@@CLASS double [3 1]
+@@END
+@@CASE 138|x = sscanf('1.5,2.5', '%f,%f')
+
+x =
+
+    1.5000
+    2.5000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 139|x = sscanf('abc 12', '%s %d')
+
+x =
+
+    97
+    98
+    99
+    12
+
+@@CLASS double [4 1]
+@@END
+@@CASE 140|[a1, n1] = sscanf('1 2 3', '%d'); x = n1
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 141|x = sscanf('1 2 3 4 5 6', '%d', [2 3])
+
+x =
+
+     1     3     5
+     2     4     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 142|x = sscanf('1 2 3 4 5', '%d', [2 Inf])
+
+x =
+
+     1     3     5
+     2     4     0
+
+@@CLASS double [2 3]
+@@END
+@@CASE 143|x = sscanf('1 2 3 4', '%d', 2)
+
+x =
+
+     1
+     2
+
+@@CLASS double [2 1]
+@@END
+@@CASE 144|x = sscanf('x=3', 'x=%d')
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 145|x = sscanf('12abc', '%d%s')
+
+x =
+
+    12
+    97
+    98
+    99
+
+@@CLASS double [4 1]
+@@END
+@@CASE 146|x = sscanf('', '%d')
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 147|[a1, n1, m1] = sscanf('1 x', '%d'); x = m1
+
+x =
+
+Matching failure in format.
+
+@@CLASS char [1 27]
+@@END
+@@CASE 148|[a1, n1, m1, k1] = sscanf('1 2 x', '%d'); x = k1
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 149|x = sscanf('ff 10', '%x')
+
+x =
+
+   255
+    16
+
+@@CLASS double [2 1]
+@@END
+@@CASE 150|x = sscanf('1e3 -2.5 Inf NaN', '%f')
+
+x =
+
+   1.0e+03 *
+
+    1.0000
+   -0.0025
+       Inf
+       NaN
+
+@@CLASS double [4 1]
+@@END
+@@CASE 151|x = sscanf('abc', '%c')
+
+x =
+
+abc
+
+@@CLASS char [1 3]
+@@END
+@@CASE 152|x = sscanf(5, '%d')
+ERR First argument must be a string.
+@@END
+@@CASE 153|[a1, b1] = strread('1 2 3 4', '%d %d'); x = [a1 b1]
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 154|x = strread('a,b,c', '%s', 'delimiter', ',')
+
+x = 
+
+    'a'
+    'b'
+    'c'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 155|x = strread('1 2 3')
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 156|[a1, b1] = strread('1 one 2 two', '%d %s'); x = b1
+
+x = 
+
+    'one'
+    'two'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 157|x = strread('', '%d')
+
+x =
+
+   Empty matrix: 0-by-1
+
+@@CLASS double [0 1]
+@@END
+@@CASE 158|fid = fopen('tr_zz.txt', 'w'); fprintf(fid, '1 a\n2 b\n'); fclose(fid); [a1, b1] = textread('tr_zz.txt', '%d %s'); delete('tr_zz.txt'); x = b1
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 159|fid = fopen('tr_zz.txt', 'w'); fprintf(fid, 'head\n1 2\n3 4\n'); fclose(fid); [a1, b1] = textread('tr_zz.txt', '%f %f', 'headerlines', 1); delete('tr_zz.txt'); x = [a1 b1]
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 160|fid = fopen('tr_zz.txt', 'w'); fprintf(fid, '1,2,3\n'); fclose(fid); x = textread('tr_zz.txt', '%d', 'delimiter', ','); delete('tr_zz.txt'); x
+
+x =
+
+     1
+     2
+     3
+
+@@CLASS double [3 1]
+@@END
+@@CASE 161|x = textread('no_such_file_zz.txt', '%d')
+ERR File not found.
+@@END
+@@CASE 162|x = str2mat('a', 'bcd')
+
+x =
+
+a  
+bcd
+
+@@CLASS char [2 3]
+@@END
+@@CASE 163|x = str2mat({'ab', 'c'}, 'def')
+ERR Inputs must be character arrays.
+@@END
+@@CASE 164|x = str2mat('')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 165|x = str2mat('a', '', 'b')
+
+x =
+
+a
+ 
+b
+
+@@CLASS char [3 1]
+@@END
+@@CASE 166|x = str2mat(65, 'a')
+
+x =
+
+A
+a
+
+@@CLASS char [2 1]
+@@END
+@@CASE 167|x = strmatch('ab', {'abc', 'xab', 'ab'})
+
+x =
+
+     1
+     3
+
+@@CLASS double [2 1]
+@@END
+@@CASE 168|x = strmatch('ab', {'abc', 'xab', 'ab'}, 'exact')
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 169|x = strmatch('a', ['abc'; 'bcd'; 'axy'])
+
+x =
+
+     1
+     3
+
+@@CLASS double [2 1]
+@@END
+@@CASE 170|x = strmatch('z', {'a', 'b'})
+
+x =
+
+   Empty matrix: 0-by-1
+
+@@CLASS double [0 1]
+@@END
+@@CASE 171|x = strmatch('', {'a', 'b'})
+
+x =
+
+     1
+     2
+
+@@CLASS double [2 1]
+@@END
+@@CASE 172|x = strmatch('ab', {'ab ', 'ab'}, 'exact')
+
+x =
+
+     1
+     2
+
+@@CLASS double [2 1]
+@@END
+@@CASE 173|x = strmatch(1, {'a'})
+ERR Requires character array or cell array of strings as inputs.
+@@END
+@@CASE 174|x = findstr('abcab', 'ab')
+
+x =
+
+     1     4
+
+@@CLASS double [1 2]
+@@END
+@@CASE 175|x = findstr('ab', 'abcab')
+
+x =
+
+     1     4
+
+@@CLASS double [1 2]
+@@END
+@@CASE 176|x = findstr('aaa', 'aa')
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 177|x = findstr('abc', 'z')
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 178|x = findstr('', 'a')
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 179|x = findstr('abc')
+ERR Not enough input arguments.
+@@END
+@@CASE 180|x = regexptranslate('escape', 'a.b*c')
+
+x =
+
+a\.b\*c
+
+@@CLASS char [1 7]
+@@END
+@@CASE 181|x = regexptranslate('wildcard', '*.m')
+
+x =
+
+.*\.m
+
+@@CLASS char [1 5]
+@@END
+@@CASE 182|x = regexptranslate('wildcard', 'a?b.c')
+
+x =
+
+a.b\.c
+
+@@CLASS char [1 6]
+@@END
+@@CASE 183|x = regexptranslate('escape', {'a+', 'b$'})
+
+x = 
+
+    'a\+'    'b\$'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 184|x = regexptranslate('bogus', 'a')
+ERR Invalid option for regexptranslate: bogus.
+@@END
+@@CASE 185|x = regexptranslate('escape')
+ERR Not enough input arguments.
+@@END
+@@CASE 186|x = isstr('a')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 187|x = isstr(1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 188|x = isstr({'a'})
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 189|x = isstr('')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 190|x = isstr()
+ERR Not enough input arguments.
+@@END
+@@CASE 191|x = setstr([72 105])
+
+x =
+
+Hi
+
+@@CLASS char [1 2]
+@@END
+@@CASE 192|x = setstr(65.6)
+
+x =
+
+A
+
+@@CLASS char [1 1]
+@@END
+@@CASE 193|x = setstr({'ab', 'c'})
+ERR Conversion to char from cell is not possible.
+@@END
+@@CASE 194|x = setstr([72 105; 72 111])
+
+x =
+
+Hi
+Ho
+
+@@CLASS char [2 2]
+@@END
+@@CASE 195|x = symvar('x + y*z')
+
+x = 
+
+    'x'
+    'y'
+    'z'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 196|x = symvar('sin(a) + pi + b2')
+
+x = 
+
+    'a'
+    'b2'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 197|x = symvar('2 + 3')
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 198|x = symvar('i + j + eps + inf + NaN + e + x1')
+
+x = 
+
+    'e'
+    'x1'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 199|x = symvar('cos(theta) - alpha_1')
+
+x = 
+
+    'alpha_1'
+    'theta'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 200|x = symvar(5)
+
+x = 
+
+   Empty cell array: 0-by-1
+
+@@CLASS cell [0 1]
+@@END
+@@CASE 201|x = vectorize('x*y^2/z')
+
+x =
+
+x.*y.^2./z
+
+@@CLASS char [1 10]
+@@END
+@@CASE 202|x = vectorize('a.*b')
+
+x =
+
+a.*b
+
+@@CLASS char [1 4]
+@@END
+@@CASE 203|x = vectorize('2*x')
+
+x =
+
+2.*x
+
+@@CLASS char [1 4]
+@@END
+@@CASE 204|x = vectorize(5)
+
+x =
+
+
+
+@@CLASS char [1 1]
+@@END
+@@CASE 205|x = vectorize(@(t) t^2)
+
+x =
+
+@(t)t.^2
+
+@@CLASS char [1 8]
+@@END
+@@CASE 206|zzw1 = 1; zzw2 = 2; x = who('zzw*')
+
+x = 
+
+    'zzw1'
+    'zzw2'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 207|zzw1 = 1; x = 1; who zzw*
+
+Your variables are:
+
+zzw1  zzw2  
+
+@@CLASS double [1 1]
+@@END
+@@CASE 208|x = who('no_such_var_zz')
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 209|fid = fopen('h_who.m', 'w'); fprintf(fid, 'function y = h_who(a)\nb = 2;\ny = who;\n'); fclose(fid); rehash; x = h_who(1); delete('h_who.m'); clear h_who; x
+
+x = 
+
+    'a'
+    'b'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 210|zzw1 = 1; zzw2 = [1 2]; f1 = fullfile(tempdir, 'mroracle_who.mat'); save(f1, 'zzw1', 'zzw2'); x = who('-file', f1); delete(f1); x
+
+x = 
+
+    'zzw1'
+    'zzw2'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 211|x = who(5)
+ERR Argument must contain a string.
+@@END

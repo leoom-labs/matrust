@@ -1,0 +1,1038 @@
+@@CASE 1|x = rref([1 2 3; 4 5 6; 7 8 10])
+
+x =
+
+     1     0     0
+     0     1     0
+     0     0     1
+
+@@CLASS double [3 3]
+@@END
+@@CASE 2|x = rref([1 2 3; 2 4 6; 1 1 1])
+
+x =
+
+     1     0    -1
+     0     1     2
+     0     0     0
+
+@@CLASS double [3 3]
+@@END
+@@CASE 3|x = rref([1 2; 3 4; 5 6])
+
+x =
+
+     1     0
+     0     1
+     0     0
+
+@@CLASS double [3 2]
+@@END
+@@CASE 4|x = rref([2 4 6 8])
+
+x =
+
+     1     2     3     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 5|x = rref([])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 6|x = rref([1 1e-12; 1 1], 1e-6)
+
+x =
+
+     1     0
+     0     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 7|[r, jb] = rref([1 2 3; 2 4 6; 1 1 1]); x = jb
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 8|x = rref(magic(4))
+
+x =
+
+     1     0     0     1
+     0     1     0     3
+     0     0     1    -3
+     0     0     0     0
+
+@@CLASS double [4 4]
+@@END
+@@CASE 9|x = hess([1 2 3; 4 5 6; 7 8 10])
+
+x =
+
+   1.000000000000000  -3.597007303087045  -0.248069469178417
+  -8.062257748298549  14.799999999999997   2.400000000000000
+                   0   0.399999999999997   0.199999999999999
+
+@@CLASS double [3 3]
+@@END
+@@CASE 10|[P, H] = hess([1 2 3; 4 5 6; 7 8 10]); x = P
+
+x =
+
+   1.000000000000000                   0                   0
+                   0  -0.496138938356834  -0.868243142124459
+                   0  -0.868243142124459   0.496138938356834
+
+@@CLASS double [3 3]
+@@END
+@@CASE 11|x = hess(5)
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 12|x = hess([])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 13|x = hess([1 2; 3 4; 5 6])
+ERR Inputs must be full, square matrices of type single or double.
+@@END
+@@CASE 14|x = schur([1 2; 3 4])
+
+x =
+
+  -0.372281323269014  -1.000000000000000
+                   0   5.372281323269014
+
+@@CLASS double [2 2]
+@@END
+@@CASE 15|[U, T] = schur([4 1; 2 3]); x = U
+
+x =
+
+   0.707106781186547  -0.707106781186547
+   0.707106781186547   0.707106781186547
+
+@@CLASS double [2 2]
+@@END
+@@CASE 16|x = schur([0 1; -1 0])
+
+x =
+
+     0     1
+    -1     0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 17|x = schur([0 1; -1 0], 'complex')
+
+x =
+
+  0.000000000000000 + 1.000000000000000i  0.000000000000000 + 0.000000000000000i
+  0.000000000000000 + 0.000000000000000i  0.000000000000000 - 1.000000000000000i
+
+@@CLASS double [2 2]
+@@END
+@@CASE 18|[U, T] = schur([0 1; -1 0], 'real'); x = T
+
+x =
+
+     0     1
+    -1     0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 19|x = schur([])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 20|x = schur([1 2 3])
+ERR First input must be square.
+@@END
+@@CASE 21|[L, D] = ldl([4 2; 2 3]); x = L
+
+x =
+
+   1.000000000000000                   0
+   0.500000000000000   1.000000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 22|[L, D] = ldl([4 2; 2 3]); x = D
+
+x =
+
+     4     0
+     0     2
+
+@@CLASS double [2 2]
+@@END
+@@CASE 23|[L, D, P] = ldl([1 2 3; 2 1 4; 3 4 1]); x = D
+
+x =
+
+   1.000000000000000   4.000000000000000                   0
+   4.000000000000000   1.000000000000000                   0
+                   0                   0  -1.333333333333333
+
+@@CLASS double [3 3]
+@@END
+@@CASE 24|[L, D, P] = ldl([1 2 3; 2 1 4; 3 4 1]); x = P
+
+x =
+
+     0     0     1
+     0     1     0
+     1     0     0
+
+@@CLASS double [3 3]
+@@END
+@@CASE 25|x = ldl(5)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 26|x = ldl([1 2 3])
+ERR Matrix must be square.
+@@END
+@@CASE 27|x = linsolve([2 1; 1 3], [3; 5])
+
+x =
+
+   0.800000000000000
+   1.400000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 28|opts = struct('LT', true); x = linsolve([2 0; 1 3], [4; 5], opts)
+
+x =
+
+     2
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 29|opts = struct('UT', true); x = linsolve([2 1; 0 4], [3; 8], opts)
+
+x =
+
+   0.500000000000000
+   2.000000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 30|opts = struct('UT', true, 'TRANSA', true); x = linsolve([2 1; 0 4], [4; 6], opts)
+
+x =
+
+     2
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 31|x = linsolve([1 1; 1 2; 1 3], [1; 2; 2])
+
+x =
+
+   0.666666666666667
+   0.500000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 32|x = linsolve([1 2; 2 4], [1; 2])
+[Warning: Matrix is singular to working precision.] 
+[> In snippet (line 33)
+  In runner (line 2)] 
+
+x =
+
+   NaN
+   NaN
+
+@@CLASS double [2 1]
+@@END
+@@CASE 33|x = linsolve([1 2; 3 4], [1; 2; 3])
+ERR Matrix dimensions must agree.
+@@END
+@@CASE 34|[x, r] = linsolve([2 1; 1 3], [3; 5])
+
+x =
+
+   0.800000000000000
+   1.400000000000000
+
+
+r =
+
+   0.312500000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 35|x = lscov([1 0; 1 1; 1 2], [1; 2; 4])
+
+x =
+
+   0.833333333333333
+   1.500000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 36|x = lscov([1 0; 1 1; 1 2], [1; 2; 4], [1; 2; 1])
+
+x =
+
+   0.750000000000000
+   1.500000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 37|[b, se] = lscov([1 0; 1 1; 1 2], [1; 2; 4]); x = se
+
+x =
+
+   0.372677996249965
+   0.288675134594813
+
+@@CLASS double [2 1]
+@@END
+@@CASE 38|[b, se, mse] = lscov([1 0; 1 1; 1 2], [1; 2; 4]); x = mse
+
+x =
+
+   0.166666666666667
+
+@@CLASS double [1 1]
+@@END
+@@CASE 39|x = lscov([1 0; 1 1; 1 2], [1; 2; 4], [2 0.5 0; 0.5 2 0; 0 0 1])
+
+x =
+
+   0.888888888888889
+   1.500000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 40|x = lscov([1 0; 1 1; 1 2], [1; 2; 4], [1; 1; 1], 'orth')
+
+x =
+
+   0.833333333333333
+   1.500000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 41|x = lscov([1 0; 1 1], [1; 2; 3])
+ERR B must have the same number of rows as A.
+@@END
+@@CASE 42|x = lsqnonneg([1 0; 0 1; 1 1], [1; -1; 1])
+
+x =
+
+   1.000000000000000
+                   0
+
+@@CLASS double [2 1]
+@@END
+@@CASE 43|x = lsqnonneg([0.0372 0.2869; 0.6861 0.7071; 0.6233 0.6245; 0.6344 0.6170], [0.8587; 0.1781; 0.0747; 0.8405])
+
+x =
+
+                   0
+   0.692934397130293
+
+@@CLASS double [2 1]
+@@END
+@@CASE 44|[p, resnorm] = lsqnonneg([1 0; 0 1; 1 1], [1; -1; 1]); x = resnorm
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 45|[p, resnorm, res] = lsqnonneg([1 0; 0 1; 1 1], [1; -1; 1]); x = res
+
+x =
+
+   0.000000000000000
+  -1.000000000000000
+   0.000000000000000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 46|[p, r, res, flag, outp, lam] = lsqnonneg([1 0; 0 1; 1 1], [1; -1; 1]); x = lam
+
+x =
+
+   0.000000000000001
+  -1.000000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 47|x = lsqnonneg([1 2; 3 4], [1; 1], optimset('TolX', 1e-10))
+
+x =
+
+                   0
+   0.300000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 48|x = lsqnonneg([1 2; 3 4], [1; 1; 1])
+ERR Matrix dimensions must agree.
+@@END
+@@CASE 49|x = rcond([1 2; 3 4])
+
+x =
+
+   0.047619047619048
+
+@@CLASS double [1 1]
+@@END
+@@CASE 50|x = rcond(eye(3))
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 51|x = rcond([1 2; 2 4])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 52|x = rcond([])
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 53|x = rcond(magic(4))
+
+x =
+
+     4.625929269271486e-18
+
+@@CLASS double [1 1]
+@@END
+@@CASE 54|x = rcond([1 NaN; 0 1])
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 55|x = rcond([1 2 3])
+ERR Input must be a square matrix.
+@@END
+@@CASE 56|x = condest([1 2; 3 4])
+
+x =
+
+  20.999999999999996
+
+@@CLASS double [1 1]
+@@END
+@@CASE 57|x = condest(sparse([4 1 0; 1 4 1; 0 1 4]))
+
+x =
+
+   2.571428571428571
+
+@@CLASS double [1 1]
+@@END
+@@CASE 58|x = condest(magic(5))
+
+x =
+
+   6.850000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 59|x = condest([1 2; 2 4])
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 60|[c, v] = condest([1 2; 3 4]); x = v
+
+x =
+
+  -0.571428571428571
+   0.428571428571429
+
+@@CLASS double [2 1]
+@@END
+@@CASE 61|x = condest([1 2 3])
+ERR Matrix must be square.
+@@END
+@@CASE 62|x = normest([1 2; 3 4])
+
+x =
+
+   5.464985704219039
+
+@@CLASS double [1 1]
+@@END
+@@CASE 63|x = normest(magic(4), 1e-10)
+
+x =
+
+    34
+
+@@CLASS double [1 1]
+@@END
+@@CASE 64|[n, cnt] = normest(magic(4)); x = cnt
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 65|x = normest(zeros(3))
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 66|x = normest([3 4])
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 67|x = subspace([1; 0; 0], [0; 1; 0])
+
+x =
+
+   1.570796326794897
+
+@@CLASS double [1 1]
+@@END
+@@CASE 68|x = subspace([1; 1; 0], [1; 0; 0])
+
+x =
+
+   0.785398163397449
+
+@@CLASS double [1 1]
+@@END
+@@CASE 69|x = subspace([1 0; 0 1; 0 0], [1; 1; 0])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 70|x = subspace([1; 0], [2; 0])
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 71|x = subspace([1; 0; 0], [1; 0])
+ERR Inner matrix dimensions must agree.
+@@END
+@@CASE 72|x = sylvester([1 0; 0 2], [3 0; 0 4], [1 2; 3 4])
+
+x =
+
+   0.250000000000000   0.400000000000000
+   0.600000000000000   0.666666666666667
+
+@@CLASS double [2 2]
+@@END
+@@CASE 73|x = sylvester([1 2; 3 4], 5, [1; 1])
+
+x =
+
+   0.145833333333333
+   0.062500000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 74|x = sylvester(2, 3, 10)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 75|x = sylvester([1 2; 3 4], [5 6; 7 8], [1 2 3])
+ERR Inputs must have compatible size.
+@@END
+@@CASE 76|x = polyvalm([1 2 3], [1 2; 3 4])
+
+x =
+
+    12    14
+    21    33
+
+@@CLASS double [2 2]
+@@END
+@@CASE 77|x = polyvalm([1 0 0], [1 1; 0 1])
+
+x =
+
+     1     2
+     0     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 78|x = polyvalm(5, magic(3))
+
+x =
+
+     5     0     0
+     0     5     0
+     0     0     5
+
+@@CLASS double [3 3]
+@@END
+@@CASE 79|x = polyvalm([], [1 2; 3 4])
+
+x =
+
+     0     0
+     0     0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 80|x = polyvalm([1 2], [1 2 3])
+ERR Matrix must be square.
+@@END
+@@CASE 81|x = balance([1 100; 0.01 1])
+
+x =
+
+   1.000000000000000   0.781250000000000
+   1.280000000000000   1.000000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 82|[T, B] = balance([1 100; 0.01 1]); x = T
+
+x =
+
+   128     0
+     0     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 83|[sc, p, B] = balance([1 100; 0.01 1]); x = sc
+
+x =
+
+   128
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 84|x = balance([1 100 10000; 0.01 1 100; 0.0001 0.01 1], 'noperm')
+
+x =
+
+   1.000000000000000   1.562500000000000   1.220703125000000
+   0.640000000000000   1.000000000000000   0.781250000000000
+   0.819200000000000   1.280000000000000   1.000000000000000
+
+@@CLASS double [3 3]
+@@END
+@@CASE 85|x = balance([1 2 3])
+ERR Matrix must be square.
+@@END
+@@CASE 86|[G, y] = planerot([3; 4]); x = G
+
+x =
+
+   0.600000000000000   0.800000000000000
+  -0.800000000000000   0.600000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 87|[G, y] = planerot([3; 4]); x = y
+
+x =
+
+     5
+     0
+
+@@CLASS double [2 1]
+@@END
+@@CASE 88|[G, y] = planerot([0; 0]); x = G
+
+x =
+
+     1     0
+     0     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 89|[G, y] = planerot([1; 0]); x = G
+
+x =
+
+     1     0
+     0     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 90|x = planerot([3 4])
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 91|pp = mkpp([0 1 2], [1 0; 2 1]); x = pp
+
+x = 
+
+      form: 'pp'
+    breaks: [0 1 2]
+     coefs: [2x2 double]
+    pieces: 2
+     order: 2
+       dim: 1
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 92|pp = mkpp([0 1 2], [1 0; 2 1]); x = pp.coefs
+
+x =
+
+     1     0
+     2     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 93|pp = mkpp([0 1], [1 2 3]); x = pp.order
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 94|pp = mkpp([0 1 2], [1 2 3 4; 5 6 7 8], 2); x = pp.dim
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 95|x = mkpp([0 1 2], [1 2 3])
+ERR The requested number of polynomial pieces, 2, is incompatible with the proposed size, [1], of a coefficient and the number, 3, of scalar coefficients provided.
+@@END
+@@CASE 96|[b, c, l, k, d] = unmkpp(mkpp([0 1 2], [1 0; 2 1])); x = {b, c, l, k, d}
+
+x = 
+
+    [1x3 double]    [2x2 double]    [2]    [2]    [1]
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 97|x = unmkpp(mkpp([0 1], [3 2 1]))
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 98|[b, c] = unmkpp(5);
+ERR The input array does not seem to describe a pp function.
+@@END
+@@CASE 99|x = ppval(mkpp([0 1 2], [1 0; 2 1]), [0 0.5 1 1.5 2])
+
+x =
+
+                   0   0.500000000000000   1.000000000000000   2.000000000000000   3.000000000000000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 100|x = ppval(mkpp([0 1 2], [1 0; 2 1]), [-1 3])
+
+x =
+
+    -1     5
+
+@@CLASS double [1 2]
+@@END
+@@CASE 101|x = ppval(mkpp([0 1 2], [1 0; 2 1]), [0.5; 1.5])
+
+x =
+
+   0.500000000000000
+   2.000000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 102|x = ppval(mkpp([0 1 2], [1 0; 2 1]), [])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 103|x = ppval(mkpp([0 1 2], [1 0; 2 1]), NaN)
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 104|x = ppval(spline(0:3, [0 1 8 27]), 1.5)
+
+x =
+
+   3.375000000000001
+
+@@CLASS double [1 1]
+@@END
+@@CASE 105|x = ppval(mkpp([0 1 2], [1 2 3 4; 5 6 7 8], 2), [0.5 1.5])
+
+x =
+
+   3.500000000000000   5.000000000000000
+   9.500000000000000  11.000000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 106|[r, p, k] = residue([1 2], [1 3 2]); x = r
+
+x =
+
+     0
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 107|[r, p, k] = residue([1 2], [1 3 2]); x = p
+
+x =
+
+    -2
+    -1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 108|[r, p, k] = residue([1 0 0 0], [1 3 2]); x = k
+
+x =
+
+     1    -3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 109|[r, p, k] = residue(1, [1 2 1]); x = [r p]
+
+x =
+
+     0    -1
+     1    -1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 110|[r, p, k] = residue([1 0], [1 0 1]); x = [r p]
+
+x =
+
+  0.500000000000000 + 0.000000000000000i  0.000000000000000 + 1.000000000000000i
+  0.500000000000000 + 0.000000000000000i  0.000000000000000 - 1.000000000000000i
+
+@@CLASS double [2 2]
+@@END
+@@CASE 111|[b, a] = residue([-1; 2], [-2; -1], []); x = [b; a(2:end)]
+
+x =
+
+     1     3
+     3     2
+
+@@CLASS double [2 2]
+@@END
+@@CASE 112|[b, a] = residue([1; 2], [-1; -1], 3); x = b
+
+x =
+
+     3     7     6
+
+@@CLASS double [1 3]
+@@END
+@@CASE 113|x = residue([1 2], [])
+ERR Index exceeds matrix dimensions.
+@@END
+@@CASE 114|x = blkdiag([1 2; 3 4], 5)
+
+x =
+
+     1     2     0
+     3     4     0
+     0     0     5
+
+@@CLASS double [3 3]
+@@END
+@@CASE 115|x = blkdiag([1 2], [3; 4])
+
+x =
+
+     1     2     0
+     0     0     3
+     0     0     4
+
+@@CLASS double [3 3]
+@@END
+@@CASE 116|x = blkdiag()
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 117|x = blkdiag([], [1 2])
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 118|x = blkdiag(1, 2, 3)
+
+x =
+
+     1     0     0
+     0     2     0
+     0     0     3
+
+@@CLASS double [3 3]
+@@END
+@@CASE 119|x = blkdiag(int8(1), 2)
+
+x =
+
+    1    0
+    0    2
+
+@@CLASS int8 [2 2]
+@@END
+@@CASE 120|x = blkdiag('a', 1)
+
+x =
+
+a 
+ 
+
+@@CLASS char [2 2]
+@@END
+@@CASE 121|x = blkdiag(zeros(0, 2), 7)
+
+x =
+
+     0     0     7
+
+@@CLASS double [1 3]
+@@END
+@@CASE 122|[V, D] = eig([1 2; -2 1]); [Vr, Dr] = cdf2rdf(V, D); x = Dr
+
+x =
+
+   1.000000000000000   2.000000000000000
+  -2.000000000000000   1.000000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 123|[V, D] = eig([0 1 0; -1 0 0; 0 0 2]); [Vr, Dr] = cdf2rdf(V, D); x = Dr
+
+x =
+
+     0     1     0
+    -1     0     0
+     0     0     2
+
+@@CLASS double [3 3]
+@@END
+@@CASE 124|[V, D] = eig([2 0; 0 3]); [Vr, Dr] = cdf2rdf(V, D); x = Dr
+
+x =
+
+     2     0
+     0     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 125|x = cdf2rdf([1 2; 3 4])
+ERR Not enough input arguments.
+@@END
+@@CASE 126|[U, T] = schur([0 1; -1 0]); [U2, T2] = rsf2csf(U, T); x = T2
+
+x =
+
+  0.000000000000000 + 1.000000000000000i  0.000000000000000 + 0.000000000000000i
+  0.000000000000000 + 0.000000000000000i  0.000000000000000 - 1.000000000000000i
+
+@@CLASS double [2 2]
+@@END
+@@CASE 127|[U, T] = schur([1 2; -3 1]); [U2, T2] = rsf2csf(U, T); x = U2
+
+x =
+
+  0.000000000000000 + 0.632455532033676i  0.774596669241483 + 0.000000000000000i
+ -0.774596669241483 + 0.000000000000000i  0.000000000000000 - 0.632455532033676i
+
+@@CLASS double [2 2]
+@@END
+@@CASE 128|[U, T] = schur([1 2; 0 3]); [U2, T2] = rsf2csf(U, T); x = T2
+
+x =
+
+     1     2
+     0     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 129|x = rsf2csf([1 2; 3 4])
+ERR Not enough input arguments.
+@@END

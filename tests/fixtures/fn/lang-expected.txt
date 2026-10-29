@@ -1,0 +1,392 @@
+@@CASE 1|x = cell2mat({1 2; 3 4})
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 2|x = cell2mat({[1 2], [3]; [4 5], [6]})
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 3|x = cell2mat({[1;2], [3;4]})
+
+x =
+
+     1     3
+     2     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 4|x = cell2mat({})
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 5|x = cell2mat({'ab', 'cd'})
+
+x =
+
+abcd
+
+@@CLASS char [1 4]
+@@END
+@@CASE 6|x = cell2mat({1, 'a'})
+ERR All contents of the input cell array must be of the same data type.
+@@END
+@@CASE 7|x = cell2mat({{1}})
+ERR CELL2MAT does not support cell arrays containing cell arrays or objects.
+@@END
+@@CASE 8|x = cell2mat({[1 2], [3; 4]})
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 9|x = cell2mat({true, false})
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 10|x = cellstr(['ab '; 'cd '])
+
+x = 
+
+    'ab'
+    'cd'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 11|x = cellstr('abc')
+
+x = 
+
+    'abc'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 12|x = cellstr({'a', 'b'})
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 13|x = cellstr('')
+
+x = 
+
+    {''}
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 14|x = cellstr(5)
+ERR Input must be a string.
+@@END
+@@CASE 15|x = deal(7)
+
+x =
+
+     7
+
+@@CLASS double [1 1]
+@@END
+@@CASE 16|[a, b] = deal(1, 2); x = [a b]
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 17|[a, b] = deal(9); x = [a b]
+
+x =
+
+     9     9
+
+@@CLASS double [1 2]
+@@END
+@@CASE 18|[a, b] = deal(1, 2, 3); x = a
+ERR The number of outputs should match the number of inputs.
+@@END
+@@CASE 19|st.a = 1; st.b = 2; x = structfun(@(v) v * 2, st)
+
+x =
+
+     2
+     4
+
+@@CLASS double [2 1]
+@@END
+@@CASE 20|st.a = 1; st.b = [1 2]; x = structfun(@(v) numel(v), st)
+
+x =
+
+     1
+     2
+
+@@CLASS double [2 1]
+@@END
+@@CASE 21|st.a = 1; st.b = [1 2]; x = structfun(@(v) v * 2, st, 'UniformOutput', false)
+
+x = 
+
+    a: 2
+    b: [2 4]
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 22|st.a = 1; st.b = [1 2]; x = structfun(@(v) v * 2, st)
+ERR Non-scalar in Uniform output, at index 2, output 1.
+Set 'UniformOutput' to false.
+@@END
+@@CASE 23|x = structfun(@(v) v, 5)
+ERR Inputs to STRUCTFUN must be scalar structures.
+@@END
+@@CASE 24|x = strtok('  hello world')
+
+x =
+
+hello
+
+@@CLASS char [1 5]
+@@END
+@@CASE 25|[t, r] = strtok('hello world'); x = r
+
+x =
+
+ world
+
+@@CLASS char [1 6]
+@@END
+@@CASE 26|x = strtok('a,b,c', ',')
+
+x =
+
+a
+
+@@CLASS char [1 1]
+@@END
+@@CASE 27|[t, r] = strtok('a,b,c', ','); x = {t, r}
+
+x = 
+
+    'a'    ',b,c'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 28|x = strtok('')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 29|x = strtok({'ab cd', 'ef gh'})
+
+x = 
+
+    'ab'    'ef'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 30|x = strtok(sprintf('\tab cd'))
+
+x =
+
+ab
+
+@@CLASS char [1 2]
+@@END
+@@CASE 31|x = 1; assert(true)
+@@CLASS double [1 1]
+@@END
+@@CASE 32|x = 1; assert(1 == 2)
+ERR Assertion failed.
+@@END
+@@CASE 33|x = 1; assert(false, 'Value %d is bad', 7)
+ERR Value 7 is bad
+@@END
+@@CASE 34|x = 1; assert(false, 'my:id', 'Bad %s', 'thing')
+ERR Bad thing
+@@END
+@@CASE 35|x = 1; assert([1 1 0])
+ERR The condition input argument must be a scalar logical.
+@@END
+@@CASE 36|x = 1; assert([])
+ERR The condition input argument must be a scalar logical.
+@@END
+@@CASE 37|x = 1; warning('Watch out')
+[Warning: Watch out] 
+[> In snippet (line 38)
+  In runner (line 2)] 
+@@CLASS double [1 1]
+@@END
+@@CASE 38|x = 1; warning('Value %d', 4)
+[Warning: Value 4] 
+[> In snippet (line 39)
+  In runner (line 2)] 
+@@CLASS double [1 1]
+@@END
+@@CASE 39|x = 1; warning('my:id', 'With id %d', 2)
+[Warning: With id 2] 
+[> In snippet (line 40)
+  In runner (line 2)] 
+@@CLASS double [1 1]
+@@END
+@@CASE 40|x = 1; warning('off', 'all'); warning('hidden'); warning('on', 'all')
+@@CLASS double [1 1]
+@@END
+@@CASE 41|x = 1; eval('x = 3;')
+@@CLASS double [1 1]
+@@END
+@@CASE 42|eval('x = 4')
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 43|x = 1; eval('y = [1 2'); 
+ERR Error: This statement is incomplete.
+@@END
+@@CASE 44|x = 1; eval('y = [1 2', 'x = 99;')
+@@CLASS double [1 1]
+@@END
+@@CASE 45|x = eval('2 + 3')
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 46|x = rat(0.75)
+
+x =
+
+1 + 1/(-4)
+
+@@CLASS char [1 10]
+@@END
+@@CASE 47|x = rat(pi)
+
+x =
+
+3 + 1/(7 + 1/(16))
+
+@@CLASS char [1 18]
+@@END
+@@CASE 48|x = rat([0.5 0.25])
+
+x =
+
+1 + 1/(-2)
+0 + 1/(4) 
+
+@@CLASS char [2 10]
+@@END
+@@CASE 49|x = rat(1.5)
+
+x =
+
+2 + 1/(-2)
+
+@@CLASS char [1 10]
+@@END
+@@CASE 50|x = rat(-0.2)
+
+x =
+
+-0 + 1/(-5)
+
+@@CLASS char [1 11]
+@@END
+@@CASE 51|x = rat(0)
+
+x =
+
+0
+
+@@CLASS char [1 1]
+@@END
+@@CASE 52|[n, d] = rat(0.75); x = [n d]
+
+x =
+
+     3     4
+
+@@CLASS double [1 2]
+@@END
+@@CASE 53|[n, d] = rat(pi); x = [n d]
+
+x =
+
+   355   113
+
+@@CLASS double [1 2]
+@@END
+@@CASE 54|[n, d] = rat([0.5 1/3]); x = [n; d]
+
+x =
+
+     1     1
+     2     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 55|x = rats(0.75)
+
+x =
+
+      3/4     
+
+@@CLASS char [1 14]
+@@END
+@@CASE 56|x = rats([0.5 1/3])
+
+x =
+
+      1/2           1/3     
+
+@@CLASS char [1 28]
+@@END
+@@CASE 57|x = rats(pi)
+
+x =
+
+    355/113   
+
+@@CLASS char [1 14]
+@@END
+@@CASE 58|x = rats(0)
+
+x =
+
+       0      
+
+@@CLASS char [1 14]
+@@END
+@@CASE 59|x = rats(-1.25)
+
+x =
+
+     -5/4     
+
+@@CLASS char [1 14]
+@@END

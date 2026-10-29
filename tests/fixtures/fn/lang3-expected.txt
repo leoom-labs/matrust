@@ -1,0 +1,1440 @@
+@@CASE 1|x = bsxfun(@plus, [1 2 3], [10; 20])
+
+x =
+
+    11    12    13
+    21    22    23
+
+@@CLASS double [2 3]
+@@END
+@@CASE 2|x = bsxfun(@times, [1 2; 3 4], [10 100])
+
+x =
+
+    10   200
+    30   400
+
+@@CLASS double [2 2]
+@@END
+@@CASE 3|x = bsxfun(@max, [1 5 3], [2; 4])
+
+x =
+
+     2     5     3
+     4     5     4
+
+@@CLASS double [2 3]
+@@END
+@@CASE 4|x = bsxfun(@eq, [1 2 3], [1; 2])
+
+x =
+
+     1     0     0
+     0     1     0
+
+@@CLASS logical [2 3]
+@@END
+@@CASE 5|x = bsxfun(@(a, b) a - 2*b, [1 2 3], [1; 2])
+
+x =
+
+    -1     0     1
+    -3    -2    -1
+
+@@CLASS double [2 3]
+@@END
+@@CASE 6|x = bsxfun(@minus, [1 2 3; 4 5 6], [1; 2])
+
+x =
+
+     0     1     2
+     2     3     4
+
+@@CLASS double [2 3]
+@@END
+@@CASE 7|x = bsxfun(@rdivide, [1 0 -1], 0)
+
+x =
+
+   Inf   NaN  -Inf
+
+@@CLASS double [1 3]
+@@END
+@@CASE 8|x = bsxfun(@max, [NaN 1], [2; NaN])
+
+x =
+
+     2     2
+   NaN     1
+
+@@CLASS double [2 2]
+@@END
+@@CASE 9|x = bsxfun(@and, [true false], [true; false])
+
+x =
+
+     1     0
+     0     0
+
+@@CLASS logical [2 2]
+@@END
+@@CASE 10|x = bsxfun(@plus, int8([100 120]), int8(10))
+
+x =
+
+  110  127
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 11|x = bsxfun(@plus, zeros(0, 3), [1 2 3])
+
+x =
+
+   Empty matrix: 0-by-3
+
+@@CLASS double [0 3]
+@@END
+@@CASE 12|x = bsxfun(@plus, 5, 6)
+
+x =
+
+    11
+
+@@CLASS double [1 1]
+@@END
+@@CASE 13|x = bsxfun(@minus, [1 2 3], [1 2])
+ERR Non-singleton dimensions of the two input arrays must match each other.
+@@END
+@@CASE 14|x = bsxfun('plus', 1, 2)
+ERR First Argument must be a function handle.
+@@END
+@@CASE 15|x = bsxfun(@plus, 1)
+ERR Not enough input arguments.
+@@END
+@@CASE 16|x = bsxfun(@(a, b) [a b], [1 2], [3; 4])
+ERR Dimensions of matrices being concatenated are not consistent.
+@@END
+@@CASE 17|x = builtin('sum', [1 2 3])
+
+x =
+
+     6
+
+@@CLASS double [1 1]
+@@END
+@@CASE 18|x = builtin('size', ones(2, 3))
+
+x =
+
+     2     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 19|[~, x] = builtin('max', [3 9 2])
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 20|x = builtin('sin', 0)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 21|x = evalc('builtin(''disp'', 5)')
+
+x =
+
+     5
+
+
+
+@@CLASS char [1 8]
+@@END
+@@CASE 22|x = builtin('mean', [1 2 3])
+ERR Cannot find builtin function 'mean'
+@@END
+@@CASE 23|x = builtin('no_such_zz_fn', 1)
+ERR Cannot find builtin function 'no_such_zz_fn'
+@@END
+@@CASE 24|x = builtin(@sum, 1)
+ERR Argument must contain a string.
+@@END
+@@CASE 25|x = builtin()
+ERR Not enough input arguments.
+@@END
+@@CASE 26|x = which('zz_nonexistent_fn')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 27|x = evalc('which zz_nonexistent_fn')
+
+x =
+
+'zz_nonexistent_fn' not found.
+
+
+@@CLASS char [1 31]
+@@END
+@@CASE 28|x = which('zz_nonexistent_fn', '-all')
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 29|x = which('sin', '-all'); x = class(x)
+
+x =
+
+cell
+
+@@CLASS char [1 4]
+@@END
+@@CASE 30|x = class(which('sin'))
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 31|x = isempty(which('ismethod'))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 32|[~, l3_n, l3_e] = fileparts(which('ismethod')); x = [l3_n l3_e]
+
+x =
+
+ismethod.m
+
+@@CLASS char [1 10]
+@@END
+@@CASE 33|l3_wv = 1; x = which('l3_wv')
+
+x =
+
+variable
+
+@@CLASS char [1 8]
+@@END
+@@CASE 34|l3_wv = 1; x = evalc('which l3_wv')
+
+x =
+
+l3_wv is a variable.
+
+
+@@CLASS char [1 21]
+@@END
+@@CASE 35|l3_wv = 1; x = which('l3_wv', '-all')
+
+x = 
+
+    'variable'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 36|fid = fopen('h_l3_w.m', 'w'); fprintf(fid, 'function y = h_l3_w()\ny = 1;\n'); fclose(fid); rehash; [~, l3_n, l3_e] = fileparts(which('h_l3_w')); x = [l3_n l3_e]; delete('h_l3_w.m'); clear h_l3_w; x
+
+x =
+
+h_l3_w.m
+
+@@CLASS char [1 8]
+@@END
+@@CASE 37|x = which(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 38|x = which()
+ERR Not enough input arguments.
+@@END
+@@CASE 39|x = fieldnames(what(tempdir))'
+
+x = 
+
+    'path'    'm'    'mlapp'    'mat'    'mex'    'mdl'    'slx'    'p'    'classes'    'packages'
+
+@@CLASS cell [1 10]
+@@END
+@@CASE 40|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); fclose(fopen(fullfile(l3_d, 'l3b.m'), 'w')); fclose(fopen(fullfile(l3_d, 'l3a.m'), 'w')); fclose(fopen(fullfile(l3_d, 'l3c.txt'), 'w')); l3_y = 1; save(fullfile(l3_d, 'l3m.mat'), 'l3_y'); l3_w = what(l3_d); rmdir(l3_d, 's'); x = [l3_w.m; l3_w.mat]'
+
+x = 
+
+    'l3a.m'    'l3b.m'    'l3m.mat'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 41|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); mkdir(fullfile(l3_d, '@l3cls')); mkdir(fullfile(l3_d, '+l3pkg')); l3_w = what(l3_d); rmdir(l3_d, 's'); x = [l3_w.classes; l3_w.packages]'
+
+x = 
+
+    'l3cls'    'l3pkg'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 42|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_w = what(l3_d); rmdir(l3_d, 's'); x = size(l3_w)
+
+x =
+
+     1     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 43|x = what('zz_nonexistent_dir_l3')
+
+x = 
+
+0x1 struct array with fields:
+
+    path
+    m
+    mlapp
+    mat
+    mex
+    mdl
+    slx
+    p
+    classes
+    packages
+
+@@CLASS struct [0 1]
+@@END
+@@CASE 44|x = what(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 45|x = what('a', 'b')
+
+x = 
+
+0x1 struct array with fields:
+
+    path
+    m
+    mlapp
+    mat
+    mex
+    mdl
+    slx
+    p
+    classes
+    packages
+
+@@CLASS struct [0 1]
+@@END
+@@CASE 46|x = isobject(1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 47|x = isobject(containers.Map)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 48|x = isobject(struct('a', 1))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 49|x = isobject(inline('t + 1'))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 50|x = isobject(@sin)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 51|x = isobject(MException('a:b', 'c'))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 52|x = isobject()
+ERR Not enough input arguments.
+@@END
+@@CASE 53|x = isobject(1, 2)
+ERR Too many input arguments.
+@@END
+@@CASE 54|x = ismethod(containers.Map, 'keys')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 55|x = ismethod(containers.Map, 'zz')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 56|x = ismethod(1, 'plus')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 57|x = ismethod(inline('t'), 'formula')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 58|x = ismethod(MException('a:b', 'c'), 'throw')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 59|x = ismethod('containers.Map', 'keys')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 60|x = ismethod(containers.Map, 5)
+ERR Requires character array or cell array of strings as inputs.
+@@END
+@@CASE 61|x = ismethod(containers.Map)
+ERR Not enough input arguments.
+@@END
+@@CASE 62|x = iskeyword('for')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 63|x = iskeyword('sin')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 64|x = iskeyword('FOR')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 65|x = [iskeyword('spmd') iskeyword('parfor') iskeyword('classdef') iskeyword('methods') iskeyword('end') iskeyword('otherwise')]
+
+x =
+
+     1     1     1     0     1     1
+
+@@CLASS logical [1 6]
+@@END
+@@CASE 66|x = iskeyword('')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 67|x = iskeyword
+
+x = 
+
+    'break'
+    'case'
+    'catch'
+    'classdef'
+    'continue'
+    'else'
+    'elseif'
+    'end'
+    'for'
+    'function'
+    'global'
+    'if'
+    'otherwise'
+    'parfor'
+    'persistent'
+    'return'
+    'spmd'
+    'switch'
+    'try'
+    'while'
+
+@@CLASS cell [20 1]
+@@END
+@@CASE 68|x = iskeyword({'for', 'zz'})
+ERR Inputs must be the same size or either one can be a scalar.
+@@END
+@@CASE 69|x = iskeyword(5)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 70|x = iskeyword('for', 'if')
+ERR Too many input arguments.
+@@END
+@@CASE 71|x = genvarname('my var')
+
+x =
+
+myVar
+
+@@CLASS char [1 5]
+@@END
+@@CASE 72|x = genvarname('1abc')
+
+x =
+
+x1abc
+
+@@CLASS char [1 5]
+@@END
+@@CASE 73|x = genvarname('for')
+
+x =
+
+xFor
+
+@@CLASS char [1 4]
+@@END
+@@CASE 74|x = genvarname('a-b.c')
+
+x =
+
+a0x2Db0x2Ec
+
+@@CLASS char [1 11]
+@@END
+@@CASE 75|x = genvarname('')
+
+x =
+
+x
+
+@@CLASS char [1 1]
+@@END
+@@CASE 76|x = genvarname('a', {'a', 'a1'})
+
+x =
+
+a2
+
+@@CLASS char [1 2]
+@@END
+@@CASE 77|x = genvarname('x', 'x')
+
+x =
+
+x1
+
+@@CLASS char [1 2]
+@@END
+@@CASE 78|x = genvarname({'a', 'a', 'b'})
+
+x = 
+
+    'a'    'a1'    'b'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 79|x = numel(genvarname(repmat('a', 1, 70)))
+
+x =
+
+    63
+
+@@CLASS double [1 1]
+@@END
+@@CASE 80|x = genvarname(5)
+ERR First input argument, VARNAME, must be either a string or a cell array of strings.
+@@END
+@@CASE 81|x = namelengthmax
+
+x =
+
+    63
+
+@@CLASS double [1 1]
+@@END
+@@CASE 82|x = namelengthmax(1)
+ERR Too many input arguments.
+@@END
+@@CASE 83|cv_l3a = 1; cv_l3b = 2; clearvars cv_l3a; x = [exist('cv_l3a') exist('cv_l3b')]
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 84|cv_l3a = 1; cv_l3ab = 2; cv_l3c = 3; clearvars cv_l3a*; x = [exist('cv_l3a') exist('cv_l3ab') exist('cv_l3c')]
+
+x =
+
+     0     0     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 85|cv_l3d1 = 1; cv_l3d2 = 2; cv_l3e = 3; clearvars cv_l3d* -except cv_l3d2; x = [exist('cv_l3d1') exist('cv_l3d2') exist('cv_l3e')]
+
+x =
+
+     0     1     1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 86|cv_l3r1 = 1; cv_l3r12 = 2; clearvars -regexp ^cv_l3r\d$; x = [exist('cv_l3r1') exist('cv_l3r12')]
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 87|cv_l3q1 = 1; cv_l3q2 = 2; clearvars -regexp ^cv_l3q -except cv_l3q2; x = [exist('cv_l3q1') exist('cv_l3q2')]
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 88|cv_l3f = 1; clearvars('cv_l3f'); x = exist('cv_l3f')
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 89|x = 5; clearvars x; x = exist('x')
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 90|clearvars cv_l3zz_nonexistent; x = 1
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 91|global cv_l3g; cv_l3g = 4; clearvars cv_l3g; t1 = exist('cv_l3g'); global cv_l3g; x = [t1 cv_l3g]; clear global cv_l3g; x
+
+x =
+
+     0     4
+
+@@CLASS double [1 2]
+@@END
+@@CASE 92|global cv_l3h; cv_l3h = 4; clearvars -global cv_l3h; t1 = exist('cv_l3h'); global cv_l3h; x = {t1, cv_l3h}; clear global cv_l3h; x
+
+x = 
+
+    [0]    []
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 93|x = 1; clearvars(5)
+ERR Expected input number 1 to be one of these types:
+
+char
+
+Instead its type was double.
+@@END
+@@CASE 94|x = functions(@sin)
+
+x = 
+
+    function: 'sin'
+        type: 'simple'
+        file: ''
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 95|x = functions(@(t) t + 1)
+
+x = 
+
+            function: '@(t)t+1'
+                type: 'anonymous'
+                file: ''
+           workspace: {[1x1 struct]}
+    within_file_path: '__base_function'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 96|l3_k = 3; l3_f = @(t) t + l3_k; l3_fi = functions(l3_f); x = l3_fi.workspace{1}
+
+x = 
+
+    l3_k: 3
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 97|l3_fi = functions(@(t) t); x = l3_fi.workspace{1}
+
+x = 
+
+struct with no fields.
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 98|l3_fi = functions(@(t) t); x = fieldnames(l3_fi)'
+
+x = 
+
+    'function'    'type'    'file'    'workspace'    'within_file_path'
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 99|l3_fi = functions(@ismethod); x = {l3_fi.function, l3_fi.type}
+
+x = 
+
+    'ismethod'    'simple'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 100|x = functions(@zz_l3_nonexistent_fn)
+
+x = 
+
+    function: 'zz_l3_nonexistent_fn'
+        type: 'simple'
+        file: ''
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 101|fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_f = h_l3_fh(); l3_fi = functions(l3_f); x = {l3_fi.function, l3_fi.type, l3_f(4)}; delete('h_l3_fh.m'); clear h_l3_fh; x
+
+x = 
+
+    'l3sub'    'scopedfunction'    [8]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 102|fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = fieldnames(l3_fi)'; delete('h_l3_fh.m'); clear h_l3_fh; x
+
+x = 
+
+    'function'    'type'    'file'    'parentage'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 103|fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = l3_fi.parentage; delete('h_l3_fh.m'); clear h_l3_fh; x
+
+x = 
+
+    'l3sub'    'h_l3_fh'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 104|fid = fopen('h_l3_nf.m', 'w'); fprintf(fid, 'function f = h_l3_nf()\nk = 5;\nf = @l3nest;\nfunction y = l3nest(t)\ny = t + k;\nend\nend\n'); fclose(fid); rehash; l3_f = h_l3_nf(); l3_fi = functions(l3_f); x = {l3_fi.function, l3_fi.type, l3_f(1)}; delete('h_l3_nf.m'); clear h_l3_nf; x
+
+x = 
+
+    'h_l3_nf/l3nest'    'nested'    [6]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 105|fid = fopen('h_l3_nf.m', 'w'); fprintf(fid, 'function f = h_l3_nf()\nk = 5;\nf = @l3nest;\nfunction y = l3nest(t)\ny = t + k;\nend\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_nf()); x = fieldnames(l3_fi)'; delete('h_l3_nf.m'); clear h_l3_nf; x
+
+x = 
+
+    'function'    'type'    'file'    'workspace'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 106|x = functions(5)
+ERR Undefined function 'functions' for input arguments of type 'double'.
+@@END
+@@CASE 107|x = functions(@sin, 1)
+ERR Too many input arguments.
+@@END
+@@CASE 108|fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; x = h_l3_lf(); delete('h_l3_lf.m'); clear h_l3_lf; x
+
+x = 
+
+    @l3p
+    @l3q
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 109|fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; l3_c = h_l3_lf(); x = cellfun(@func2str, l3_c, 'UniformOutput', false); delete('h_l3_lf.m'); clear h_l3_lf; x
+
+x = 
+
+    'l3p'
+    'l3q'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 110|fid = fopen('h_l3_lf.m', 'w'); fprintf(fid, 'function y = h_l3_lf()\ny = localfunctions;\nend\nfunction a = l3p()\na = 1;\nend\nfunction b = l3q()\nb = 2;\nend\n'); fclose(fid); rehash; l3_c = h_l3_lf(); x = [l3_c{1}() l3_c{2}()]; delete('h_l3_lf.m'); clear h_l3_lf; x
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 111|fid = fopen('h_l3_lf0.m', 'w'); fprintf(fid, 'function y = h_l3_lf0()\ny = localfunctions;\n'); fclose(fid); rehash; x = h_l3_lf0(); delete('h_l3_lf0.m'); clear h_l3_lf0; x
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 112|x = localfunctions
+
+x = 
+
+     {}
+
+@@CLASS cell [0 0]
+@@END
+@@CASE 113|x = localfunctions(1)
+ERR Too many input arguments.
+@@END
+@@CASE 114|fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = {l3_st(1:2).name}; delete('h_l3_ds.m'); clear h_l3_ds; x
+
+x = 
+
+    'h_l3_ds2'    'h_l3_ds'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 115|fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = [l3_st(1:2).line]; delete('h_l3_ds.m'); clear h_l3_ds; x
+
+x =
+
+     5     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 116|fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = [{l3_st(1).file}, fieldnames(l3_st)']; delete('h_l3_ds.m'); clear h_l3_ds; x
+
+x = 
+
+    'h_l3_ds.m'    'file'    'name'    'line'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 117|fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = h_l3_ds2(n);\nend\nfunction y = h_l3_ds2(n)\nif n == 0, st = dbstack; else, st = dbstack(n); end\ny = st;\nend\n'); fclose(fid); rehash; l3_st = h_l3_ds(1); x = {l3_st(1).name, l3_st(1).line}; delete('h_l3_ds.m'); clear h_l3_ds; x
+
+x = 
+
+    'h_l3_ds'    [2]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 118|fid = fopen('h_l3_dk.m', 'w'); fprintf(fid, 'function [st, k] = h_l3_dk()\n[st, k] = dbstack;\n'); fclose(fid); rehash; [l3_st, x] = h_l3_dk(); delete('h_l3_dk.m'); clear h_l3_dk; x
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 119|x = dbstack('zz')
+ERR At present, the only legal arguments to dbstack are the string '-completenames' and non-negative integers.
+@@END
+@@CASE 120|x = isequalwithequalnans([1 NaN], [1 NaN])
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 121|x = isequalwithequalnans([1 NaN], [1 2])
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 122|x = isequalwithequalnans(NaN, NaN, NaN)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 123|x = isequalwithequalnans(struct('a', NaN), struct('a', NaN))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 124|x = isequalwithequalnans({NaN, 'a'}, {NaN, 'a'})
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 125|x = isequalwithequalnans([1 2], [1 2]')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 126|x = isequalwithequalnans(int8(1), 1)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 127|x = isequalwithequalnans(1)
+ERR Not enough input arguments.
+@@END
+@@CASE 128|x = bitmax
+ERR BITMAX has been removed. Use FLINTMAX instead.
+@@END
+@@CASE 129|x = bitmax('double')
+ERR Too many input arguments.
+@@END
+@@CASE 130|x = inline('t^2 + 1')
+
+x =
+
+     Inline function:
+     x(t) = t^2 + 1
+
+@@CLASS inline [1 1]
+@@END
+@@CASE 131|x = inline('a*t + b', 't', 'a', 'b')
+
+x =
+
+     Inline function:
+     x(t,a,b) = a*t + b
+
+@@CLASS inline [1 1]
+@@END
+@@CASE 132|l3_f = inline('a*x + b'); x = argnames(l3_f)
+
+x = 
+
+    'a'
+    'b'
+    'x'
+
+@@CLASS cell [3 1]
+@@END
+@@CASE 133|l3_f = inline('pi*r^2 + sin(r)'); x = argnames(l3_f)
+
+x = 
+
+    'r'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 134|l3_f = inline('3'); x = argnames(l3_f)
+
+x = 
+
+    'x'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 135|l3_f = inline('x^2 + P1*x', 1); x = argnames(l3_f)
+
+x = 
+
+    'x'
+    'P1'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 136|l3_f = inline('t^2', 't'); x = l3_f(3)
+
+x =
+
+     9
+
+@@CLASS double [1 1]
+@@END
+@@CASE 137|l3_f = inline('a*t + b', 't', 'a', 'b'); x = l3_f(2, 3, 4)
+
+x =
+
+    10
+
+@@CLASS double [1 1]
+@@END
+@@CASE 138|l3_f = inline('t + 1'); x = feval(l3_f, 2)
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 139|l3_f = inline('sin(t)'); x = formula(l3_f)
+
+x =
+
+sin(t)
+
+@@CLASS char [1 6]
+@@END
+@@CASE 140|l3_f = inline('t^2 + t*u'); x = vectorize(l3_f)
+
+x =
+
+     Inline function:
+     x(t,u) = t.^2 + t.*u
+
+@@CLASS inline [1 1]
+@@END
+@@CASE 141|l3_f = inline('t^2 + t*u'); x = formula(vectorize(l3_f))
+
+x =
+
+t.^2 + t.*u
+
+@@CLASS char [1 11]
+@@END
+@@CASE 142|l3_f = inline('t^2'); x = char(l3_f)
+
+x =
+
+t^2
+
+@@CLASS char [1 3]
+@@END
+@@CASE 143|l3_f = inline('t^2 + u'); x = nargin(l3_f)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 144|l3_f = inline('t^2'); x = l3_f([1 2 3])
+ERR Error in inline expression ==> t^2
+ Inputs must be a scalar and a square matrix.
+To compute elementwise POWER, use POWER (.^) instead.
+@@END
+@@CASE 145|l3_f = inline('t + 1'); x = l3_f(1, 2)
+ERR Too many inputs to inline function.
+@@END
+@@CASE 146|x = inline(5)
+ERR Input must be a string.
+@@END
+@@CASE 147|x = inline()
+
+x =
+
+     Inline function (empty)
+
+@@CLASS inline [1 1]
+@@END
+@@CASE 148|l3_ma = mexext('all'); x = [{l3_ma.arch}; {l3_ma.ext}]
+
+x = 
+
+    'glnxa64'    'maci64'       'win32'     'win64' 
+    'mexa64'     'mexmaci64'    'mexw32'    'mexw64'
+
+@@CLASS cell [2 4]
+@@END
+@@CASE 149|x = mexext('zz')
+ERR Input must be 'all'.
+@@END
+@@CASE 150|lastwarn(''); l3_t = maxNumCompThreads; [~, x] = lastwarn
+[Warning: maxNumCompThreads will be removed in a future release. Please remove any instances of this
+function from your code.] 
+[> In maxNumCompThreads (line 26)
+  In snippet (line 151)
+  In runner (line 2)] 
+
+x =
+
+MATLAB:maxNumCompThreads:Deprecated
+
+@@CLASS char [1 35]
+@@END
+@@CASE 151|l3_old = maxNumCompThreads(1); x = maxNumCompThreads; maxNumCompThreads('automatic'); x
+[Warning: maxNumCompThreads will be removed in a future release. Please remove any instances of this
+function from your code.] 
+[> In maxNumCompThreads (line 26)
+  In snippet (line 152)
+  In runner (line 2)] 
+[Warning: maxNumCompThreads will be removed in a future release. Please remove any instances of this
+function from your code.] 
+[> In maxNumCompThreads (line 26)
+  In snippet (line 152)
+  In runner (line 2)] 
+[Warning: maxNumCompThreads will be removed in a future release. Please remove any instances of this
+function from your code.] 
+[> In maxNumCompThreads (line 26)
+  In snippet (line 152)
+  In runner (line 2)] 
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 152|x = maxNumCompThreads(0)
+ERR Input to maxNumCompThreads must be a positive numeric integer-valued scalar or 'automatic'.
+@@END
+@@CASE 153|x = maxNumCompThreads('zz')
+ERR Input to maxNumCompThreads must be a positive numeric integer-valued scalar or 'automatic'.
+@@END
+@@CASE 154|x = usejava('zz')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 155|x = usejava()
+ERR Not enough input arguments.
+@@END
+@@CASE 156|x = usejava(5)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 157|x = isstudent(1)
+ERR Too many input arguments.
+@@END
+@@CASE 158|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); disp(42); fprintf('abc\n'); diary off; x = exist(l3_df, 'file'); if x, x = fileread(l3_df); end; rmdir(l3_d, 's'); x
+    42
+
+abc
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 159|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); x = get(0, 'Diary'); diary off; rmdir(l3_d, 's'); x
+
+x =
+
+on
+
+@@CLASS char [1 2]
+@@END
+@@CASE 160|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); diary; x = get(0, 'Diary'); diary off; rmdir(l3_d, 's'); x
+
+x =
+
+off
+
+@@CLASS char [1 3]
+@@END
+@@CASE 161|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); diary(l3_df); diary off; diary on; t1 = get(0, 'Diary'); diary off; [~, l3_n, l3_e] = fileparts(get(0, 'DiaryFile')); x = {t1, [l3_n l3_e]}; rmdir(l3_d, 's'); x
+
+x = 
+
+    'on'    'l3d.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 162|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_df = fullfile(l3_d, 'l3d.txt'); fid = fopen(l3_df, 'w'); fprintf(fid, 'old\n'); fclose(fid); diary(l3_df); disp(7); diary off; x = fileread(l3_df); rmdir(l3_d, 's'); x
+     7
+
+
+x =
+
+old
+
+
+@@CLASS char [1 4]
+@@END
+@@CASE 163|x = get(0, 'Diary')
+
+x =
+
+off
+
+@@CLASS char [1 3]
+@@END
+@@CASE 164|x = 1; diary(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 165|x = 1; diary('a', 'b')
+ERR Too many input arguments.
+@@END
+@@CASE 166|cv_l3k = 5; clearvars -except cv_l3k; x = cv_l3k
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 167|cv_l3s = 1; clearvars -regexp; x = exist('cv_l3s')
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 168|x = which('sin')
+
+x =
+
+built-in (C:\reference\installation\toolbox\matlab\elfun\@double\sin)
+
+@@CLASS char [1 74]
+@@END
+@@CASE 169|x = evalc('which sin')
+
+x =
+
+built-in (C:\reference\installation\toolbox\matlab\elfun\@double\sin)  % double method
+
+
+@@CLASS char [1 92]
+@@END
+@@CASE 170|x = which('ismethod')
+
+x =
+
+C:\reference\installation\toolbox\matlab\datatypes\ismethod.m
+
+@@CLASS char [1 66]
+@@END
+@@CASE 171|x = which('for')
+
+x =
+
+built-in (C:\reference\installation\toolbox\matlab\lang\for)
+
+@@CLASS char [1 65]
+@@END
+@@CASE 172|x = numel(which('plus', '-all'))
+
+x =
+
+    28
+
+@@CLASS double [1 1]
+@@END
+@@CASE 173|fid = fopen('h_l3_w.m', 'w'); fprintf(fid, 'function y = h_l3_w()\ny = 1;\n'); fclose(fid); rehash; x = which('h_l3_w'); delete('h_l3_w.m'); clear h_l3_w; x
+
+x =
+
+C:\reference\work\h_l3_w.m
+
+@@CLASS char [1 56]
+@@END
+@@CASE 174|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); l3_w = what(l3_d); rmdir(l3_d, 's'); x = l3_w.path
+
+x =
+
+C:\reference\temp\mroracle2_lang3
+
+@@CLASS char [1 51]
+@@END
+@@CASE 175|l3_d = fullfile(tempdir, 'mroracle2_lang3'); mkdir(l3_d); fclose(fopen(fullfile(l3_d, 'l3a.m'), 'w')); x = evalc('what(l3_d)'); rmdir(l3_d, 's'); x
+
+x =
+
+
+MATLAB Code files in folder C:\reference\temp\mroracle2_lang3
+
+l3a  
+
+
+
+
+@@CLASS char [1 90]
+@@END
+@@CASE 176|x = functions(@ismethod)
+
+x = 
+
+    function: 'ismethod'
+        type: 'simple'
+        file: 'C:\reference\installation\toolbox\matlab\datatypes\ismethod.m'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 177|fid = fopen('h_l3_fh.m', 'w'); fprintf(fid, 'function f = h_l3_fh()\nf = @l3sub;\nend\nfunction y = l3sub(t)\ny = 2*t;\nend\n'); fclose(fid); rehash; l3_fi = functions(h_l3_fh()); x = l3_fi.file; delete('h_l3_fh.m'); clear h_l3_fh; x
+
+x =
+
+C:\reference\work\h_l3_fh.m
+
+@@CLASS char [1 57]
+@@END
+@@CASE 178|fid = fopen('h_l3_ds.m', 'w'); fprintf(fid, 'function y = h_l3_ds(n)\ny = dbstack(''-completenames'');\n'); fclose(fid); rehash; l3_st = h_l3_ds(0); x = l3_st(1).file; delete('h_l3_ds.m'); clear h_l3_ds; x
+
+x =
+
+C:\reference\work\h_l3_ds.m
+
+@@CLASS char [1 57]
+@@END
+@@CASE 179|fid = fopen('h_l3_dp.m', 'w'); fprintf(fid, 'function y = h_l3_dp()\ny = evalc(''dbstack'');\n'); fclose(fid); rehash; x = h_l3_dp(); delete('h_l3_dp.m'); clear h_l3_dp; x
+
+x =
+
+> In h_l3_dp (line 2)
+  In snippet (line 180)
+  In runner (line 2)
+
+
+@@CLASS char [1 893]
+@@END
+@@CASE 180|x = numel(dbstack)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 181|x = get(0, 'DiaryFile')
+
+x =
+
+C:\reference\temp\mroracle2_lang3\l3d.txt
+
+@@CLASS char [1 59]
+@@END
+@@CASE 182|x = mexext
+
+x =
+
+mexw64
+
+@@CLASS char [1 6]
+@@END
+@@CASE 183|x = maxNumCompThreads
+[Warning: maxNumCompThreads will be removed in a future release. Please remove any instances of this
+function from your code.] 
+[> In maxNumCompThreads (line 26)
+  In snippet (line 184)
+  In runner (line 2)] 
+
+x =
+
+    20
+
+@@CLASS double [1 1]
+@@END
+@@CASE 184|x = usejava('jvm')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 185|x = usejava('desktop')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 186|x = usejava('awt')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 187|x = usejava('swing')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 188|x = isstudent
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END

@@ -1,0 +1,1740 @@
+@@CASE 1|x = fftn([1 2 3 4])
+
+x =
+
+  10.0000 + 0.0000i  -2.0000 + 2.0000i  -2.0000 + 0.0000i  -2.0000 - 2.0000i
+
+@@CLASS double [1 4]
+@@END
+@@CASE 2|x = fftn([1; 2; 3])
+
+x =
+
+   6.0000 + 0.0000i
+  -1.5000 + 0.8660i
+  -1.5000 - 0.8660i
+
+@@CLASS double [3 1]
+@@END
+@@CASE 3|x = fftn([1 2; 3 4])
+
+x =
+
+    10    -2
+    -4     0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 4|x = fftn(magic(3))
+
+x =
+
+  45.0000 + 0.0000i   0.0000 + 0.0000i   0.0000 + 0.0000i
+   0.0000 + 0.0000i  13.5000 + 7.7942i   0.0000 - 5.1962i
+   0.0000 - 0.0000i   0.0000 + 5.1962i  13.5000 - 7.7942i
+
+@@CLASS double [3 3]
+@@END
+@@CASE 5|x = fftn([1 2; 3 4], [3 3])
+
+x =
+
+  10.0000 + 0.0000i   1.0000 - 5.1962i   1.0000 + 5.1962i
+  -0.5000 - 6.0622i  -3.5000 - 0.8660i   2.5000 - 0.8660i
+  -0.5000 + 6.0622i   2.5000 + 0.8660i  -3.5000 + 0.8660i
+
+@@CLASS double [3 3]
+@@END
+@@CASE 6|x = fftn([1 2 3 4 5], [1 3])
+
+x =
+
+   6.0000 + 0.0000i  -1.5000 + 0.8660i  -1.5000 - 0.8660i
+
+@@CLASS double [1 3]
+@@END
+@@CASE 7|x = fftn(5)
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 8|x = fftn([])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 9|x = fftn([1 NaN 3])
+
+x =
+
+      NaN + 0.0000i      NaN +    NaNi      NaN +    NaNi
+
+@@CLASS double [1 3]
+@@END
+@@CASE 10|x = fftn(single([1 2; 3 4]))
+
+x =
+
+    10    -2
+    -4     0
+
+@@CLASS single [2 2]
+@@END
+@@CASE 11|x = fftn(reshape(1:8, 2, 2, 2))
+
+x(:,:,1) =
+
+    36    -8
+    -4     0
+
+
+x(:,:,2) =
+
+   -16     0
+     0     0
+
+@@CLASS double [2 2 2]
+@@END
+@@CASE 12|x = fftn(int8([1 2]))
+ERR Undefined function 'fftn' for input arguments of type 'int8'.
+@@END
+@@CASE 13|x = fftn()
+ERR Not enough input arguments.
+@@END
+@@CASE 14|x = fftn([1 2], [2 3])
+
+x =
+
+   3.0000 + 0.0000i   0.0000 - 1.7321i   0.0000 + 1.7321i
+   3.0000 + 0.0000i   0.0000 - 1.7321i   0.0000 + 1.7321i
+
+@@CLASS double [2 3]
+@@END
+@@CASE 15|x = fftn([1 2], [1 2 2])
+
+x(:,:,1) =
+
+     3    -1
+
+
+x(:,:,2) =
+
+     3    -1
+
+@@CLASS double [1 2 2]
+@@END
+@@CASE 16|x = ifftn([10 -2+2i -2 -2-2i])
+
+x =
+
+     1     2     3     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 17|x = ifftn(fftn(magic(3)))
+
+x =
+
+   8.000000000000000   1.000000000000000   6.000000000000000
+   3.000000000000000   5.000000000000000   7.000000000000000
+   4.000000000000000   9.000000000000000   2.000000000000000
+
+@@CLASS double [3 3]
+@@END
+@@CASE 18|x = ifftn([10 -2; -4 0])
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 19|x = ifftn([1 2 3; 4 5 6], [2 2])
+
+x =
+
+   3.000000000000000  -0.500000000000000
+  -1.500000000000000                   0
+
+@@CLASS double [2 2]
+@@END
+@@CASE 20|x = ifftn([4 1+1i 1-1i], 'symmetric')
+
+x =
+
+   2.000000000000000   0.422649730810374   1.577350269189626
+
+@@CLASS double [1 3]
+@@END
+@@CASE 21|x = ifftn([1 2i], 'nonsymmetric')
+
+x =
+
+  0.500000000000000 + 1.000000000000000i  0.500000000000000 - 1.000000000000000i
+
+@@CLASS double [1 2]
+@@END
+@@CASE 22|x = ifftn([])
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 23|x = ifftn(fftn(reshape(1:8, 2, 2, 2)))
+
+x(:,:,1) =
+
+     1     3
+     2     4
+
+
+x(:,:,2) =
+
+     5     7
+     6     8
+
+@@CLASS double [2 2 2]
+@@END
+@@CASE 24|x = ifftn([1 2], 'bogus')
+ERR Final string argument must be either 'symmetric' or 'nonsymmetric'.
+@@END
+@@CASE 25|x = ifftn()
+ERR Not enough input arguments.
+@@END
+@@CASE 26|x = convn([1 2 3], [1 1])
+
+x =
+
+     1     3     5     3
+
+@@CLASS double [1 4]
+@@END
+@@CASE 27|x = convn([1 2 3], [1 1], 'same')
+
+x =
+
+     3     5     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 28|x = convn([1 2 3], [1 1], 'valid')
+
+x =
+
+     3     5
+
+@@CLASS double [1 2]
+@@END
+@@CASE 29|x = convn(magic(3), [1 0; 0 -1])
+
+x =
+
+     8     1     6     0
+     3    -3     6    -6
+     4     6    -3    -7
+     0    -4    -9    -2
+
+@@CLASS double [4 4]
+@@END
+@@CASE 30|x = convn(magic(4), [1 2; 3 4], 'same')
+
+x =
+
+    91    49    79    68
+    78    94    88    56
+    79    89    91    50
+    58   101    63     4
+
+@@CLASS double [4 4]
+@@END
+@@CASE 31|x = convn(magic(4), [1 2; 3 4], 'valid')
+
+x =
+
+    91    49    79
+    78    94    88
+    79    89    91
+
+@@CLASS double [3 3]
+@@END
+@@CASE 32|x = convn([1; 2; 3], [1 2])
+
+x =
+
+     1     2
+     2     4
+     3     6
+
+@@CLASS double [3 2]
+@@END
+@@CASE 33|x = convn([1 2], [])
+
+x =
+
+     0     0
+
+@@CLASS double [1 2]
+@@END
+@@CASE 34|x = convn(reshape(1:8, 2, 2, 2), ones(1, 1, 2))
+
+x(:,:,1) =
+
+     1     3
+     2     4
+
+
+x(:,:,2) =
+
+     6    10
+     8    12
+
+
+x(:,:,3) =
+
+     5     7
+     6     8
+
+@@CLASS double [2 2 3]
+@@END
+@@CASE 35|x = convn(ones(2, 2, 2), ones(2, 2, 2), 'valid')
+
+x =
+
+     8
+
+@@CLASS double [1 1]
+@@END
+@@CASE 36|x = convn([1 2 3], [1 1], 'bogus')
+ERR SHAPE must be 'full', 'same', or 'valid'.
+@@END
+@@CASE 37|x = convn([1 2 3])
+ERR Not enough input arguments.
+@@END
+@@CASE 38|[sc3X, sc3Y, sc3Z] = meshgrid(1:2, 1:2, 1:2); sc3V = sc3X + 10*sc3Y + 100*sc3Z; x = interp3(sc3X, sc3Y, sc3Z, sc3V, 1.5, 1.5, 1.5)
+
+x =
+
+  166.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 39|[sc3X, sc3Y, sc3Z] = meshgrid(1:2, 1:2, 1:2); sc3V = sc3X + 10*sc3Y + 100*sc3Z; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1 1.25 2], [1 1.5 2], [1 1.75 2])
+
+x =
+
+  111.0000  191.2500  222.0000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 40|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2])
+
+x =
+
+   21.5000   10.9000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 41|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'nearest')
+
+x =
+
+    33    12
+
+@@CLASS double [1 2]
+@@END
+@@CASE 42|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'cubic')
+
+x =
+
+  19.750000000000000   9.690000000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 43|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'spline')
+
+x =
+
+  19.750000000000000   9.690000000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 44|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = 1./(sc3X + sc3Y.^2 + sc3Z); x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'linear')
+
+x =
+
+   0.165079365079365   0.130753968253968
+
+@@CLASS double [1 2]
+@@END
+@@CASE 45|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = 1./(sc3X + sc3Y.^2 + sc3Z); x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'cubic')
+
+x =
+
+   0.158939693119381   0.129797619047619
+
+@@CLASS double [1 2]
+@@END
+@@CASE 46|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = 1./(sc3X + sc3Y.^2 + sc3Z); x = interp3(sc3X, sc3Y, sc3Z, sc3V, [1.5 2.5], [1.5 2], [2.5 1.2], 'spline')
+
+x =
+
+   0.158939693119381   0.129797619047619
+
+@@CLASS double [1 2]
+@@END
+@@CASE 47|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [0 2 4], [2 2 2], [2 2 2])
+
+x =
+
+   NaN    14   NaN
+
+@@CLASS double [1 3]
+@@END
+@@CASE 48|[sc3X, sc3Y, sc3Z] = meshgrid(1:3); sc3V = sc3X.^2 + sc3Y + sc3Z.^3; x = interp3(sc3X, sc3Y, sc3Z, sc3V, [0 2 4], [2 2 2], [2 2 2], 'linear', -1)
+
+x =
+
+    -1    14    -1
+
+@@CLASS double [1 3]
+@@END
+@@CASE 49|sc3V = reshape(1:27, 3, 3, 3); x = interp3(sc3V, 2.5, 1.5, 1.5)
+
+x =
+
+   10.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 50|sc3V = reshape(1:27, 3, 3, 3); x = size(interp3(sc3V))
+
+x =
+
+     5     5     5
+
+@@CLASS double [1 3]
+@@END
+@@CASE 51|sc3V = reshape(1:27, 3, 3, 3); x = interp3(sc3V, 1); x = x(1:3, 1, 1)'
+
+x =
+
+    1.0000    1.5000    2.0000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 52|x = interp3(magic(3), 1, 1, 1)
+ERR Output argument "varargout{3}" (and maybe others) not assigned during call to "meshgridvectors".
+@@END
+@@CASE 53|x = interp3(reshape(1:8, 2, 2, 2), 1.5, 1.5, 1.5, 'bogus')
+ERR Invalid interpolation type specified.
+@@END
+@@CASE 54|x = interpn([1 2 3], [10 20 30], 2.5)
+
+x =
+
+    25
+
+@@CLASS double [1 1]
+@@END
+@@CASE 55|x = interpn([1 2 3], [10 20 30], [0 1.5 3 4])
+
+x =
+
+   NaN    15    30   NaN
+
+@@CLASS double [1 4]
+@@END
+@@CASE 56|x = interpn([1 2 3], [10 20 30], [0 1.5 4], 'linear', 0)
+
+x =
+
+     0    15     0
+
+@@CLASS double [1 3]
+@@END
+@@CASE 57|x = interpn([1 2 3 4], [1 4 9 16], [1.5 2.5], 'spline')
+
+x =
+
+    2.2500    6.2500
+
+@@CLASS double [1 2]
+@@END
+@@CASE 58|x = interpn([1 2 3 4], [1 4 9 16], [1.5 2.5], 'cubic')
+
+x =
+
+    2.2500    6.2500
+
+@@CLASS double [1 2]
+@@END
+@@CASE 59|x = interpn([1 2 3 4], [1 4 9 16], [1.4 2.6], 'nearest')
+
+x =
+
+     1     9
+
+@@CLASS double [1 2]
+@@END
+@@CASE 60|x = interpn([1 2 3 4], [1 4 9 16], [1.5 2.5], 'pchip')
+
+x =
+
+    2.2813    6.2396
+
+@@CLASS double [1 2]
+@@END
+@@CASE 61|x = interpn(1:5, [1 8 2 5 3], [1.5 3.5], 'spline')
+
+x =
+
+   8.062500000000000   2.687500000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 62|x = interpn(1:5, [1 8 2 5 3], [1.5 3.5], 'cubic')
+
+x =
+
+   6.125000000000000   3.250000000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 63|x = interpn(1:5, [1 8 2 5 3], [1.5 3.5], 'pchip')
+
+x =
+
+   6.187500000000000   3.500000000000000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 64|[sc1, sc2] = ndgrid(1:4, 1:4); x = interpn(sc1, sc2, 1./(sc1 + sc2.^2), [1.5 2.5], [1.25 3.5], 'spline')
+
+x =
+
+   0.330511030303284   0.068123488655791
+
+@@CLASS double [1 2]
+@@END
+@@CASE 65|x = interpn(magic(3), 1.5, 2.5)
+
+x =
+
+    4.7500
+
+@@CLASS double [1 1]
+@@END
+@@CASE 66|x = interpn(magic(3), [1 2], [3 1])
+
+x =
+
+     6     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 67|[sc1, sc2] = ndgrid(1:3, 1:4); x = interpn(sc1, sc2, sc1 + 10*sc2, [1.5 2.5], [1.25 3.5])
+
+x =
+
+   14.0000   37.5000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 68|[sc1, sc2] = ndgrid(1:3, 1:4); x = interpn(sc1, sc2, sc1.^2 + sc2.^2, [1.5 2.5], [1.25 3.5], 'cubic')
+
+x =
+
+    3.8125   18.5000
+
+@@CLASS double [1 2]
+@@END
+@@CASE 69|x = interpn(magic(3), 1)
+
+x =
+
+    8.0000    4.5000    1.0000    3.5000    6.0000
+    5.5000    4.2500    3.0000    4.7500    6.5000
+    3.0000    4.0000    5.0000    6.0000    7.0000
+    3.5000    5.2500    7.0000    5.7500    4.5000
+    4.0000    6.5000    9.0000    5.5000    2.0000
+
+@@CLASS double [5 5]
+@@END
+@@CASE 70|x = interpn(reshape(1:8, 2, 2, 2), 1.5, 1.5, 1.5)
+
+x =
+
+    4.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 71|x = interpn([1 2 3], [10 20 30], 2, 'bogus')
+ERR Invalid interpolation type specified.
+@@END
+@@CASE 72|x = interpn([1 2], [1 2 3], 1.5)
+ERR The grid vectors do not define a grid of points that match the given values.
+@@END
+@@CASE 73|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6], [0.75 0.3])
+
+x =
+
+    0.8750    0.7500
+
+@@CLASS double [1 2]
+@@END
+@@CASE 74|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6], [0.75 0.3], 'linear')
+
+x =
+
+    0.8750    0.7500
+
+@@CLASS double [1 2]
+@@END
+@@CASE 75|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6], [0.75 0.3], 'nearest')
+
+x =
+
+    0.7500    0.7500
+
+@@CLASS double [1 2]
+@@END
+@@CASE 76|sc4x = [0 1 1 0 0.5 0.2 0.8]; sc4y = [0 0 1 1 0.5 0.7 0.3]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6], [0.75 0.3], 'cubic')
+
+x =
+
+   0.842786674914438   0.703275435021273
+
+@@CLASS double [1 2]
+@@END
+@@CASE 77|sc4x = [0 1 1 0 0.5 0.2 0.8]; sc4y = [0 0 1 1 0.5 0.7 0.3]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6], [0.75 0.3], 'natural')
+
+x =
+
+   0.868160493827160   0.745430167597765
+
+@@CLASS double [1 2]
+@@END
+@@CASE 78|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.25 0.6 2], [0.75 0.3 2], 'v4')
+
+x =
+
+   0.825711109186600   0.661161308464660  -0.292802294009105
+
+@@CLASS double [1 3]
+@@END
+@@CASE 79|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; x = griddata(sc4x, sc4y, sc4v, [0.5 2], [0.5 2])
+
+x =
+
+    0.7500       NaN
+
+@@CLASS double [1 2]
+@@END
+@@CASE 80|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; [sc4q1, sc4q2] = meshgrid([0.25 0.75]); x = griddata(sc4x, sc4y, sc4v, sc4q1, sc4q2)
+
+x =
+
+    0.3750    0.8750
+    0.8750    1.3750
+
+@@CLASS double [2 2]
+@@END
+@@CASE 81|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; [sc4q1, sc4q2] = griddata(sc4x, sc4y, sc4v, [0.25 0.75], [0.25; 0.75]); x = sc4q1
+
+x =
+
+    0.2500    0.7500
+    0.2500    0.7500
+
+@@CLASS double [2 2]
+@@END
+@@CASE 82|sc4x = [0 1 1 0 0.5]; sc4y = [0 0 1 1 0.5]; sc4v = sc4x.^2 + sc4y; [~, ~, x] = griddata(sc4x, sc4y, sc4v, [0.25 0.75], [0.25; 0.75])
+
+x =
+
+    0.3750    0.8750
+    0.8750    1.3750
+
+@@CLASS double [2 2]
+@@END
+@@CASE 83|x = griddata([0 1 0 1 0], [0 0 1 1 0], [1 2 3 4 5], 0.5, 0.5)
+[Warning: Duplicate data points have been detected and removed - corresponding values have been averaged.] 
+[> In griddata>useScatteredInterp (line 184)
+  In griddata (line 125)
+  In snippet (line 84)
+  In runner (line 2)] 
+
+x =
+
+    2.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 84|sc4x = [0 1 0 0 1]; sc4y = [0 0 1 0 1]; sc4z = [0 0 0 1 1]; x = griddata(sc4x, sc4y, sc4z, sc4x + sc4y + sc4z, 0.2, 0.2, 0.2)
+
+x =
+
+    0.6000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 85|x = griddata([0 1 0], [0 0 1], [1 2 3], 0.2, 0.2, 'bogus')
+ERR Unknown method.
+@@END
+@@CASE 86|x = griddata([0 1 0], [0 0 1], [1 2 3])
+ERR Not enough input arguments.
+@@END
+@@CASE 87|sc5P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc5v = sc5P(:, 1).^2 + sc5P(:, 2); x = griddatan(sc5P, sc5v, [0.25 0.75; 0.6 0.3])
+
+x =
+
+    0.8750
+    0.7500
+
+@@CLASS double [2 1]
+@@END
+@@CASE 88|sc5P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc5v = sc5P(:, 1).^2 + sc5P(:, 2); x = griddatan(sc5P, sc5v, [0.25 0.75; 0.6 0.3], 'nearest')
+
+x =
+
+    0.7500
+    0.7500
+
+@@CLASS double [2 1]
+@@END
+@@CASE 89|sc5P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc5v = sc5P(:, 1).^2 + sc5P(:, 2); x = griddatan(sc5P, sc5v, [0.5 0.5; 2 2])
+
+x =
+
+    0.7500
+       NaN
+
+@@CLASS double [2 1]
+@@END
+@@CASE 90|sc5P = [0 0 0; 1 0 0; 0 1 0; 0 0 1; 0.9 0.8 0.7]; sc5v = sum(sc5P, 2); x = griddatan(sc5P, sc5v, [0.2 0.2 0.2; 0.5 0.5 0.5])
+
+x =
+
+    0.6000
+    1.5000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 91|sc5P = [0; 1; 3]; x = griddatan(sc5P, [0; 10; 30], [0.5; 2])
+ERR X must have at least 2 columns.
+@@END
+@@CASE 92|x = griddatan([0 0; 1 0; 0 1], [1; 2], [0.2 0.2])
+ERR Y must have the same number of points as X.
+@@END
+@@CASE 93|x = griddatan([0 0; 1 0; 0 1], [1; 2; 3], [0.2 0.2], 'cubic')
+ERR METHOD must be either 'linear' or 'nearest'.
+@@END
+@@CASE 94|x = delaunay([0 1 1 0 0.5], [0 0 1 1 0.5])
+
+x =
+
+     4     1     5
+     4     5     3
+     5     2     3
+     5     1     2
+
+@@CLASS double [4 3]
+@@END
+@@CASE 95|x = delaunay([0 1 0], [0 0 1])
+
+x =
+
+     3     1     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 96|x = delaunay([0 1 1 0], [0 0 1 1])
+
+x =
+
+     3     4     2
+     4     1     2
+
+@@CLASS double [2 3]
+@@END
+@@CASE 97|x = delaunay([0 2 1 3 1.5; 0 0 2 2 0.7]')
+
+x =
+
+     3     1     5
+     3     5     4
+     5     2     4
+     5     1     2
+
+@@CLASS double [4 3]
+@@END
+@@CASE 98|x = delaunay([0 1 2 0 1 2], [0 0.1 0 1 1.2 1])
+
+x =
+
+     5     4     2
+     4     1     2
+     3     6     2
+     1     3     2
+     6     5     2
+
+@@CLASS double [5 3]
+@@END
+@@CASE 99|x = delaunay([0 1 2], [0 0 0])
+ERR Error computing the Delaunay triangulation. The points may be collinear.
+@@END
+@@CASE 100|x = delaunay([0 1 0 0 1], [0 0 1 0 1], [0 0 0 1 1])
+
+x =
+
+     4     1     3     2
+     5     4     3     2
+
+@@CLASS double [2 4]
+@@END
+@@CASE 101|x = delaunay([0 1 0])
+ERR At least four input points must be provided to define a tetrahedral mesh.
+@@END
+@@CASE 102|x = delaunay([0 1], [0 0 1])
+ERR Data point coordinates have inconsistent dimension.
+@@END
+@@CASE 103|x = delaunayn([0 0; 1 0; 1 1; 0 1; 0.5 0.5])
+
+x =
+
+     1     2     5
+     2     3     5
+     1     5     4
+     4     5     3
+
+@@CLASS double [4 3]
+@@END
+@@CASE 104|x = delaunayn([0 0; 1 0; 0 1])
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 105|x = delaunayn([0 0 0; 1 0 0; 0 1 0; 0 0 1; 0.9 0.8 0.7])
+
+x =
+
+     5     3     2     1
+     5     2     4     1
+     5     4     3     1
+
+@@CLASS double [3 4]
+@@END
+@@CASE 106|x = delaunayn([0 0; 1 0; 1 1; 0 1], {'Qt', 'Qbb', 'Qc', 'Qz'})
+
+x =
+
+     2     3     4
+     1     2     4
+
+@@CLASS double [2 3]
+@@END
+@@CASE 107|x = delaunayn([0; 1; 3])
+
+x =
+
+     2     1
+     2     3
+
+@@CLASS double [2 2]
+@@END
+@@CASE 108|x = delaunayn([0 0; 1 1; 2 2])
+
+x =
+
+     1     2     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 109|x = delaunayn([0 0; 1 0])
+ERR Not enough unique points specified.
+@@END
+@@CASE 110|x = convhull([0 1 1 0 0.5], [0 0 1 1 0.5])
+
+x =
+
+     1
+     2
+     3
+     4
+     1
+
+@@CLASS double [5 1]
+@@END
+@@CASE 111|x = convhull([0 1 1 0 0.5]', [0 0 1 1 0.5]')
+
+x =
+
+     1
+     2
+     3
+     4
+     1
+
+@@CLASS double [5 1]
+@@END
+@@CASE 112|[~, x] = convhull([0 1 1 0 0.5], [0 0 1 1 0.5])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 113|x = convhull([0 0.5 1 1 0], [0 0 0 1 1])
+
+x =
+
+     1
+     2
+     3
+     4
+     5
+     1
+
+@@CLASS double [6 1]
+@@END
+@@CASE 114|x = convhull([0 0.5 1 1 0], [0 0 0 1 1], 'simplify', true)
+
+x =
+
+     1
+     3
+     4
+     5
+     1
+
+@@CLASS double [5 1]
+@@END
+@@CASE 115|x = convhull([0 0; 2 0; 1 3; 1 1])
+
+x =
+
+     1
+     2
+     3
+     1
+
+@@CLASS double [4 1]
+@@END
+@@CASE 116|x = convhull([0 1 0 0 0.2], [0 0 1 0 0.2], [0 0 0 1 0.2])
+
+x =
+
+     1     2     4
+     1     3     2
+     1     4     3
+     2     3     4
+
+@@CLASS double [4 3]
+@@END
+@@CASE 117|[~, x] = convhull([0 1 0 0], [0 0 1 0], [0 0 0 1])
+
+x =
+
+    0.1667
+
+@@CLASS double [1 1]
+@@END
+@@CASE 118|x = convhull([0 1 2], [0 0 0])
+ERR Error computing the convex hull. The points may be collinear.
+@@END
+@@CASE 119|x = convhull([0 1 0])
+ERR Error computing the convex hull. Not enough unique points specified.
+@@END
+@@CASE 120|x = convhulln([0 0; 1 0; 1 1; 0 1; 0.5 0.5])
+
+x =
+
+     1     2
+     2     3
+     3     4
+     4     1
+
+@@CLASS double [4 2]
+@@END
+@@CASE 121|[~, x] = convhulln([0 0; 1 0; 1 1; 0 1; 0.5 0.5])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 122|x = convhulln([0 0 0; 1 0 0; 0 1 0; 0 0 1; 0.1 0.1 0.1])
+
+x =
+
+     2     3     1
+     4     2     1
+     3     4     1
+     4     3     2
+
+@@CLASS double [4 3]
+@@END
+@@CASE 123|[~, x] = convhulln([0 0 0; 1 0 0; 0 1 0; 0 0 1])
+
+x =
+
+    0.1667
+
+@@CLASS double [1 1]
+@@END
+@@CASE 124|x = convhulln([0 0; 1 0; 2 0; 1 1], {'Qt'})
+
+x =
+
+     1     3
+     3     4
+     4     1
+
+@@CLASS double [3 2]
+@@END
+@@CASE 125|[~, x] = convhulln([0 0 0; 1 0 0; 0 1 0; 0 0 1; 1 1 0; 1 0 1; 0 1 1; 1 1 1])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 126|x = convhulln([0; 1])
+ERR X must have at least 2 columns.
+@@END
+@@CASE 127|x = dsearchn([0 0; 1 0; 1 1; 0 1; 0.5 0.5], [0.1 0.1; 0.9 0.6; 0.5 0.4])
+
+x =
+
+     1
+     3
+     5
+
+@@CLASS double [3 1]
+@@END
+@@CASE 128|[~, x] = dsearchn([0 0; 1 0; 1 1; 0 1; 0.5 0.5], [0.1 0.1; 0.9 0.6; 0.5 0.4])
+
+x =
+
+    0.1414
+    0.4123
+    0.1000
+
+@@CLASS double [3 1]
+@@END
+@@CASE 129|x = dsearchn([0; 1; 3], [0.4; 2.1; 5])
+
+x =
+
+     1
+     3
+     3
+
+@@CLASS double [3 1]
+@@END
+@@CASE 130|x = dsearchn([0 0; 1 0; 0 1], [0.5 0])
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 131|sc6P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc6T = delaunayn(sc6P); x = dsearchn(sc6P, sc6T, [0.1 0.1; 3 3])
+
+x =
+
+     1
+     3
+
+@@CLASS double [2 1]
+@@END
+@@CASE 132|sc6P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc6T = delaunayn(sc6P); x = dsearchn(sc6P, sc6T, [0.1 0.1; 3 3], -1)
+
+x =
+
+     1
+    -1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 133|x = dsearchn([0 0; 1 0], [1 2 3])
+ERR X and XI should have the same column dimension.
+@@END
+@@CASE 134|x = dsearchn([0 0; 1 0])
+ERR Needs at least 2 inputs.
+@@END
+@@CASE 135|sc6P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc6T = delaunayn(sc6P); x = tsearchn(sc6P, sc6T, [0.5 0.1; 0.9 0.5; 0.5 0.9; 0.1 0.5])
+
+x =
+
+     1
+     2
+     4
+     3
+
+@@CLASS double [4 1]
+@@END
+@@CASE 136|sc6P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc6T = delaunayn(sc6P); [~, x] = tsearchn(sc6P, sc6T, [0.5 0.1; 0.9 0.5])
+
+x =
+
+   0.400000000000000   0.400000000000000   0.200000000000000
+   0.400000000000000   0.400000000000000   0.200000000000000
+
+@@CLASS double [2 3]
+@@END
+@@CASE 137|sc6P = [0 0; 1 0; 1 1; 0 1; 0.5 0.5]; sc6T = delaunayn(sc6P); x = tsearchn(sc6P, sc6T, [2 2; 0.5 0.5])
+
+x =
+
+   NaN
+     1
+
+@@CLASS double [2 1]
+@@END
+@@CASE 138|sc6P = [0 0; 1 0; 0 1]; [x, sc6b] = tsearchn(sc6P, [1 2 3], [0.25 0.25; 1 1]); x = [x sc6b]
+
+x =
+
+    1.0000    0.5000    0.2500    0.2500
+       NaN       NaN       NaN       NaN
+
+@@CLASS double [2 4]
+@@END
+@@CASE 139|sc6P = [0 0 0; 1 0 0; 0 1 0; 0 0 1]; x = tsearchn(sc6P, [1 2 3 4], [0.1 0.1 0.1; 1 1 1])
+
+x =
+
+     1
+   NaN
+
+@@CLASS double [2 1]
+@@END
+@@CASE 140|x = tsearchn([0 0; 1 0; 0 1], [1 2 3], [0.1 0.1 0.1])
+ERR X and XI must have the same number of columns.
+@@END
+@@CASE 141|x = tsearchn([0 0; 1 0; 0 1], [1 2 3])
+ERR Not enough input arguments.
+@@END
+@@CASE 142|[x, sc7C] = voronoin([0 0; 1 0; 1 1; 0 1; 0.5 0.5])
+
+x =
+
+                 Inf                 Inf
+   0.500000000000000                   0
+   1.000000000000000   0.500000000000000
+                   0   0.500000000000000
+   0.500000000000000   1.000000000000000
+
+
+sc7C = 
+
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x4 double]
+
+@@CLASS double [5 2]
+@@END
+@@CASE 143|[~, x] = voronoin([0 0; 1 0; 1 1; 0 1; 0.5 0.5])
+
+x = 
+
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x4 double]
+
+@@CLASS cell [5 1]
+@@END
+@@CASE 144|[~, sc7C] = voronoin([0 0; 1 0; 1 1; 0 1; 0.5 0.5]); x = [sc7C{1:4}]
+
+x =
+
+     4     1     2     3     1     2     5     1     3     5     1     4
+
+@@CLASS double [1 12]
+@@END
+@@CASE 145|[~, sc7C] = voronoin([0 0; 1 0; 1 1; 0 1; 0.5 0.5]); x = sc7C{5}
+
+x =
+
+     5     3     2     4
+
+@@CLASS double [1 4]
+@@END
+@@CASE 146|[x, sc7C] = voronoin([0 0; 2 0; 1 2; 1 0.7])
+
+x =
+
+                 Inf                 Inf
+   1.000000000000000  -0.364285714285714
+  -0.200000000000000   1.350000000000000
+   2.200000000000000   1.350000000000000
+
+
+sc7C = 
+
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+
+@@CLASS double [4 2]
+@@END
+@@CASE 147|[~, x] = voronoin([0 0; 2 0; 1 2; 1 0.7])
+
+x = 
+
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+    [1x3 double]
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 148|[~, sc7C] = voronoin([0 0; 2 0; 1 2; 1 0.7]); x = [sc7C{:}]
+
+x =
+
+     3     1     2     4     1     2     4     1     3     4     2     3
+
+@@CLASS double [1 12]
+@@END
+@@CASE 149|x = voronoin([0 0; 1 0; 1 1; 0 1; 0.5 0.5], {'Qbb'})
+
+x =
+
+                 Inf                 Inf
+   0.500000000000000                   0
+   1.000000000000000   0.500000000000000
+                   0   0.500000000000000
+   0.500000000000000   1.000000000000000
+
+@@CLASS double [5 2]
+@@END
+@@CASE 150|x = voronoin([0 0 0; 1 0 0; 0 1 0; 0 0 1; 0.9 0.8 0.7])
+
+x =
+
+                 Inf                 Inf                 Inf
+   0.500000000000000   0.500000000000000   0.171428571428571
+   0.500000000000000   0.212500000000000   0.500000000000000
+   0.244444444444444   0.500000000000000   0.500000000000000
+
+@@CLASS double [4 3]
+@@END
+@@CASE 151|x = voronoin([0 0; 1 1; 2 2])
+ERR Input points are colinear or coplanar.
+@@END
+@@CASE 152|x = voronoin([0; 1; 2])
+ERR X must have at least 2 columns.
+@@END
+@@CASE 153|x = quad2d(@(u, v) u.*v, 0, 1, 0, 1)
+
+x =
+
+   0.250000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 154|x = quad2d(@(u, v) u.^2 + v.^2, 0, 1, 0, @(u) u)
+
+x =
+
+   0.333333333333456
+
+@@CLASS double [1 1]
+@@END
+@@CASE 155|x = quad2d(@(u, v) ones(size(u)), 0, 1, @(u) u.^2, @(u) u)
+
+x =
+
+   0.166666666666612
+
+@@CLASS double [1 1]
+@@END
+@@CASE 156|x = quad2d(@(u, v) exp(-u.^2 - v.^2), -1, 1, -1, 1, 'AbsTol', 1e-12, 'RelTol', 1e-10)
+
+x =
+
+   2.230985141404129
+
+@@CLASS double [1 1]
+@@END
+@@CASE 157|[~, x] = quad2d(@(u, v) u.*v, 0, 1, 0, 1)
+
+x =
+
+     2.190164598727010e-13
+
+@@CLASS double [1 1]
+@@END
+@@CASE 158|x = quad2d(@(u, v) 1./sqrt(u + v), 0, 1, 0, 1)
+
+x =
+
+   1.104570266388091
+
+@@CLASS double [1 1]
+@@END
+@@CASE 159|x = quad2d(@(u, v) 1./sqrt(u + v), 0, 1, 0, 1, 'Singular', false)
+
+x =
+
+   1.104568764862295
+
+@@CLASS double [1 1]
+@@END
+@@CASE 160|x = quad2d(@(u, v) sin(20*u).*cos(20*v), 0, 1, 0, 1, 'MaxFunEvals', 30)
+
+x =
+
+   0.001351083844220
+
+@@CLASS double [1 1]
+@@END
+@@CASE 161|x = quad2d(@(u, v) u + v, 1, 0, 0, 1)
+
+x =
+
+  -1.000000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 162|x = quad2d(@(u, v) u.*v, 0, 1, 0)
+ERR Not enough input arguments.
+@@END
+@@CASE 163|x = quad2d(@(u, v) u.*v, 0, 1, 0, 1, 'Bogus', 1)
+ERR 'Bogus' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 164|x = quadl(@sin, 0, pi)
+
+x =
+
+   1.999999977471133
+
+@@CLASS double [1 1]
+@@END
+@@CASE 165|x = quadl(@(t) exp(t), 0, 1)
+
+x =
+
+   1.718281828459183
+
+@@CLASS double [1 1]
+@@END
+@@CASE 166|x = quadl(@(t) 1./(1 + t.^2), 0, 1, 1e-12)
+
+x =
+
+   0.785398163397452
+
+@@CLASS double [1 1]
+@@END
+@@CASE 167|x = quadl(@(t) sqrt(t), 0, 1, 1e-3)
+
+x =
+
+   0.666619159760974
+
+@@CLASS double [1 1]
+@@END
+@@CASE 168|[~, x] = quadl(@sin, 0, pi)
+
+x =
+
+    18
+
+@@CLASS double [1 1]
+@@END
+@@CASE 169|x = quadl(@(t) t.^2, 1, 0)
+
+x =
+
+  -0.333333333333333
+
+@@CLASS double [1 1]
+@@END
+@@CASE 170|x = quadl(@(t) t.^2, 2, 2)
+[Warning: Minimum step size reached; singularity possible.] 
+[> In quadl (line 96)
+  In snippet (line 171)
+  In runner (line 2)] 
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 171|x = quadl(@(t) 1./t, 0, 1)
+[Warning: Minimum step size reached; singularity possible.] 
+[> In quadl (line 96)
+  In snippet (line 172)
+  In runner (line 2)] 
+
+x =
+
+  43.738267758544971
+
+@@CLASS double [1 1]
+@@END
+@@CASE 172|x = quadl(@(t, p) p*t, 0, 1, [], [], 3)
+
+x =
+
+   1.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 173|x = quadl(@(t) 1, 0, 1)
+ERR The integrand function must return an output vector of the same length as the input vector.
+@@END
+@@CASE 174|x = quadl(@sin, 0)
+ERR Not enough input arguments.
+@@END
+@@CASE 175|x = quadv(@(t) [t t.^2], 0, 1)
+
+x =
+
+   0.500000000000000   0.333333333333333
+
+@@CLASS double [1 2]
+@@END
+@@CASE 176|x = quadv(@(t) 1./((1:3) + t), 0, 2)
+
+x =
+
+   1.098612349194689   0.693147183045528   0.510825624093750
+
+@@CLASS double [1 3]
+@@END
+@@CASE 177|x = quadv(@(t) [1 t; t.^2 t.^3], 0, 1)
+
+x =
+
+   1.000000000000000   0.500000000000000
+   0.333333333333333   0.250000000000000
+
+@@CLASS double [2 2]
+@@END
+@@CASE 178|x = quadv(@sin, 0, pi)
+
+x =
+
+   1.999999996398431
+
+@@CLASS double [1 1]
+@@END
+@@CASE 179|x = quadv(@(t) exp(t), 0, 1, 1e-10)
+
+x =
+
+   1.718281828459107
+
+@@CLASS double [1 1]
+@@END
+@@CASE 180|[~, x] = quadv(@(t) [t t.^2], 0, 1)
+
+x =
+
+    13
+
+@@CLASS double [1 1]
+@@END
+@@CASE 181|x = quadv(@(t, p) p*t, 0, 1, [], [], 3)
+
+x =
+
+   1.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 182|x = quadv(@(t) [t 1./t], 0, 1)
+[Warning: Minimum step size reached; singularity possible.] 
+[> In quadv (line 87)
+  In snippet (line 183)
+  In runner (line 2)] 
+
+x =
+
+   0.500000000000000  45.826287531307706
+
+@@CLASS double [1 2]
+@@END
+@@CASE 183|x = quadv(@sin, 0)
+ERR Not enough input arguments.
+@@END
+@@CASE 184|x = freqspace(4)
+
+x =
+
+         0    0.5000    1.0000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 185|x = freqspace(5)
+
+x =
+
+         0    0.4000    0.8000
+
+@@CLASS double [1 3]
+@@END
+@@CASE 186|x = freqspace(4, 'whole')
+
+x =
+
+         0    0.5000    1.0000    1.5000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 187|x = freqspace(5, 'whole')
+
+x =
+
+         0    0.4000    0.8000    1.2000    1.6000
+
+@@CLASS double [1 5]
+@@END
+@@CASE 188|x = freqspace(1)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 189|[x, sc8f] = freqspace(3); x = {x, sc8f}
+
+x = 
+
+    [1x3 double]    [1x3 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 190|[x, sc8f] = freqspace(3); x = [x; sc8f]
+
+x =
+
+  -0.666666666666667                   0   0.666666666666667
+  -0.666666666666667                   0   0.666666666666667
+
+@@CLASS double [2 3]
+@@END
+@@CASE 191|[x, ~] = freqspace(4)
+
+x =
+
+  -1.000000000000000  -0.500000000000000                   0   0.500000000000000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 192|[x, sc8f] = freqspace([2 4]); x = {x, sc8f}
+
+x = 
+
+    [1x4 double]    [1x2 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 193|[x, ~] = freqspace([2 4])
+
+x =
+
+   -1.0000   -0.5000         0    0.5000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 194|[~, x] = freqspace([2 4])
+
+x =
+
+    -1     0
+
+@@CLASS double [1 2]
+@@END
+@@CASE 195|[x, sc8f] = freqspace(3, 'meshgrid'); x = {x, sc8f}
+
+x = 
+
+    [3x3 double]    [3x3 double]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 196|[x, ~] = freqspace(3, 'meshgrid')
+
+x =
+
+  -0.666666666666667                   0   0.666666666666667
+  -0.666666666666667                   0   0.666666666666667
+  -0.666666666666667                   0   0.666666666666667
+
+@@CLASS double [3 3]
+@@END
+@@CASE 197|[~, x] = freqspace([2 3], 'meshgrid')
+
+x =
+
+    -1    -1    -1
+     0     0     0
+
+@@CLASS double [2 3]
+@@END
+@@CASE 198|x = freqspace(0)
+
+x =
+
+   Empty matrix: 1-by-0
+
+@@CLASS double [1 0]
+@@END
+@@CASE 199|x = freqspace()
+ERR Not enough input arguments.
+@@END
+@@CASE 200|x = iqr([1 2 3 4 5 6 7 8])
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 201|x = iqr([1 2 3 4 5])
+
+x =
+
+    2.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 202|x = iqr([4; 1; 3; 2])
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 203|x = iqr(magic(4))
+
+x =
+
+     8     8     8     8
+
+@@CLASS double [1 4]
+@@END
+@@CASE 204|x = iqr(magic(4), 2)
+
+x =
+
+    12
+     4
+     4
+    12
+
+@@CLASS double [4 1]
+@@END
+@@CASE 205|x = iqr(magic(4), 1)
+
+x =
+
+     8     8     8     8
+
+@@CLASS double [1 4]
+@@END
+@@CASE 206|x = iqr([1 2 NaN 4 5])
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 207|x = iqr([1 NaN; 3 NaN; 5 NaN])
+
+x =
+
+     3   NaN
+
+@@CLASS double [1 2]
+@@END
+@@CASE 208|x = iqr(7)
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 209|x = iqr([])
+
+x =
+
+   NaN
+
+@@CLASS double [1 1]
+@@END
+@@CASE 210|x = iqr([1 2 Inf 4])
+
+x =
+
+   Inf
+
+@@CLASS double [1 1]
+@@END
+@@CASE 211|x = iqr(single([1 2 3 4]))
+
+x =
+
+     2
+
+@@CLASS single [1 1]
+@@END
+@@CASE 212|x = iqr(reshape(1:8, 2, 2, 2), 3)
+
+x =
+
+     4     4
+     4     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 213|x = iqr()
+ERR Not enough input arguments.
+@@END
+@@CASE 214|x = iqr([1 2 3], 3)
+
+x =
+
+     0     0     0
+
+@@CLASS double [1 3]
+@@END
+@@CASE 215|x = iqr('abc')
+
+x =
+
+    1.5000
+
+@@CLASS double [1 1]
+@@END

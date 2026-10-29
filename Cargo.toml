@@ -1,0 +1,174 @@
+[package]
+name = "matrust"
+version = "0.1.2"
+edition = "2024"
+description = "A numerical workspace in Rust that runs a subset of the MATLAB language"
+license = "GPL-3.0-or-later"
+default-run = "matrust"
+
+[features]
+default = ["mat-v73"]
+desktop = ["dep:eframe", "dep:egui_plot", "dep:png", "dep:rfd", "plot-export", "dep:windows", "dep:windows-future", "mat-v73"]
+plot-export = ["dep:png", "dep:resvg", "dep:svg2pdf", "dep:image", "dep:tiff"]
+# MAT-file v7.3 (HDF5, C library). Off in the browser build (web/).
+mat-v73 = ["dep:hdf5", "dep:hdf5-sys"]
+
+[dependencies]
+robust = "1"
+rustfft = "=6.4.1"
+zip = { version = "=9.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+quick-xml = { version = "=0.41.0", default-features = false }
+nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
+rayon = "1.11"
+wide = "0.7.33"
+bytemuck = "1"
+blake3 = "1.8"
+libm = "0.2"
+memchr = "=2.8.3"
+regex = { version = "=1.13.1", default-features = false, features = ["std", "perf", "unicode-case"] }
+gemm = { version = "0.19", default-features = false, features = ["std", "rayon"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+unicode-segmentation = { version = "1.13.3", default-features = false }
+tempfile = "3"
+mat5 = "0.1"
+flate2 = { version = "1", default-features = false, features = ["zlib-rs"] }
+hdf5 = { package = "hdf5-metno", version = "0.15.0", default-features = false, features = ["static", "zlib"], optional = true }
+hdf5-sys = { package = "hdf5-metno-sys", version = "0.12.4", optional = true }
+eframe = { version = "0.36.2", optional = true, default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+egui_plot = { version = "0.37.0", optional = true }
+png = { version = "0.18", optional = true }
+rfd = { version = "0.15", optional = true }
+resvg = { version = "0.45", optional = true, default-features = false, features = ["text", "system-fonts"] }
+svg2pdf = { version = "0.13", optional = true, default-features = false, features = ["text"] }
+tiff = { version = "0.11.3", optional = true, default-features = false, features = ["deflate"] }
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "bmp", "tiff"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", optional = true, features = ["Data_Pdf", "Storage_Streams", "UI", "Win32_System_WinRT", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_Graphics_Gdi", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
+windows-future = { version = "0.3.2", optional = true }
+
+# Browser build (web/): std::time::Instant and SystemTime panic on wasm32-unknown-unknown;
+# js-sys gives the local calendar time (clock, datetime).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.1"
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+
+[[bin]]
+name = "matrust"
+path = "src/main.rs"
+
+[[bin]]
+name = "matrust-pdf-worker"
+path = "src/pdf_worker.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "matrust-desktop"
+path = "src/desktop.rs"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_script_exports"
+required-features = ["plot-export"]
+
+[[example]]
+name = "benchmark_figure_copy"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_preview_export"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_tiff_preview"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_pdf_preview"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_svg_preview"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_image_preview"
+required-features = ["desktop"]
+
+[[example]]
+name = "check_image_preview"
+required-features = ["desktop"]
+
+[[bench]]
+name = "kernels"
+harness = false
+
+[[bench]]
+name = "dsp"
+harness = false
+
+[[bench]]
+name = "plots"
+harness = false
+
+[[bench]]
+name = "editor"
+harness = false
+
+[[bench]]
+name = "filter_state"
+harness = false
+
+[[bench]]
+name = "trig"
+harness = false
+
+[[bench]]
+name = "matmul"
+harness = false
+
+[[bench]]
+name = "elementwise"
+harness = false
+
+[[bench]]
+name = "fig_exchange"
+harness = false
+
+[[bench]]
+name = "csv"
+harness = false
+
+[[bench]]
+name = "figure_edits"
+harness = false
+
+[[bench]]
+name = "small_filter"
+harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"
+
+# Release packages: same code as release, symbols stripped (programs 41 MB vs 51 MB, zip 16.9 MB; tool/size-probe.ps1,
+# 2026-10-22). Fat LTO failed to build the desktop binary and is not used.
+[profile.dist]
+inherits = "release"
+strip = "symbols"
+
+
+[[example]]
+name = "benchmark_model_clipboard"
+required-features = ["desktop"]
+
+[[example]]
+name = "benchmark_text_layout"
+required-features = ["desktop"]
+
+[patch.crates-io]
+hdf5-metno-src = { path = "vendor/hdf5-metno-src" }

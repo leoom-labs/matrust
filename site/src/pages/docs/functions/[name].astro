@@ -1,0 +1,16 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { functions, type FunctionHelp } from '../../../lib/functions';
+import { plainCodeHash } from '../../../lib/share';
+export function getStaticPaths() { return functions.map(fn => ({ params: { name: fn.name }, props: { fn } })); }
+interface Props { fn: FunctionHelp; }
+const { fn } = Astro.props;
+---
+<Base title={`${fn.name} — Function reference`} description={fn.summary}>
+  <article class="container page-body">
+    <div class="page-heading"><p class="breadcrumbs"><a href="/docs/">Docs</a> / <a href="/docs/#functions">Functions</a></p><p class="eyebrow">FUNCTION REFERENCE</p><h1>{fn.name}</h1><p>{fn.summary}</p></div>
+    <div class="actions">{fn.example && <a class="button primary" href={`/try/${plainCodeHash(fn.example)}`}>Try it</a>}<a href="https://github.com/leoom-labs/matrust/blob/main/assets/help/functions.md">View source help →</a></div>
+    <div class="prose function-help" set:html={fn.html} />
+    <p class="section-note">These are the engine’s help pages. Each page keeps its compatibility notes. File operations are unavailable in the browser.</p>
+  </article>
+</Base>

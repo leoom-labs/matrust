@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Try MatRust in your browser
+    url: https://matrust.dev/try/
+    about: Check whether a snippet runs, then share its link in an issue.
+  - name: Function reference
+    url: https://matrust.dev/docs/functions/
+    about: Every supported function, with syntax and compatibility notes.

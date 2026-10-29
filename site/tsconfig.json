@@ -1,0 +1,6 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": { "noEmit": true, "types": ["astro/client", "node"], "lib": ["ESNext", "DOM", "DOM.Iterable"], "ignoreDeprecations": "6.0" },
+  "include": [".astro/types.d.ts", "src/**/*", "playwright.config.ts", "tests/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

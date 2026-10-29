@@ -1,0 +1,723 @@
+@@CASE 1|x = ispc
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 2|x = isunix
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 3|x = ismac
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 4|x = ispc(1)
+ERR Too many input arguments.
+@@END
+@@CASE 5|x = filesep
+
+x =
+
+\
+
+@@CLASS char [1 1]
+@@END
+@@CASE 6|x = pathsep
+
+x =
+
+;
+
+@@CLASS char [1 1]
+@@END
+@@CASE 7|x = filesep('x')
+ERR Too many input arguments.
+@@END
+@@CASE 8|x = getenv('MATRUST_ORACLE_UNSET_ZZ')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 9|setenv('MATRUST_ORACLE_T1', 'abc'); x = getenv('MATRUST_ORACLE_T1')
+
+x =
+
+abc
+
+@@CLASS char [1 3]
+@@END
+@@CASE 10|setenv('MATRUST_ORACLE_T2'); x = getenv('MATRUST_ORACLE_T2')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 11|setenv('MATRUST_ORACLE_T3', 'v'); setenv('MATRUST_ORACLE_T3', ''); x = getenv('MATRUST_ORACLE_T3')
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 12|x = getenv(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 13|x = getenv()
+ERR Not enough input arguments.
+@@END
+@@CASE 14|x = 1; setenv(5, 'a')
+ERR Argument must contain a string.
+@@END
+@@CASE 15|x = 1; setenv('A', 5)
+ERR Argument must contain a string.
+@@END
+@@CASE 16|x = verLessThan('matlab', '9.0')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 17|x = verLessThan('matlab', '9.1')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 18|x = verLessThan('matlab', '8.6.1')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 19|x = verLessThan('nosuchtoolboxzz', '1.0')
+ERR Toolbox 'nosuchtoolboxzz' not found.
+@@END
+@@CASE 20|x = verLessThan('matlab')
+ERR Not enough input arguments.
+@@END
+@@CASE 21|x = class(version)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 22|x = class(matlabroot)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 23|x = class(pwd)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 24|x = class(computer)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 25|x = class(ver)
+
+x =
+
+struct
+
+@@CLASS char [1 6]
+@@END
+@@CASE 26|x = fieldnames(ver('matlab'))
+
+x = 
+
+    'Name'
+    'Version'
+    'Release'
+    'Date'
+
+@@CLASS cell [4 1]
+@@END
+@@CASE 27|x = isdir(tempdir)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 28|x = isdir('no_such_dir_zz_1')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 29|x = isdir(5)
+ERR The first input to exist must be a string.
+@@END
+@@CASE 30|x = isdir()
+ERR Not enough input arguments.
+@@END
+@@CASE 31|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; x = mkdir(d); rmdir(d); x
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 32|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); [st, msg, id] = mkdir(d); rmdir(d); x = {st, msg, id}
+
+x = 
+
+    [1]    'Directory already exists.'    'MATLAB:MKDIR:DirectoryExists'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 33|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); mkdir(d, 'sub'); x = isdir(fullfile(d, 'sub')); rmdir(d, 's'); x
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 34|x = mkdir()
+ERR Not enough input arguments.
+@@END
+@@CASE 35|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); x = rmdir(d)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 36|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(fullfile(d, 'sub')); [st, msg, id] = rmdir(d); rmdir(d, 's'); x = {st, msg, id}
+
+x = 
+
+    [0]    'No directories were removed.'    'MATLAB:RMDIR:NoDirectoriesR'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 37|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'a.txt'); fid = fopen(f, 'w'); fprintf(fid, 'line one\nline two\n'); fclose(fid); x = fileread(f); rmdir(d, 's'); x
+
+x =
+
+line one
+line two
+
+
+@@CLASS char [1 18]
+@@END
+@@CASE 38|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'e.txt'); fid = fopen(f, 'w'); fclose(fid); x = fileread(f); rmdir(d, 's'); x
+
+x =
+
+     ''
+
+
+@@CLASS char [0 0]
+@@END
+@@CASE 39|x = fileread('no_such_file_zz.txt')
+ERR Could not open file no_such_file_zz.txt. No such file or directory.
+@@END
+@@CASE 40|x = fileread(5)
+ERR Filename must be a string.
+@@END
+@@CASE 41|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'b.txt'), 'w')); fclose(fopen(fullfile(d, 'a.m'), 'w')); mkdir(d, 'sub'); x = dir(d); rmdir(d, 's'); x
+
+x = 
+
+5x1 struct array with fields:
+
+    name
+    date
+    bytes
+    isdir
+    datenum
+
+@@CLASS struct [5 1]
+@@END
+@@CASE 42|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'b.txt'), 'w')); fclose(fopen(fullfile(d, 'a.m'), 'w')); mkdir(d, 'sub'); q = dir(d); x = {q.name}; rmdir(d, 's'); x
+
+x = 
+
+    '.'    '..'    'a.m'    'b.txt'    'sub'
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 43|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'b.txt'), 'w')); fclose(fopen(fullfile(d, 'a.m'), 'w')); mkdir(d, 'sub'); q = dir(d); x = [q.isdir]; rmdir(d, 's'); x
+
+x =
+
+     1     1     0     0     1
+
+@@CLASS logical [1 5]
+@@END
+@@CASE 44|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fid = fopen(fullfile(d, 'b.txt'), 'w'); fprintf(fid, 'hello'); fclose(fid); q = dir(fullfile(d, '*.txt')); x = {q.name, q.bytes}; rmdir(d, 's'); x
+
+x = 
+
+    'b.txt'    [5]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 45|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); q = dir(fullfile(d, '*.txt')); x = size(q); rmdir(d, 's'); x
+
+x =
+
+     0     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 46|x = fieldnames(dir(tempdir))
+
+x = 
+
+    'name'
+    'date'
+    'bytes'
+    'isdir'
+    'datenum'
+
+@@CLASS cell [5 1]
+@@END
+@@CASE 47|x = dir('no_such_dir_zz_4')
+
+x = 
+
+0x1 struct array with fields:
+
+    name
+    date
+    bytes
+    isdir
+    datenum
+
+@@CLASS struct [0 1]
+@@END
+@@CASE 48|x = dir(5)
+ERR Function is not defined for 'double' inputs.
+@@END
+@@CASE 49|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); old = cd(d); x = strcmp(pwd, d); cd(old); rmdir(d); x
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 50|x = 1; cd('no_such_dir_zz_5')
+ERR Cannot CD to no_such_dir_zz_5 (Name is nonexistent or not a directory).
+@@END
+@@CASE 51|x = cd(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 52|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'a.txt'); fid = fopen(f, 'w'); fprintf(fid, 'abc'); fclose(fid); x = copyfile(f, fullfile(d, 'b.txt')); x = [x exist(fullfile(d, 'b.txt'), 'file')]; rmdir(d, 's'); x
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 53|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'a.txt'); fid = fopen(f, 'w'); fprintf(fid, 'abc'); fclose(fid); copyfile(f, fullfile(d, 'b.txt')); x = fileread(fullfile(d, 'b.txt')); rmdir(d, 's'); x
+
+x =
+
+abc
+
+@@CLASS char [1 3]
+@@END
+@@CASE 54|[st, msg, id] = copyfile('no_such_file_zz_6.txt', 'zz_out.txt'); x = {st, msg, id}
+
+x = 
+
+    [0]    'No matching files were found.'    'MATLAB:COPYFILE:FileDoesNot'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 55|x = 1; copyfile('no_such_file_zz_7.txt', 'zz_out.txt')
+ERR No matching files were found.
+@@END
+@@CASE 56|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'a.txt'); fid = fopen(f, 'w'); fprintf(fid, 'abc'); fclose(fid); x = movefile(f, fullfile(d, 'c.txt')); x = [x exist(f, 'file') exist(fullfile(d, 'c.txt'), 'file')]; rmdir(d, 's'); x
+
+x =
+
+     1     0     2
+
+@@CLASS double [1 3]
+@@END
+@@CASE 57|[st, msg, id] = movefile('no_such_file_zz_8.txt', 'zz_out.txt'); x = {st, msg, id}
+
+x = 
+
+    [0]    'No matching files were found.'    'MATLAB:MOVEFILE:FileDoesNot'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 58|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); f = fullfile(d, 'a.txt'); fclose(fopen(f, 'w')); delete(f); x = exist(f, 'file'); rmdir(d); x
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 59|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'a.txt'), 'w')); fclose(fopen(fullfile(d, 'b.txt'), 'w')); delete(fullfile(d, '*.txt')); x = numel(dir(fullfile(d, '*.txt'))); rmdir(d); x
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 60|x = 1; delete('no_such_file_zz_9.txt')
+[Warning: File 'no_such_file_zz_9.txt' not found.] 
+[> In snippet (line 61)
+  In runner (line 2)] 
+@@CLASS double [1 1]
+@@END
+@@CASE 61|x = 1; delete(5)
+ERR Invalid or deleted object.
+@@END
+@@CASE 62|x = 1; pause(0.01)
+@@CLASS double [1 1]
+@@END
+@@CASE 63|x = pause('query')
+
+x =
+
+on
+
+@@CLASS char [1 2]
+@@END
+@@CASE 64|x = 1; pause(-1)
+@@CLASS double [1 1]
+@@END
+@@CASE 65|x = 1; pause('bogus')
+ERR Unknown command option.
+@@END
+@@CASE 66|x = class(timeit(@() ones(10)))
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 67|x = class(timeit(@() ones(10), 1))
+[Warning: The measured time for F may be inaccurate because it is running too fast. Try measuring something
+that takes longer.] 
+[> In timeit (line 158)
+  In snippet (line 68)
+  In runner (line 2)] 
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 68|x = timeit(5)
+ERR First argument must be a function handle that takes no input argument.
+@@END
+@@CASE 69|x = size(clock)
+
+x =
+
+     1     6
+
+@@CLASS double [1 2]
+@@END
+@@CASE 70|x = class(cputime)
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 71|x = class(now)
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 72|x = class(date)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 73|x = size(date)
+
+x =
+
+     1    11
+
+@@CLASS double [1 2]
+@@END
+@@CASE 74|x = class(tempname)
+
+x =
+
+char
+
+@@CLASS char [1 4]
+@@END
+@@CASE 75|x = date(1)
+ERR Too many input arguments.
+@@END
+@@CASE 76|[st, msg, id] = rmdir('no_such_dir_zz_2'); x = {st, msg, id}
+
+x = 
+
+    [0]    'C:\reference\work'    'MATLAB:RMDIR:NotADirectory'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 77|x = 1; rmdir('no_such_dir_zz_3')
+ERR C:\reference\work\no_such_dir_zz_3 is not a directory.
+@@END
+@@CASE 78|x = version
+
+x =
+
+9.0.0.341360 (reference)
+
+@@CLASS char [1 21]
+@@END
+@@CASE 79|x = version('-release')
+
+x =
+
+2016a
+
+@@CLASS char [1 5]
+@@END
+@@CASE 80|x = version('-date')
+
+x =
+
+February 11, 2016
+
+@@CLASS char [1 17]
+@@END
+@@CASE 81|x = ver('matlab')
+
+x = 
+
+       Name: 'MATLAB'
+    Version: '9.0'
+    Release: '(reference)'
+       Date: '10-Feb-2016'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 82|x = computer
+
+x =
+
+PCWIN64
+
+@@CLASS char [1 7]
+@@END
+@@CASE 83|x = computer('arch')
+
+x =
+
+win64
+
+@@CLASS char [1 5]
+@@END
+@@CASE 84|[c, maxsize, endian] = computer; x = {c, maxsize, endian}
+
+x = 
+
+    'PCWIN64'    [2.8147e+14]    'L'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 85|x = matlabroot
+
+x =
+
+C:\reference\installation
+
+@@CLASS char [1 30]
+@@END
+@@CASE 86|x = pwd
+
+x =
+
+C:\reference\work
+
+@@CLASS char [1 47]
+@@END
+@@CASE 87|x = tempdir
+
+x =
+
+C:\reference\temp\
+
+@@CLASS char [1 36]
+@@END
+@@CASE 88|x = tempname
+
+x =
+
+C:\reference\temp\tp17f87dc8_a875_4b1f_ab74_173395c105bd
+
+@@CLASS char [1 74]
+@@END
+@@CASE 89|x = tempname('C:\')
+
+x =
+
+C:\tpbcf278e8_0e4d_4823_baac_0f53a120ad15
+
+@@CLASS char [1 41]
+@@END
+@@CASE 90|x = getenv('OS')
+
+x =
+
+Windows_NT
+
+@@CLASS char [1 10]
+@@END
+@@CASE 91|x = getenv('USERNAME')
+
+x =
+
+user
+
+@@CLASS char [1 4]
+@@END
+@@CASE 92|x = clock
+
+x =
+
+   1.0e+03 *
+
+    2.0260    0.0100    0.0240    0.0020    0.0240    0.0125
+
+@@CLASS double [1 6]
+@@END
+@@CASE 93|x = cputime
+
+x =
+
+   20.1563
+
+@@CLASS double [1 1]
+@@END
+@@CASE 94|x = date
+
+x =
+
+24-Oct-2026
+
+@@CLASS char [1 11]
+@@END
+@@CASE 95|x = now
+
+x =
+
+   7.4028e+05
+
+@@CLASS double [1 1]
+@@END
+@@CASE 96|x = timeit(@() ones(10))
+[Warning: The measured time for F may be inaccurate because it is running too fast. Try measuring something
+that takes longer.] 
+[> In timeit (line 158)
+  In snippet (line 97)
+  In runner (line 2)] 
+
+x =
+
+   1.2260e-06
+
+@@CLASS double [1 1]
+@@END
+@@CASE 97|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'b.txt'), 'w')); fclose(fopen(fullfile(d, 'a.m'), 'w')); x = ls(d); rmdir(d, 's'); x
+
+x =
+
+.    
+..   
+a.m  
+b.txt
+
+@@CLASS char [4 5]
+@@END
+@@CASE 98|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); fclose(fopen(fullfile(d, 'b.txt'), 'w')); q = dir(d); x = q(3); rmdir(d, 's'); x
+
+x = 
+
+       name: 'b.txt'
+       date: '24-Oct-2026 02:24:12'
+      bytes: 0
+      isdir: 0
+    datenum: 7.4028e+05
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 99|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; mkdir(d); x = cd(d); cd(x); rmdir(d); x
+
+x =
+
+C:\reference\work
+
+@@CLASS char [1 47]
+@@END
+@@CASE 100|d = fullfile(tempdir, 'mroracle_a'); if exist(d, 'dir'), rmdir(d, 's'); end; x = 1; mkdir(d); old = cd(d); ls; cd(old); rmdir(d)
+
+.   ..  
+
+@@CLASS double [1 1]
+@@END

@@ -1,0 +1,19 @@
+---
+import Base from '../../layouts/Base.astro';
+import { functions } from '../../lib/functions';
+const base = 'https://github.com/leoom-labs/matrust/blob/main/';
+const docs = [['User guide','The desktop workspace, language, file formats and limits.','docs/guide/user-guide.md'],['Quick start','Install MatRust and run your first script.','scripts/QUICKSTART.txt'],['Benchmarks','Measure built-in cases or your own scripts locally.','BENCHMARKS.md'],['Contributing','Build from source, report issues and contribute.','CONTRIBUTING.md']];
+---
+<Base title="Docs">
+  <div class="container">
+    <div class="page-heading"><p class="eyebrow">DOCUMENTATION</p><h1>A place to start.</h1><p>Learn the workspace, look up a function and check its limits.</p></div>
+    <div class="grid-2 page-body">{docs.map(([title,text,path]) => <article class="card"><h2><a href={base+path}>{title} →</a></h2><p>{text}</p></article>)}</div>
+    <section class="section" id="functions" aria-labelledby="functions-title">
+      <div class="section-heading"><p class="eyebrow">FUNCTION REFERENCE</p><h2 id="functions-title">Find the function.</h2><p class="muted">{functions.length} help pages, including syntax, examples and compatibility notes.</p></div>
+      <label class="search-field" for="function-search">Search functions <input type="search" id="function-search" placeholder="Try linspace, plot or fft" autocomplete="off" aria-describedby="search-hint" /></label>
+      <p id="search-hint" class="small muted">Press / to focus search.</p><p id="search-count" class="section-note" role="status" aria-live="polite">{functions.length} functions</p>
+      <ul class="functions-list" id="functions-list">{functions.map(fn => <li data-name={fn.name}><a href={`/docs/functions/${fn.name}/`}><span class="function-name">{fn.name}</span><span class="function-summary">{fn.summary}</span></a></li>)}</ul>
+    </section>
+  </div>
+  <script>import '../../scripts/functions-search';</script>
+</Base>

@@ -1,0 +1,487 @@
+# cells: cell, struct and char array operations (corpora brief 3, 2026-10-24)
+# Part A: concatenation, transpose, display
+# cells_a: concatenation and transpose of cell, struct and char arrays, with their displays
+# [ ] concatenation of cells
+ca_a = {1, 2}; ca_b = {3, 4}; x = [ca_a, ca_b]
+ca_a = {1, 2}; ca_b = {3, 4}; x = [ca_a; ca_b]
+ca_a = {1, 'ab'}; ca_b = {[1 2 3], true}; x = [ca_a ca_b]
+ca_a = {1; 2}; ca_b = {3; 4}; x = [ca_a, ca_b]
+ca_c = {1, 2}; x = [ca_c, {5}]
+ca_c = {1, 2}; x = [ca_c, {'xy'}]
+x = [{1}, 2]
+x = [{1}, 2, 3]
+x = [2, {1}]
+x = [{1}, [2 3]]
+x = [{1}, [2; 3]]
+ca_c = {1, 2}; x = [ca_c, 'text']
+ca_c = {1, 2}; x = ['text', ca_c]
+ca_c = {'a'; 'b'}; x = [ca_c; 'cd']
+x = [{1}, true]
+x = [{1}, int8(5)]
+x = [{1}, {2}]
+x = [{1}, {2}; {3}, {4}]
+ca_c = {1, 2}; x = [{}, ca_c]
+ca_c = {1, 2}; x = [ca_c, {}]
+x = [{}, {}]
+x = [{}; {}]
+x = [{}, cell(0,3)]
+x = [cell(2,0), cell(2,0)]
+x = [cell(2,0), {1; 2}]
+ca_w = warning('off', 'backtrace'); x = [cell(0,3), {1, 2}]; warning(ca_w); x
+x = [cell(0,3); {1, 2, 3}]
+ca_c = {1, 2}; x = [ca_c, []]
+ca_c = {1, 2}; x = [[], ca_c]
+ca_c = {1, 2}; x = [ca_c, zeros(1,0)]
+ca_c = {1, 2}; x = [ca_c, '']
+x = [{}, 1]
+ca_a = {1, 2}; ca_b = {3, 4}; x = [{ca_a}, ca_b]
+ca_a = {1, {2, 3}}; x = [ca_a, {{4}}]
+x = [{1, 'a'}, {true, int8(2)}, {[1 2; 3 4]}]
+x = [{single(1)}, {uint16(7)}, {'q'}, {1+2i}]
+ca_a = {1, 2}; ca_b = {3, 4, 5}; x = [ca_a; ca_b]
+ca_a = {1; 2}; ca_b = {3; 4; 5}; x = [ca_a, ca_b]
+ca_a = {1, 2}; x = [ca_a; 3]
+x = [{1, 2}; [3 4]]
+x = [{1}, struct('a', 1)]
+x = [struct('a', 1), {1}]
+# struct arrays
+ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('a', 3, 'b', 4); x = [ca_s1, ca_s2]
+ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('a', 3, 'b', 4); x = [ca_s1; ca_s2]
+ca_st = struct('a', {1, 2, 3}); x = [ca_st, ca_st(2:end)]
+ca_st = struct('a', {1, 2, 3}); x = [ca_st, ca_st(2:end)]; x = [x.a]
+ca_s1 = struct('a', 1); ca_s2 = struct('b', 2); x = [ca_s1, ca_s2]
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2, 'b', 3); x = [ca_s1, ca_s2]
+ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s1, ca_s2]
+ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s1, ca_s2]; x = x(2)
+ca_s1 = struct('a', 1, 'b', 2); ca_s2 = struct('b', 3, 'a', 4); x = [ca_s2, ca_s1]; x = fieldnames(x)
+ca_s1 = struct('a', 1); x = [ca_s1, 5]
+ca_s1 = struct('a', 1); x = [ca_s1, []]
+ca_s1 = struct('a', 1); x = [struct([]), ca_s1]
+ca_s1 = struct('a', {1, 2}); ca_s2 = struct('a', {3; 4}); x = [ca_s1; ca_s2]
+ca_s1 = struct('a', {1, 2}); ca_s2 = struct('a', 3); x = [ca_s1; ca_s2]
+# cat, horzcat, vertcat
+ca_a = {1, 2}; ca_b = {3, 4}; x = cat(1, ca_a, ca_b)
+ca_a = {1, 2}; ca_b = {3, 4}; x = cat(2, ca_a, ca_b)
+ca_a = {1, 2}; ca_b = {3, 4}; x = cat(3, ca_a, ca_b)
+ca_a = {1, 2}; ca_b = {3, 4, 5}; x = cat(1, ca_a, ca_b)
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(1, ca_s1, ca_s2)
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(2, ca_s1, ca_s2)
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = size(cat(3, ca_s1, ca_s2))
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = cat(3, ca_s1, ca_s2)
+x = cat(2, {1}, 2)
+x = cat(2)
+ca_a = {1, 2}; ca_b = {'x'}; x = horzcat(ca_a, ca_b)
+ca_a = {1, 2}; ca_b = {3, 4}; x = vertcat(ca_a, ca_b)
+x = horzcat({1}, 2, 'ab')
+ca_a = {1, 2}; ca_b = {3}; x = vertcat(ca_a, ca_b)
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = horzcat(ca_s1, ca_s2)
+ca_s1 = struct('a', 1); ca_s2 = struct('a', 2); x = vertcat(ca_s1, ca_s2)
+ca_s1 = struct('a', 1); ca_s2 = struct('b', 2); x = vertcat(ca_s1, ca_s2)
+x = horzcat()
+x = vertcat()
+# char concatenation
+x = ['ab'; 'cd']
+x = ['ab'; 'cde']
+x = ['ab', 'cde']
+x = ['a', 66]
+x = [66, 'a']
+x = ['a'; 66]
+x = ['a', 66.7]
+x = ['a', int8(66)]
+x = ['ab', '']
+x = [''; 'ab']
+x = [char(zeros(0,3)); 'abc']
+# transpose of cells
+ca_c = {1, 'ab', [1 2 3]}; x = ca_c'
+ca_c = {1, 'ab', [1 2 3]}; x = ca_c.'
+ca_c = {1; 'ab'}; x = ca_c'
+ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = ca_c'
+ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = transpose(ca_c)
+ca_c = {1, 2; 'a', 'b'; true, int8(3)}; x = ctranspose(ca_c)
+x = {}'
+x = cell(0,3)'
+x = cell(2,0).'
+ca_c = {1, {2, 3}}; x = ca_c'
+ca_c = {1, {2, 3}}; x = ca_c'; x = x{2}
+x = {1+2i}'
+x = {1+2i}'; x = x{1}
+x = {1+2i}.'; x = x{1}
+x = ctranspose({[1+2i, 3-1i]}); x = x{1}
+ca_c = {'abc', 'de'}; x = ca_c'
+# transpose of structs
+ca_st = struct('a', {1, 2, 3}); x = ca_st'
+ca_st = struct('a', {1, 2, 3}); x = transpose(ca_st); x = [x.a]
+ca_st = struct('a', 1, 'b', 'xy'); x = ca_st'
+ca_st = struct('a', 1+2i); x = ca_st'; x = x.a
+ca_st = struct('a', {1, 2; 3, 4}); x = ca_st.'; x = [x.a]
+# transpose of char
+x = ['ab'; 'cd']'
+ca_t = 'abc'; x = ca_t'
+x = ctranspose(['ab'; 'cd'; 'ef'])
+x = char(zeros(0,3))'
+# display coverage
+x = {}
+x = cell(0,3)
+x = cell(2,0)
+x = cell(2,2)
+x = {{}}
+x = {{1, 'a'}, {}}
+x = {{{1}}}
+x = {cell(0,3), cell(2,0)}
+x = {struct('a', 1)}
+x = {struct('a', {1, 2})}
+x = {[1 2; 3 4], [1 2 3]}
+x = {zeros(1,0), [], ''}
+x = {true, [true false]}
+x = {int8(5), int8([1 2 3])}
+x = {uint8(200), int16(-3), single(2.5)}
+x = {1+2i, 'a'}
+x = struct('a', {1, 2})
+x = struct('a', {})
+x = struct('a', {{1, 2}})
+x = struct('a', {1, 2}, 'b', 'q')
+x = struct('c', {{}})
+x = {'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz'}
+x = {1:20}
+# Part B: indexing, assignment, deletion, shape functions
+# cells_b: indexing/assignment on cells, struct arrays and char
+cb_c = {1, 2, 3}; cb_c(2) = []; x = cb_c
+cb_c = {1, 2; 3, 4; 5, 6}; cb_c(:,1) = []; x = cb_c
+cb_c = {1, 2; 3, 4; 5, 6}; cb_c(1,:) = []; x = cb_c
+cb_c = {1, 2, 3, 4}; cb_c([1 3]) = []; x = cb_c
+cb_c = {1, 2, 3, 4}; cb_c(logical([1 0 1 0])) = []; x = cb_c
+cb_c = {1; 2; 3}; cb_c(2) = []; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(2) = []; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(2,1) = []; x = cb_c
+cb_c = {1, 2, 3}; cb_c(5) = []; x = cb_c
+cb_c = {1, 2, 3}; cb_c{2} = []; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2) = {5}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2) = {{5, 6}}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(5) = {1}; x = cb_c
+cb_c = {1; 2}; cb_c(4) = {9}; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(2,3) = {1}; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(5) = {1}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2:3) = {7, 8}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2:3) = {7}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2:3) = {7, 8, 9}; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2) = 5; x = cb_c
+cb_c = {1, 2, 3}; cb_c(2:3) = 5; x = cb_c
+cb_c = {1, 2, 3}; cb_c{2} = 5; x = cb_c
+cb_c = {1, 2, 3}; cb_c{2} = {5}; x = cb_c
+cb_c = {1, 2, 3}; cb_c{end+1} = 'z'; x = cb_c
+cb_c = {}; cb_c{end+1} = 1; cb_c{end+1} = 'ab'; x = cb_c
+cb_c = {1; 2}; cb_c{end+1} = 3; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c{end+1} = 5; x = cb_c
+cb_c = {1, 2}; cb_c{3,3} = 1; x = cb_c
+cb_c = {}; cb_c{2,2} = 'q'; x = cb_c
+clear cb_u; cb_u{3} = 1; x = cb_u
+cb_c = {1, 2; 3, 4}; cb_c(:) = {0}; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(:,2) = {7; 8}; x = cb_c
+cb_c = {1, 2; 3, 4}; cb_c(:,2) = {7, 8, 9}; x = cb_c
+cb_c = {1, 2, 3}; cb_c{2:3} = 5; x = cb_c
+cb_c = {1, 2, 3}; x = [cb_c{:}]
+cb_c = {1, [2 3], 4}; x = [cb_c{:}]
+cb_c = {'ab', 'cd'}; x = [cb_c{:}]
+cb_c = {1, 'a'}; x = [cb_c{:}]
+cb_c = {}; x = [cb_c{:}]
+cb_c = {1, 2, 3}; x = {cb_c{2:3}}
+cb_c = {1, 2, 3}; x = cb_c{:}
+cb_c = {1, [5 6 7], 3}; x = cb_c{2}(3)
+cb_c = {1, {5, 'ab'}, 3}; x = cb_c{2}{2}
+cb_c = {1, [5 6 7], 3}; cb_c{2}(5) = 1; x = cb_c
+cb_c = {1, {5, 'ab'}, 3}; cb_c{2}{1} = 'new'; x = cb_c
+cb_c = {1, [5 6 7], 3}; x = cb_c{2}(4)
+cb_c = {1, 2; 3, 4}; cb_c(3) = []; x = cb_c
+cb_c = {1, 2, 3; 4, 5, 6}; cb_c([1 2]) = []; x = cb_c
+cb_c = {1, 2, 3}; x = cb_c(2)
+cb_c = {1, 2, 3}; x = cb_c{2}
+cb_c = {1, 'ab', 3}; x = cb_c([1 2])
+cb_c = {1, 2, 3}; x = cb_c(4)
+cb_c = {1, 2, 3}; x = cb_c{4}
+cb_c = {1, 2, 3}; x = cb_c{2.5}
+cb_c = {1, 2, 3}; x = cb_c(0)
+cb_c = {1, 2; 3, 4}; x = cb_c(3, 1)
+cb_c = {1, 2; 3, 4}; x = cb_c(:)
+cb_c = {1, 2, 3}; x = cb_c([])
+cb_st = struct('a', {1, 2, 3}); cb_st(2) = []; x = cb_st
+cb_st = struct('a', {1, 2, 3}); cb_st(2) = []; x = [cb_st.a]
+cb_st = struct('a', {1, 2}); cb_st(3).a = 1; x = cb_st
+cb_st = struct('a', {1, 2}); cb_st(4).a = 1; x = {cb_st.a}
+cb_st = struct('a', 5); cb_st(2,2).a = 1; x = cb_st
+cb_st = struct('a', {1, 2}); cb_st(2).b = 'x'; x = cb_st
+cb_st = struct('a', {1, 2}); cb_st(2).b = 'x'; x = cb_st(1)
+cb_st = struct('a', {1, 2, 3}); cb_st(logical([1 0 1])) = []; x = cb_st
+cb_st = struct('a', {1, 2, 3}); cb_st(:) = []; x = cb_st
+cb_st = struct('a', {1, 2, 3}); x = [cb_st.a]
+cb_st = struct('a', {1, 'ab', [2 3]}); x = {cb_st.a}
+cb_st = struct('a', {'ab', 'cd'}); x = [cb_st.a]
+cb_st = struct('a', {1, 2}); x = cb_st.a
+cb_st = struct('a', {1, 2, 3}); x = cb_st(2)
+cb_st = struct('a', {1, 2, 3}); x = cb_st(2:3)
+cb_st = struct('a', {1, 2, 3}); x = cb_st(4)
+cb_st = struct('a', {1, 2}); cb_st(2) = struct('b', 3); x = cb_st
+cb_st = struct('a', {1, 2}); cb_st(2) = struct('a', 9); x = [cb_st.a]
+cb_st = struct('a', {1, 2}); cb_st(3) = struct('a', 7); x = cb_st
+cb_st = struct('a', {1, 2}); cb_st(2) = 5; x = cb_st
+cb_st = struct('a', {1, 2}); [cb_st.a] = deal(0); x = [cb_st.a]
+cb_st = struct('a', {1, 2}); x = cb_st.b
+cb_st = struct('a', {}); cb_st(1).a = 4; x = cb_st
+cb_t = 'hello'; cb_t(2) = []; x = cb_t
+cb_t = 'hello'; cb_t(6) = 'z'; x = double(cb_t)
+cb_t = 'hello'; cb_t(8) = 'z'; x = double(cb_t)
+cb_t = 'hello'; cb_t(8) = 'z'; x = cb_t
+cb_t = 'hello'; cb_t(2) = 65; x = cb_t
+cb_t = 'hello'; cb_t(2) = {1}; x = cb_t
+cb_t = 'hello'; x = cb_t(7)
+cb_t = ['ab'; 'cd']; cb_t(1,:) = []; x = cb_t
+cb_t = ['ab'; 'cd']; cb_t(3,1) = 'x'; x = double(cb_t)
+cb_t = ['ab'; 'cd']; cb_t(2) = []; x = cb_t
+cb_t = 'hello'; cb_t(2:3) = 'XYZ'; x = cb_t
+# shape functions on cells, structs, char
+cb_c = {1, 2, 3, 4, 5, 6}; x = reshape(cb_c, 2, 3)
+cb_c = {1, 2, 3, 4, 5, 6}; x = reshape(cb_c, 4, 2)
+cb_c = {1, 2, 3, 4, 5, 6, 7, 8}; x = reshape(cb_c, 2, 2, 2)
+cb_st = struct('a', {1, 2, 3, 4}); x = reshape(cb_st, 2, 2)
+cb_t = 'abcdef'; x = reshape(cb_t, 2, 3)
+x = repmat({1}, 2, 2)
+x = repmat({1}, [1 2 2])
+x = repmat({}, 2, 2)
+x = repmat(struct('a', 1), 1, 3)
+x = repmat('ab', 2, 2)
+cb_c = {1, 2, 3}; x = fliplr(cb_c)
+cb_c = {1, 2; 3, 4}; x = flipud(cb_c)
+cb_c = {1, 2; 3, 4}; x = flip(cb_c, 2)
+cb_st = struct('a', {1, 2, 3}); x = fliplr(cb_st); x = [x.a]
+cb_st = struct('a', {1, 2, 3}); x = fliplr(cb_st)
+cb_t = ['ab'; 'cd']; x = flipud(cb_t)
+cb_c = {1, 2; 3, 4}; x = rot90(cb_c)
+cb_c = {1, 2; 3, 4}; x = rot90(cb_c, 2)
+cb_c = {1, 2, 3}; x = rot90(cb_c, -1)
+cb_t = 'abc'; x = rot90(cb_t)
+cb_c = {1; 2; 3; 4}; x = circshift(cb_c, 1)
+cb_c = {1, 2, 3, 4}; x = circshift(cb_c, 1, 2)
+cb_c = {1, 2; 3, 4; 5, 6}; x = circshift(cb_c, 1, 2)
+cb_c = {1, 2; 3, 4; 5, 6}; x = circshift(cb_c, [1 1])
+cb_st = struct('a', {1, 2, 3}); x = circshift(cb_st, 1, 2); x = [x.a]
+cb_t = 'abcd'; x = circshift(cb_t, 1, 2)
+cb_c = reshape({1, 2, 3}, 1, 1, 3); x = squeeze(cb_c)
+cb_c = {1, 2; 3, 4}; x = squeeze(cb_c)
+cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [2 1])
+cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [1 3 2]); x = size(x)
+cb_c = {1, 2, 3; 4, 5, 6}; x = permute(cb_c, [3 1 2])
+cb_c = {1, 2}; x = permute(cb_c, [1 1])
+cb_st = struct('a', {1, 2, 3}); x = permute(cb_st, [2 1])
+x = numel({1, 2, 3})
+x = numel({})
+x = numel(struct('a', {1, 2}))
+x = size({1, 2; 3, 4})
+x = size(cell(0, 3))
+x = size(['ab'; 'cd'; 'ef'])
+cb_c = {1, 2; 3, 4; 5, 6}; [cb_r, x] = size(cb_c)
+x = length(cell(0, 3))
+x = length(['ab'; 'cd'; 'ef'])
+x = ndims({1, 2})
+x = ndims(cell(2, 2, 2))
+x = isempty({})
+x = isempty(cell(0, 3))
+x = isempty(struct('a', {}))
+x = isempty('')
+x = isrow({1, 2, 3})
+x = isrow({})
+x = isrow('abc')
+x = iscolumn({1; 2})
+x = iscolumn(['a'; 'b'])
+x = isvector({1, 2})
+x = isvector({1, 2; 3, 4})
+x = isvector({})
+x = isvector('abc')
+x = isscalar({1})
+x = isscalar(struct('a', 1))
+x = isscalar(struct('a', {1, 2}))
+x = isscalar('a')
+x = ismatrix({1, 2; 3, 4})
+x = ismatrix({})
+x = ismatrix(cell(2, 2, 2))
+# Part C: text sorting and set functions
+# cells_c: text sets and sorting (brief 3 item 5) with their display (item 6)
+# sort of cellstr
+x = sort({'b','a','c'})
+cc_c = {'pear','apple','fig'}; [x, cc_i] = sort(cc_c)
+cc_c = {'pear','apple','fig'}; [~, x] = sort(cc_c)
+x = sort({'b','a','c'}, 'descend')
+x = sort({'b','B','a','A'})
+cc_c = {'b','B','a','A'}; [~, x] = sort(cc_c)
+x = sort({'b','','a',''})
+cc_c = {'b','','a',''}; [~, x] = sort(cc_c)
+x = sort({'b';'a';'c'})
+cc_c = {'b';'a';'c'}; [~, x] = sort(cc_c)
+x = sort({'ab','a','abc','b'})
+x = sort({'a ','a','a  '})
+cc_c = {'a ','a','a  '}; [~, x] = sort(cc_c)
+x = sort({'d','b';'a','c'})
+x = sort({'d','b';'a','c'}, 1)
+x = sort({})
+x = sort(cell(0,3))
+x = sort({'only'})
+x = sort({1,2})
+x = sort({'a',1})
+x = sort({'10','9','1'})
+# sort of char
+x = sort('hello')
+[~, x] = sort('hello')
+x = sort('hello', 'descend')
+cc_c = 'hello'; [~, x] = sort(cc_c, 'descend')
+x = sort('Hello World')
+x = sort(['db';'ca'])
+x = sort(['db';'ca'], 2)
+x = sort('')
+# sortrows
+x = sortrows({'pear';'apple';'fig'})
+cc_c = {'pear';'apple';'fig'}; [~, x] = sortrows(cc_c)
+x = sortrows({'pear';'apple';'fig'}, -1)
+x = sortrows({'b';'a';'B';'a'})
+cc_c = {'b';'a';'B';'a'}; [~, x] = sortrows(cc_c)
+x = sortrows({'pear','apple','fig'})
+x = sortrows({'b','x';'a','y'})
+x = sortrows(['db';'ca';'cb'])
+cc_c = ['db';'ca';'cb']; [~, x] = sortrows(cc_c)
+x = sortrows(['db';'ca';'cb'], -1)
+x = sortrows(['db';'ca';'cb'], 2)
+x = sortrows(['db';'ca';'cb'], [1 -2])
+x = sortrows({'pear';'apple';'fig'}, 'descend')
+x = sortrows({})
+# issorted
+x = issorted({'a','b','c'})
+x = issorted({'b','a'})
+x = issorted({'a','a','b'})
+x = issorted({'B','a'})
+x = issorted({'a';'b'})
+x = issorted('abc')
+x = issorted('cba')
+x = issorted(['ab';'ac'], 'rows')
+x = issorted(['ac';'ab'], 'rows')
+x = issorted({})
+x = issorted({'a','b'}, 'rows')
+# unique cellstr
+x = unique({'b','a','b','c'})
+x = unique({'b','a','b','c'}, 'stable')
+x = unique({'b','a','b','c'}, 'sorted')
+cc_c = {'b','a','b','c'}; [x, cc_ia, cc_ic] = unique(cc_c)
+cc_c = {'b','a','b','c'}; [~, x] = unique(cc_c)
+cc_c = {'b','a','b','c'}; [~, ~, x] = unique(cc_c)
+cc_c = {'b','a','b','c'}; [~, x] = unique(cc_c, 'stable')
+cc_c = {'b','a','b','c'}; [~, ~, x] = unique(cc_c, 'stable')
+cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'first')
+cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'last')
+cc_c = {'b','a','b','c','a'}; [~, x] = unique(cc_c, 'legacy')
+cc_c = {'b','a','b','c','a'}; [~, ~, x] = unique(cc_c, 'legacy')
+x = unique({'b','a','b','c'}, 'legacy')
+x = unique({'b';'a';'b'})
+x = unique({'b';'a';'b'}, 'stable')
+cc_c = {'b';'a';'b'}; [~, x] = unique(cc_c)
+x = unique({'b','a';'a','c'})
+x = unique({})
+x = unique(cell(1,0))
+x = unique({'','a',''})
+x = unique({'a','A','a'})
+x = unique({'a ','a'})
+x = unique({1,'a'})
+x = unique({1,2})
+cc_w = warning('off','all'); x = unique({'b','a','b'}, 'rows'); warning(cc_w); x
+cc_w = warning('off','all'); lastwarn(''); cc_t = unique({'b','a'}, 'rows'); warning(cc_w); x = lastwarn
+x = unique({'a','b'}, 'stable', 'sorted')
+# unique char
+x = unique('hello')
+x = unique('hello', 'stable')
+cc_c = 'hello'; [~, x] = unique(cc_c)
+cc_c = 'hello'; [~, ~, x] = unique(cc_c)
+x = unique(['ab';'ab';'ac'], 'rows')
+x = unique(['ba';'ab'])
+x = unique('')
+# ismember
+x = ismember('a', {'a','b'})
+x = ismember('z', {'a','b'})
+x = ismember({'a','z','b'}, {'a','b'})
+cc_c = {'a','z','b'}; [~, x] = ismember(cc_c, {'b','a','b'})
+cc_c = {'a';'z'}; [x, cc_l] = ismember(cc_c, {'z','a'})
+cc_c = 'b'; [~, x] = ismember(cc_c, {'a','b'})
+x = ismember('a', 'abc')
+x = ismember('abc', 'b')
+cc_c = 'abc'; [~, x] = ismember(cc_c, 'cb')
+x = ismember({'abc'}, 'abc')
+x = ismember('abc', {'abc','x'})
+x = ismember(['ab';'cd'], ['cd';'ef'], 'rows')
+cc_c = ['ab';'cd']; [~, x] = ismember(cc_c, ['cd';'ef'], 'rows')
+x = ismember({}, {'a'})
+x = ismember('', {'a',''})
+x = ismember(1, {'a'})
+x = ismember({'a'}, 1)
+x = ismember({1}, {'a'})
+x = ismember({'a',1}, {'a'})
+x = ismember('a', 'A')
+x = ismember({'a','b';'c','d'}, {'d','a'})
+cc_w = warning('off','all'); x = ismember({'a','b'}, {'a'}, 'rows'); warning(cc_w); x
+# setdiff
+x = setdiff({'a','b','c'}, {'b'})
+x = setdiff({'c','a','b'}, {'b'}, 'stable')
+x = setdiff({'c','a','b'}, {'b'}, 'sorted')
+cc_c = {'c','a','b','a'}; [~, x] = setdiff(cc_c, {'b'})
+x = setdiff({'c';'a';'b'}, {'b'})
+x = setdiff({'c','a'}, {'b';'a'})
+x = setdiff({'a'}, {'a'})
+x = setdiff({}, {'a'})
+x = setdiff({'b','a'}, {})
+x = setdiff({'b','a'}, 'a')
+x = setdiff({'c','a','d'}, {'b';'a'})
+x = setdiff({'c';'a';'d'}, {'b','a'})
+x = setdiff('abc', {'b'})
+x = setdiff('abc', 'b')
+x = setdiff('cab', 'b', 'stable')
+x = setdiff({'a'}, 1)
+x = setdiff(['ab';'cd'], ['cd'], 'rows')
+x = setdiff({'b','a','b'}, {'z'}, 'legacy')
+# intersect
+x = intersect({'a','b','c'}, {'c','a','z'})
+x = intersect({'c','b','a'}, {'a','c'}, 'stable')
+cc_c = {'c','b','a'}; [x, cc_ia, cc_ib] = intersect(cc_c, {'a','c'})
+cc_c = {'c','b','a'}; [~, x] = intersect(cc_c, {'a','c'})
+cc_c = {'c','b','a'}; [~, ~, x] = intersect(cc_c, {'a','c'})
+x = intersect({'a';'b'}, {'b';'a'})
+x = intersect({'a';'b'}, {'b','a'})
+x = intersect({'a'}, {'z'})
+x = intersect({'b','a','c'}, {'c';'a'})
+x = intersect({}, {'a'})
+x = intersect('abc', 'bcd')
+x = intersect('cba', 'bcd', 'stable')
+x = intersect({'abc','x'}, 'abc')
+x = intersect({'a'}, 1)
+x = intersect(['ab';'cd'], ['cd';'ef'], 'rows')
+# union
+x = union({'b','a'}, {'c','a'})
+x = union({'b','a'}, {'c','a'}, 'stable')
+cc_c = {'b','a'}; [x, cc_ia, cc_ib] = union(cc_c, {'c','a'})
+cc_c = {'b','a'}; [~, x] = union(cc_c, {'c','a'})
+cc_c = {'b','a'}; [~, ~, x] = union(cc_c, {'c','a'})
+x = union({'b';'a'}, {'c';'a'})
+x = union({'b';'a'}, {'c','a'})
+x = union({}, {'b','a'})
+x = union({'b','a'}, {'c';'a'})
+x = union({}, {})
+x = union('a', {'b'})
+x = union({'a'}, 'b')
+x = union('ab', 'bc')
+x = union('ba', 'cb', 'stable')
+x = union({'a'}, 1)
+x = union(['ab';'cd'], ['cd';'ef'], 'rows')
+# setxor
+x = setxor({'a','b','c'}, {'b','c','d'})
+x = setxor({'c','a','b'}, {'d','b'}, 'stable')
+cc_c = {'a','b','c'}; [x, cc_ia, cc_ib] = setxor(cc_c, {'b','c','d'})
+cc_c = {'a','b','c'}; [~, x] = setxor(cc_c, {'b','c','d'})
+cc_c = {'a','b','c'}; [~, ~, x] = setxor(cc_c, {'b','c','d'})
+x = setxor({'a';'b'}, {'b';'c'})
+x = setxor({'a'}, {'a'})
+x = setxor({'a','b'}, {'c';'b'})
+x = setxor({}, {'b';'a'})
+x = setxor('abc', 'bcd')
+x = setxor({'a'}, 1)

@@ -1,0 +1,121 @@
+ 
+@@a01 cell1x1{char1x3'123'}
+@@a02 cell0x0{}
+@@a03 cell1x1{cell1x0{}}
+@@a04 cell1x2{cell1x2{char1x2'ab',char1x2'12'},cell1x2{char1x2'cd',char1x2'34'}}
+@@a05 cell1x1{cell1x2{char0x0,char1x2'12'}}
+@@a06 char1x1'b'
+@@a07 char0x0
+@@a08 cell0x0{}
+@@a09 cell0x0{}
+@@a10 double0x0
+@@a11 double1x2 [2 4]
+@@a12 double0x0
+@@a13 cell1x2{double1x2 [2 4],double1x2 [2 4]}
+@@a14 cell1x6{double1x2 [2 4],double1x2 [2 5],cell1x2{double0x0,double0x0},cell1x2{char1x1'1',char1x2'22'},cell1x2{cell1x0{},cell1x0{}},cell1x3{char1x1'a',char1x1'b',char0x0}}
+@@a15 cell1x4{char1x1'a',char1x1'b',char0x0,char1x1'c'}
+@@a16 cell1x3{char0x0,char1x1'a',char0x0}
+@@a17 cell0x0{}
+@@a18 cell0x0{}
+@@a19 cell1x4{char0x0,char0x0,char0x0,char0x0}
+@@a20 cell1x2{cell1x2{cell1x1{char1x1'1'},cell1x1{char1x1'2'}},cell1x2{char1x1'1',char1x1'2'}}
+@@a21 cell1x2{cell1x1{char1x1'1'},cell1x1{char1x2'22'}}
+@@a22 cell2x1{double1x1 2,double1x2 [2 3]}
+@@a23 cell1x2{cell1x1{char1x1'1'},cell1x1{char1x1'a'}}
+@@a24 cell1x1{char1x1'B'}
+@@a25 cell1x1{char1x1'B'}
+@@a26 cell1x1{char1x3'a\nb'}
+@@a27 cell0x0{}
+@@a28 cell1x1{char1x1'b'}
+@@a29 struct1x1{x:char1x1'b'}
+@@a30 cell1x3{char1x1'a',char1x1'a',char1x1'a'}
+@@a31 double1x2 [2 4]
+@@a32 cell1x2{cell1x2{char1x1'a',char1x1'c'},cell1x2{char1x1'a',char1x1'c'}}
+@@a33 cell0x0{}
+@@a34 cell1x1{char0x0}
+@@a35 cell1x1{char1x3'abc'}
+@@a36 char1x1'a'
+@@a37 cell1x1{double2x2 [1 2;3 4]}
+@@a38 cell1x1{double0x0}
+@@a39 double1x1 2
+@@a40 ERR: The 'STRING' input must be either a char row vector or a cell array of char row vectors.
+@@a41 ERR: Not enough input arguments.
+@@a42 cell1x3{char1x1'a',char1x1'b',char1x1'c'}
+@@a43 cell1x2{char1x3'key',char1x3'val'}
+@@a44 ERR: The 'STRING' input must be either a char row vector or a cell array of char row vectors.
+@@a45 struct1x2{l:char1x1'a',d:char1x1'1',l:char1x1'b',d:char1x1'2'}
+@@a46 cell1x2{cell1x1{char1x1'a'},cell1x1{char1x1'b'}}
+@@a47 cell1x1{cell1x2{char1x1'b',char0x0}}
+@@a48 cell1x1{char1x1'b'}
+@@a49 cell1x1{char1x4'abab'}
+@@a50 double1x1 2
+@@a51 struct0x0{}
+@@a52 cell0x0{}
+@@a53 cell1x1{char1x3'abc'}
+@@a54 cell1x2{char1x1'a',char1x1'c'}
+@@a55 struct1x1{x:char1x1'b'}
+@@a56 cell0x0{}
+@@a57 double1x2 [2 2]
+@@a58 double0x0
+@@a59 double1x1 2
+@@a60 cell0x0{}
+@@a61 cell1x2{cell1x1{char1x1'a'},cell1x1{char1x1'b'}}
+@@a62 ERR: Invalid option for regexp: bogus.
+@@a63 ERR: Not enough outputs specified for 'start' option.
+@@a64 cell1x1{char1x3'a+b'}
+@@a65 cell0x0{}
+@@a66 double1x1 2
+@@a67 cell1x2{char1x1'a',char1x1'b'}
+@@a68 struct1x2{}
+@@a69 double1x1 2
+@@a70 ERR: Not enough outputs specified for 'tokens' option.
+@@a71 cell1x1{cell1x2{char1x1'a',char1x1'a'}}
+@@a72 cell1x1{cell1x2{char1x1'a',char1x1'b'}}
+@@a73 ERR: The 'matchcase' option may not be used in conjunction with the 'ignorecase' option.
+@@a74 cell1x1{char1x1'b'}
+@@a75 cell1x2{char1x1'a',char1x1'c'}
+@@a76 char1x1'a'
+@@a77 cell0x0{}
+@@a78 double1x1 7
+@@a79 cell1x1{char1x2'aa'}
+@@a80 cell1x2{char1x1'a',char1x1'c'}
+@@b01 char1x3'aXc'
+@@b02 char1x4'aXcb'
+@@b03 char1x3'aXc'
+@@b04 char1x3'bac'
+@@b05 char1x4'aabc'
+@@b06 double1x3 [97 10 99]
+@@b07 char1x3'abc'
+@@b08 char1x3'abc'
+@@b09 cell1x2{char1x2'aX',char1x2'cX'}
+@@b10 char1x3'12c'
+@@b11 char1x3'XXc'
+@@b12 char0x0
+@@b13 char1x2'ac'
+@@b14 char1x11'world hello'
+@@b15 char1x5'a[b]c'
+@@b16 char1x3'baa'
+@@b17 char1x3'abc'
+@@b18 char1x6'abb$2c'
+@@b19 char1x3'a\b'
+@@b20 char1x3'aBc'
+@@b21 char1x4'aXBc'
+@@b22 ERR: The 'STRING' input must be either a char row vector or a cell array of char row vectors.
+@@b23 ERR: Not enough input arguments.
+@@b24 char1x3'abc'
+@@b25 cell2x1{char1x2'aX',char1x2'cX'}
+@@b26 char0x0
+@@b27 char1x2'$3'
+@@b28 char1x1'X'
+@@b29 char1x7'-a-b-c-'
+@@b30 char1x3'a$c'
+@@b31 char1x3'aDb'
+@@b32 char1x4'a$1c'
+@@b33 char1x3'AXC'
+@@b34 ERR: Multiple replace strings and patterns given must have the same quantity.
+@@b35 char1x2'a\t'
+@@b36 char1x8'a<1>b<2>'
+@@b37 cell0x0{}
+@@b38 ERR: Invalid option for regexprep: bogus.
+@@b39 char1x4'$10b'
+@@b40 char1x4'baab'

@@ -1,0 +1,42 @@
+name: My script does not run
+description: A script or command gives an error, a wrong answer or a different display in MatRust.
+title: "Script: "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. The smallest script that shows the problem helps most. Remove anything private
+        first. A share link from the browser console (https://matrust.dev/try/) also works.
+  - type: textarea
+    id: script
+    attributes:
+      label: Script
+      description: The code you ran (or a share link from the browser console).
+      render: matlab
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What you expected, and why. Do not paste output from MATLAB.
+    validations:
+      required: true
+  - type: textarea
+    id: got
+    attributes:
+      label: MatRust gave
+      description: The output or error message from MatRust.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MatRust version
+      placeholder: "0.1.2, or browser"
+  - type: input
+    id: os
+    attributes:
+      label: System
+      placeholder: "Windows 11, Ubuntu 24.04, macOS 15, or browser"

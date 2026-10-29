@@ -1,0 +1,232 @@
+@@CASE 1|x = integral(@(t) t.^2, 0, 1)
+
+x =
+
+   0.333333333333333
+
+@@CLASS double [1 1]
+@@END
+@@CASE 2|x = integral(@(t) exp(-t.^2), -Inf, Inf)
+
+x =
+
+   1.772453850780313
+
+@@CLASS double [1 1]
+@@END
+@@CASE 3|x = integral(@(t) 1 ./ t.^2, 1, Inf)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 4|x = integral(@(t) sin(t), 0, pi)
+
+x =
+
+     2
+
+@@CLASS double [1 1]
+@@END
+@@CASE 5|x = integral(@(t) t, 1, 0)
+
+x =
+
+  -0.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 6|x = integral(@(t) [t; 2*t], 0, 1, 'ArrayValued', true)
+
+x =
+
+   0.500000000000000
+   1.000000000000000
+
+@@CLASS double [2 1]
+@@END
+@@CASE 7|x = integral(@(t) log(t), 0, 1)
+
+x =
+
+  -1.000000010959678
+
+@@CLASS double [1 1]
+@@END
+@@CASE 8|x = integral(@(t) 1 ./ sqrt(t), 0, 1)
+
+x =
+
+   1.999999999999763
+
+@@CLASS double [1 1]
+@@END
+@@CASE 9|x = integral(@(t) sin(t) ./ t, 1, 10, 'RelTol', 1e-12, 'AbsTol', 1e-14)
+
+x =
+
+   0.712264523851691
+
+@@CLASS double [1 1]
+@@END
+@@CASE 10|x = integral(@(t) exp(1i*t), 0, pi)
+
+x =
+
+  0.000000000000000 + 2.000000000000000i
+
+@@CLASS double [1 1]
+@@END
+@@CASE 11|x = integral(@(t) 5, 0, 1)
+ERR Output of the function must be the same size as the input. If FUN is an array-valued integrand, set the 'ArrayValued' option to true.
+@@END
+@@CASE 12|x = integral(@(t) t, 0, [1 2])
+ERR A and B must be floating-point scalars.
+@@END
+@@CASE 13|x = integral(@(t) abs(t - 0.3), 0, 1, 'Waypoints', 0.3)
+
+x =
+
+   0.290000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 14|x = quad(@(t) t.^3, 0, 2)
+
+x =
+
+     4
+
+@@CLASS double [1 1]
+@@END
+@@CASE 15|x = quad(@(t) exp(t), 0, 1, 1e-10)
+
+x =
+
+   1.718281828459107
+
+@@CLASS double [1 1]
+@@END
+@@CASE 16|x = quadgk(@(t) t.^2, 0, 1)
+
+x =
+
+   0.333333333333333
+
+@@CLASS double [1 1]
+@@END
+@@CASE 17|x = quadgk(@(t) exp(-t), 0, Inf)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 18|x = quadgk(@(t) 1 ./ sqrt(t), 0, 1)
+
+x =
+
+   1.999999999999763
+
+@@CLASS double [1 1]
+@@END
+@@CASE 19|[q, e] = quadgk(@(t) cos(t), 0, 1); x = q
+
+x =
+
+   0.841470984807897
+
+@@CLASS double [1 1]
+@@END
+@@CASE 20|x = integral2(@(a, b) a .* b, 0, 1, 0, 2)
+
+x =
+
+     1
+
+@@CLASS double [1 1]
+@@END
+@@CASE 21|x = integral2(@(a, b) a.^2 + b.^2, 0, 1, 0, @(a) a)
+
+x =
+
+   0.333333333333456
+
+@@CLASS double [1 1]
+@@END
+@@CASE 22|x = integral2(@(a, b) exp(-(a.^2 + b.^2)), -Inf, Inf, -Inf, Inf)
+
+x =
+
+   3.141592653606612
+
+@@CLASS double [1 1]
+@@END
+@@CASE 23|x = integral2(@(a, b) ones(size(a)), 0, 2, 0, 3)
+
+x =
+
+     6
+
+@@CLASS double [1 1]
+@@END
+@@CASE 24|x = dblquad(@(a, b) a .* b, 0, 1, 0, 2)
+
+x =
+
+   1.000000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 25|x = dblquad(@(a, b) sin(a) + cos(b), 0, pi, 0, 1)
+
+x =
+
+   4.643559060098199
+
+@@CLASS double [1 1]
+@@END
+@@CASE 26|x = triplequad(@(a, b, c) a + b + c, 0, 1, 0, 1, 0, 1)
+
+x =
+
+   1.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 27|x = integral3(@(a, b, c) a .* b .* c, 0, 1, 0, 1, 0, 2)
+
+x =
+
+   0.500000000000000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 28|x = cumtrapz([1 2 3 4])
+
+x =
+
+                   0   1.500000000000000   4.000000000000000   7.500000000000000
+
+@@CLASS double [1 4]
+@@END
+@@CASE 29|x = trapz([0 1 2], [0 1 4])
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 30|x = integral(@(t) t, 0, 1, 'Bogus', 1)
+ERR 'Bogus' is not a recognized parameter. For a list of valid name-value pair arguments, see the documentation for this function.
+@@END
+@@CASE 31|x = integral(5, 0, 1)
+ERR First input argument must be a function handle.
+@@END
+@@CASE 32|x = quad(@(t) t, 0)
+ERR Not enough input arguments.
+@@END

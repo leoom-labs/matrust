@@ -1,0 +1,452 @@
+ 
+@@CASE Q1|s.a = [1.5 2 3]; s.b = 1:20; s.c = magic(3); s.d = {1,2}; s.e = pi; s.f = 1e10; s.g = 3+4i; s.h = true; s.i = []; s.j = 'text'; s.k = struct('z', 1); s
+
+s = 
+
+    a: [1.5000 2 3]
+    b: [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20]
+    c: [3x3 double]
+    d: {[1]  [2]}
+    e: 3.1416
+    f: 1.0000e+10
+    g: 3.0000 + 4.0000i
+    h: 1
+    i: []
+    j: 'text'
+    k: [1x1 struct]
+
+@@END
+@@CASE Q2|s.a = 0.001; s.b = 1000.5; s.c = -0.5; s.d = 100000; s.e = NaN; s.f = [1 NaN]; s.g = 'a'; s.h = ['ab';'cd']; s.i = zeros(0,3); s.j = {}; s
+
+s = 
+
+    a: 1.0000e-03
+    b: 1.0005e+03
+    c: -0.5000
+    d: 100000
+    e: NaN
+    f: [1 NaN]
+    g: 'a'
+    h: [2x2 char]
+    i: [0x3 double]
+    j: {}
+
+@@END
+@@CASE Q3|s.alpha = 1; s.b = 2; s
+
+s = 
+
+    alpha: 1
+        b: 2
+
+@@END
+@@CASE Q4|s(2).a = 1; s
+
+s = 
+
+1x2 struct array with fields:
+
+    a
+
+@@END
+@@CASE Q5|s.a = {''}; s.b = {[]}; s.c = {1}; s.d = ''; s.e = {}; s
+
+s = 
+
+    a: {''}
+    b: {[]}
+    c: {[1]}
+    d: ''
+    e: {}
+
+@@END
+@@CASE Q6|s.a = 1+2i; s.b = 100.5+2i; s.c = [1 2 3]; s.d = [1.5 2.5]; s.e = 1:11; s.f = true(1,3); s
+
+s = 
+
+    a: 1.0000 + 2.0000i
+    b: 1.0050e+02 + 2.0000e+00i
+    c: [1 2 3]
+    d: [1.5000 2.5000]
+    e: [1 2 3 4 5 6 7 8 9 10 11]
+    f: [1 1 1]
+
+@@END
+@@CASE Q7|disp(struct('a', {}))
+@@END
+@@CASE Q8|x = {[]}
+
+x = 
+
+    {[]}
+
+@@END
+@@CASE Q9|x = cell(1)
+
+x = 
+
+    {[]}
+
+@@END
+@@CASE Q10|x = {'', 1}
+
+x = 
+
+    ''    [1]
+
+@@END
+@@CASE Q11|x = {{}, 1}
+
+x = 
+
+    {}    [1]
+
+@@END
+@@CASE Q12|x = {true(0)}
+
+x = 
+
+    {[]}
+
+@@END
+@@CASE Q13|x = {zeros(0,3), 1}
+
+x = 
+
+    [0x3 double]    [1]
+
+@@END
+@@CASE Q14|x = {1; 100}
+
+x = 
+
+    [  1]
+    [100]
+
+@@END
+@@CASE Q15|x = {1, 'abc'; 100, 'de'}
+
+x = 
+
+    [  1]    'abc'
+    [100]    'de' 
+
+@@END
+@@CASE Q16|x = {true; [1 2]}
+
+x = 
+
+    [         1]
+    [1x2 double]
+
+@@END
+@@CASE Q17|x = {1+2i; [1 2]}
+
+x = 
+
+    [1.0000 + 2.0000i]
+    [1x2 double]
+
+@@END
+@@CASE Q18|x = {[]; [1 2]}
+
+x = 
+
+    []
+    [1x2 double]
+
+@@END
+@@CASE Q19|x = {-1.5; 'abcdef'}
+
+x = 
+
+    [-1.5000]
+    'abcdef'
+
+@@END
+@@CASE Q20|x = {100.5+2i}
+
+x = 
+
+    [1.0050e+02 + 2.0000e+00i]
+
+@@END
+@@CASE Q21|x = repmat({'abcdefghi'},1,10)
+
+x = 
+
+  Columns 1 through 7
+
+    'abcdefghi'    'abcdefghi'    'abcdefghi'    'abcdefghi'    'abcdefghi'    'abcdefghi'    'abcdefghi'
+
+  Columns 8 through 10
+
+    'abcdefghi'    'abcdefghi'    'abcdefghi'
+
+@@END
+@@CASE Q22|x = repmat({'a'},1,40)
+
+x = 
+
+  Columns 1 through 15
+
+    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'
+
+  Columns 16 through 30
+
+    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'
+
+  Columns 31 through 40
+
+    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'    'a'
+
+@@END
+@@CASE Q23|x = {1, 'abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz', 2, 'abcdefghijklmnopqrstuvwxyz0123456789'}
+
+x = 
+
+    [1]    'abcdefghijklmnopqr'    [2]    'abcdefghijklmnopqr'
+
+@@END
+@@CASE Q24|x = [100.5+2i 1]
+
+x =
+
+   1.0e+02 *
+
+   1.0050 + 0.0200i   0.0100 + 0.0000i
+
+@@END
+@@CASE Q25|x = [1+2i 100+200i]
+
+x =
+
+   1.0e+02 *
+
+   0.0100 + 0.0200i   1.0000 + 2.0000i
+
+@@END
+@@CASE Q26|x = [-1-2i 10]
+
+x =
+
+  -1.0000 - 2.0000i  10.0000 + 0.0000i
+
+@@END
+@@CASE Q27|x = [-10-2i 1]
+
+x =
+
+ -10.0000 - 2.0000i   1.0000 + 0.0000i
+
+@@END
+@@CASE Q28|x = 10+2i
+
+x =
+
+  10.0000 + 2.0000i
+
+@@END
+@@CASE Q29|x = 99.5+1i
+
+x =
+
+  99.5000 + 1.0000i
+
+@@END
+@@CASE Q30|x = -100.5+2i
+
+x =
+
+  -1.0050e+02 + 2.0000e+00i
+
+@@END
+@@CASE Q31|x = complex(1e5, 0)
+
+x =
+
+   1.0000e+05 + 0.0000e+00i
+
+@@END
+@@CASE Q32|x = 0.001+1i
+
+x =
+
+   0.0010 + 1.0000i
+
+@@END
+@@CASE Q33|x = 0.002+0.003i
+
+x =
+
+   0.0020 + 0.0030i
+
+@@END
+@@CASE Q34|x = [0.0001+1i 1]
+
+x =
+
+   0.0001 + 1.0000i   1.0000 + 0.0000i
+
+@@END
+@@CASE Q35|x = [1e-4+1e-4i 2e-4]
+
+x =
+
+   1.0e-03 *
+
+   0.1000 + 0.1000i   0.2000 + 0.0000i
+
+@@END
+@@CASE Q36|x = complex(1, NaN)
+
+x =
+
+   1.0000 +    NaNi
+
+@@END
+@@CASE Q37|x = complex(-0, 1)
+
+x =
+
+   0.0000 + 1.0000i
+
+@@END
+@@CASE Q38|x = [1+2i NaN]
+
+x =
+
+   1.0000 + 2.0000i      NaN + 0.0000i
+
+@@END
+@@CASE Q39|disp(100.5+2i)
+   1.0050e+02 + 2.0000e+00i
+
+@@END
+@@CASE Q40|x = 0.0010001
+
+x =
+
+    0.0010
+
+@@END
+@@CASE Q41|x = [0.001 0.0005]
+
+x =
+
+   1.0e-03 *
+
+    1.0000    0.5000
+
+@@END
+@@CASE Q42|x = [0.001 1e-6]
+
+x =
+
+   1.0e-03 *
+
+    1.0000    0.0010
+
+@@END
+@@CASE Q43|x = [999.99999 1]
+
+x =
+
+   1.0e+03 *
+
+    1.0000    0.0010
+
+@@END
+@@CASE Q44|x = [-0 1.5]
+
+x =
+
+         0    1.5000
+
+@@END
+@@CASE QL45|s.a = pi; s.b = [1.5 2]; s.c = 1e10; s
+
+s = 
+
+    a: 3.141592653589793
+    b: [1.500000000000000 2]
+    c: 1.000000000000000e+10
+
+@@END
+@@CASE QL46|x = 10.5+2i
+
+x =
+
+ 10.500000000000000 + 2.000000000000000i
+
+@@END
+@@CASE QL47|x = [10.5+2i 1]
+
+x =
+
+ 10.500000000000000 + 2.000000000000000i  1.000000000000000 + 0.000000000000000i
+
+@@END
+@@CASE QL48|x = 100.5+2i
+
+x =
+
+      1.005000000000000e+02 + 2.000000000000000e+00i
+
+@@END
+@@CASE QL49|x = [1+2i 100.5]
+
+x =
+
+   1.0e+02 *
+
+  0.010000000000000 + 0.020000000000000i  1.005000000000000 + 0.000000000000000i
+
+@@END
+@@CASE QL50|x = -3-4i
+
+x =
+
+ -3.000000000000000 - 4.000000000000000i
+
+@@END
+@@CASE QL51|x = 1i
+
+x =
+
+  0.000000000000000 + 1.000000000000000i
+
+@@END
+@@CASE QL52|x = 0.002
+
+x =
+
+   0.002000000000000
+
+@@END
+@@CASE QL53|x = 99.99999999999999
+
+x =
+
+     9.999999999999999e+01
+
+@@END
+@@CASE QL54|x = [1 NaN 0.5]
+
+x =
+
+   1.000000000000000                 NaN   0.500000000000000
+
+@@END
+@@CASE QC55|s.a = 1; s.bb = 'x'; s
+s = 
+     a: 1
+    bb: 'x'
+@@END
+@@CASE QC56|x = repmat({'abcdefghij'},1,12)
+x = 
+  Columns 1 through 6
+    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'
+  Columns 7 through 12
+    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'    'abcdefghij'
+@@END

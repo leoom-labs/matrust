@@ -1,0 +1,1377 @@
+[
+  {
+    "source": "X=qr([1 2;3 4])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "-3.16227766016838",
+          "0.720759220056126",
+          "-4.42718872423573",
+          "-0.632455532033675"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=qr(B')",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 2,
+        "data": [
+          "-2.23606797749979",
+          "-0.23606797749979",
+          "0",
+          "-2.23606797749979",
+          "-4.58257569495584",
+          "0.110439739956261"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=qr(B',0)",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 2,
+        "data": [
+          "-2.23606797749979",
+          "-0.23606797749979",
+          "0",
+          "-2.23606797749979",
+          "-4.58257569495584",
+          "0.110439739956261"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=kron(1,2,3)",
+    "values": {},
+    "warning": false,
+    "error": "Too many input arguments.",
+    "identical_values": true
+  },
+  {
+    "source": "[L,U,P]=lu(A,'matrix')",
+    "values": {
+      "L": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "1",
+          "0.142857142857143",
+          "0.571428571428571",
+          "0",
+          "1",
+          "0.5",
+          "0",
+          "0",
+          "1"
+        ]
+      },
+      "U": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "7",
+          "0",
+          "0",
+          "8",
+          "0.857142857142857",
+          "0",
+          "10",
+          "1.57142857142857",
+          "-0.5"
+        ]
+      },
+      "P": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "0",
+          "1",
+          "0",
+          "0",
+          "0",
+          "1",
+          "1",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[L,U]=lu(A,'vector')",
+    "values": {
+      "L": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "0.142857142857143",
+          "0.571428571428571",
+          "1",
+          "1",
+          "0.5",
+          "0",
+          "0",
+          "1",
+          "0"
+        ]
+      },
+      "U": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "7",
+          "0",
+          "0",
+          "8",
+          "0.857142857142857",
+          "0",
+          "10",
+          "1.57142857142857",
+          "-0.5"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R,E]=qr(A,'vector')",
+    "values": {
+      "Q": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "-0.24913643956122",
+          "-0.49827287912244",
+          "-0.8304547985374",
+          "0.95555550021224",
+          "0.0130898013727705",
+          "-0.294520530887334",
+          "0.15762208124782",
+          "-0.866921446863011",
+          "0.47286624374346"
+        ]
+      },
+      "R": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "-12.0415945787923",
+          "0",
+          "0",
+          "-8.05541154581278",
+          "-1.05372901050802",
+          "0",
+          "-9.63327566303384",
+          "-0.379604239810339",
+          "-0.23643312187173"
+        ]
+      },
+      "E": {
+        "rows": 1,
+        "cols": 3,
+        "data": [
+          "3",
+          "1",
+          "2"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R]=qr(A,false)",
+    "values": {
+      "Q": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "-0.123091490979333",
+          "-0.492365963917331",
+          "-0.861640436855329",
+          "0.904534033733291",
+          "0.301511344577763",
+          "-0.301511344577763",
+          "0.408248290463862",
+          "-0.816496580927726",
+          "0.408248290463863"
+        ]
+      },
+      "R": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "-8.12403840463596",
+          "0",
+          "0",
+          "-9.60113629638795",
+          "0.904534033733293",
+          "0",
+          "-11.9398746249953",
+          "1.50755672288882",
+          "0.408248290463863"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R]=qr(A,1)",
+    "values": {},
+    "warning": false,
+    "error": "Use qr(A,0) for economy size decomposition or use qr(A,'matrix') for a permutation matrix and qr(A,'vector') for a permutation vector.",
+    "identical_values": false
+  },
+  {
+    "source": "X=null([1 2;2 4])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          "-0.894427190999916",
+          "0.447213595499958"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null([1 1 1])",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 2,
+        "data": [
+          "-0.577350269189626",
+          "0.788675134594813",
+          "-0.211324865405187",
+          "-0.577350269189626",
+          "-0.211324865405187",
+          "0.788675134594813"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=orth([1 2;2 4])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          "-0.447213595499958",
+          "-0.894427190999916"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=orth(B)",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0.22038543642454",
+          "0.975412866130012",
+          "0.975412866130012",
+          "-0.220385436424539"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null(B)",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 1,
+        "data": [
+          "-0.0975900072948533",
+          "-0.195180014589707",
+          "0.975900072948533"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=norm([3 4],-1)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "1.71428571428571"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([3 4],0)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([3 4],'foo')",
+    "values": {},
+    "warning": false,
+    "error": "The only matrix norms available are 1, 2, inf, and 'fro'.",
+    "identical_values": true
+  },
+  {
+    "source": "X=norm(ones(2),3)",
+    "values": {},
+    "warning": false,
+    "error": "The only matrix norms available are 1, 2, inf, and 'fro'.",
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([],'fro')",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([1 NaN;2 3])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([1 Inf;2 3])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([1 NaN;2 3],1)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm('abc')",
+    "values": {},
+    "warning": false,
+    "error": "Undefined function 'norm' for input arguments of type 'char'.",
+    "identical_values": true
+  },
+  {
+    "source": "X=cond([1 2;2 4])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "4.80485730754712e+16"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=cond(B,1)",
+    "values": {},
+    "warning": false,
+    "error": "A is rectangular.  Use the 2 norm.",
+    "identical_values": true
+  },
+  {
+    "source": "X=cond([1 NaN;2 3],1)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": true
+  },
+  {
+    "source": "X=cond([1 NaN;2 3])",
+    "values": {},
+    "warning": false,
+    "error": "Input to SVD must not contain NaN or Inf.",
+    "identical_values": true
+  },
+  {
+    "source": "X=cond([])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=cond(A,'fro')",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "90.7842374962624"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=cond(A,3)",
+    "values": {},
+    "warning": false,
+    "error": "The only matrix norms available are 1, 2, inf, and 'fro'.",
+    "identical_values": true
+  },
+  {
+    "source": "X=logm(0)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "-Inf"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": false
+  },
+  {
+    "source": "X=logm([0 1;0 0])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "-Inf",
+          "NaN",
+          "Inf",
+          "-Inf"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": false
+  },
+  {
+    "source": "X=sqrtm([0 1;0 0])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "0",
+          "Inf",
+          "0"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": true
+  },
+  {
+    "source": "X=sqrtm(zeros(2))",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": true
+  },
+  {
+    "source": "X=sqrtm([0 0 1;0 0 0;0 0 0])",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "0",
+          "0",
+          "0",
+          "NaN",
+          "0",
+          "0",
+          "NaN",
+          "NaN",
+          "0"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": true
+  },
+  {
+    "source": "X=sqrtm([1 -1;1 -1])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "50917277.4997363",
+          "50917277.4997363",
+          "-50917277.4997362",
+          "-50917277.4997363"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=sqrtm([0 1;-1 0])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0.707106781186547",
+          "-0.707106781186548",
+          "0.707106781186548",
+          "0.707106781186547"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=expm([1 Inf;0 1])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "NaN",
+          "NaN",
+          "NaN",
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=expm([1 NaN;0 1])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "NaN",
+          "NaN",
+          "NaN",
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=pinv([1 2;2 4],0.1)",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0.04",
+          "0.08",
+          "0.08",
+          "0.16"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=pinv([1 Inf;2 4])",
+    "values": {},
+    "warning": false,
+    "error": "Input to SVD must not contain NaN or Inf.",
+    "identical_values": true
+  },
+  {
+    "source": "X=pinv('abc')",
+    "values": {},
+    "warning": false,
+    "error": "Undefined function 'svd' for input arguments of type 'char'.",
+    "identical_values": false
+  },
+  {
+    "source": "X=trace('abc')",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be square.",
+    "identical_values": false
+  },
+  {
+    "source": "X=trace(zeros(0,3))",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be square.",
+    "identical_values": false
+  },
+  {
+    "source": "X=kron([],[1 2])",
+    "values": {
+      "X": {
+        "rows": 0,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=kron(zeros(0,2),[1;2])",
+    "values": {
+      "X": {
+        "rows": 0,
+        "cols": 2,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[R,p]=chol([1 2 3])",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be square.",
+    "identical_values": true
+  },
+  {
+    "source": "X=chol([4 2;2 3],'foo')",
+    "values": {},
+    "warning": false,
+    "error": "Shape flag must be 'upper' or 'lower'.",
+    "identical_values": false
+  },
+  {
+    "source": "X=chol(-1)",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be positive definite.",
+    "identical_values": true
+  },
+  {
+    "source": "[R,p]=chol([4 2 0;2 3 5;0 5 1])",
+    "values": {
+      "R": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "2",
+          "0",
+          "1",
+          "1.4142135623731"
+        ]
+      },
+      "p": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "3"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=chol([NaN])",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be positive definite.",
+    "identical_values": true
+  },
+  {
+    "source": "X=chol([Inf])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=chol([1 2;2 1])",
+    "values": {},
+    "warning": false,
+    "error": "Matrix must be positive definite.",
+    "identical_values": true
+  },
+  {
+    "source": "[L,U,P]=lu([1 2;2 4])",
+    "values": {
+      "L": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "1",
+          "0.5",
+          "0",
+          "1"
+        ]
+      },
+      "U": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "2",
+          "0",
+          "4",
+          "0"
+        ]
+      },
+      "P": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "1",
+          "1",
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[L,U,P]=lu([0 1;0 0])",
+    "values": {
+      "L": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "1"
+        ]
+      },
+      "U": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "0",
+          "1",
+          "0"
+        ]
+      },
+      "P": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[L,U,P]=lu(zeros(3,0))",
+    "values": {
+      "L": {
+        "rows": 3,
+        "cols": 0,
+        "data": []
+      },
+      "U": {
+        "rows": 0,
+        "cols": 0,
+        "data": []
+      },
+      "P": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "0",
+          "1",
+          "0",
+          "0",
+          "0",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R]=qr(zeros(3,0))",
+    "values": {
+      "Q": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "0",
+          "1",
+          "0",
+          "0",
+          "0",
+          "1"
+        ]
+      },
+      "R": {
+        "rows": 3,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R]=qr(zeros(3,0),0)",
+    "values": {
+      "Q": {
+        "rows": 3,
+        "cols": 0,
+        "data": []
+      },
+      "R": {
+        "rows": 0,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R,E]=qr(B)",
+    "values": {
+      "Q": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "-0.447213595499958",
+          "-0.894427190999916",
+          "-0.894427190999916",
+          "0.447213595499958"
+        ]
+      },
+      "R": {
+        "rows": 2,
+        "cols": 3,
+        "data": [
+          "-4.47213595499958",
+          "0",
+          "-2.23606797749979",
+          "2.23606797749979",
+          "-0.894427190999916",
+          "0.447213595499958"
+        ]
+      },
+      "E": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "0",
+          "1",
+          "0",
+          "0",
+          "0",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R,E]=qr(B',0)",
+    "values": {
+      "Q": {
+        "rows": 3,
+        "cols": 2,
+        "data": [
+          "-0.784464540552736",
+          "-0.588348405414552",
+          "-0.196116135138184",
+          "0.612447201880762",
+          "-0.784697977409726",
+          "-0.0956948752938691"
+        ]
+      },
+      "R": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "-5.09901951359278",
+          "0",
+          "-0.98058067569092",
+          "2.00959238117125"
+        ]
+      },
+      "E": {
+        "rows": 1,
+        "cols": 2,
+        "data": [
+          "2",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "[Q,R,E]=qr([0 0;0 0])",
+    "values": {
+      "Q": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "1"
+        ]
+      },
+      "R": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      },
+      "E": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=mldivide([1 2;3 4])",
+    "values": {},
+    "warning": false,
+    "error": "Not enough input arguments.",
+    "identical_values": true
+  },
+  {
+    "source": "X=mrdivide(2,[1 2;3 4])",
+    "values": {},
+    "warning": false,
+    "error": "Matrix dimensions must agree.",
+    "identical_values": false
+  },
+  {
+    "source": "X=mldivide([1 2;2 4],[1;2])",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 1,
+        "data": [
+          "NaN",
+          "NaN"
+        ]
+      }
+    },
+    "warning": true,
+    "identical_values": false
+  },
+  {
+    "source": "X=mldivide([1 2 3;4 5 6],[1;2])",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 1,
+        "data": [
+          "1.30076703634527e-16",
+          "0",
+          "0.333333333333333"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": false
+  },
+  {
+    "source": "X=norm([NaN 1],Inf)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([NaN 1],-Inf)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([1 2;3 4],Inf)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "7"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm([1 NaN],2)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "NaN"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm(1e308*ones(2))",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm(1e308*[3 4])",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=pinv(1e308*ones(2))",
+    "values": {
+      "X": {
+        "rows": 2,
+        "cols": 2,
+        "data": [
+          "0",
+          "0",
+          "0",
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=cond(1e308*ones(2))",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "Inf"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null(zeros(3,0))",
+    "values": {
+      "X": {
+        "rows": 0,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=orth(zeros(3,0))",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=orth(zeros(0,3))",
+    "values": {
+      "X": {
+        "rows": 0,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null(zeros(0,3))",
+    "values": {
+      "X": {
+        "rows": 3,
+        "cols": 3,
+        "data": [
+          "1",
+          "0",
+          "0",
+          "0",
+          "1",
+          "0",
+          "0",
+          "0",
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null(5)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=null(0)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=orth(0)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 0,
+        "data": []
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=pinv(0)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "0"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=norm(true)",
+    "values": {},
+    "warning": false,
+    "error": "Undefined function 'norm' for input arguments of type 'logical'.",
+    "identical_values": false
+  },
+  {
+    "source": "X=trace(true)",
+    "values": {
+      "X": {
+        "rows": 1,
+        "cols": 1,
+        "data": [
+          "1"
+        ]
+      }
+    },
+    "warning": false,
+    "identical_values": true
+  },
+  {
+    "source": "X=expm(true)",
+    "values": {},
+    "warning": false,
+    "error": "Expected input to be one of these types:\n\ndouble, single\n\nInstead its type was logical.",
+    "identical_values": false
+  },
+  {
+    "source": "X=lu(true)",
+    "values": {},
+    "warning": false,
+    "error": "Undefined function 'lu' for input arguments of type 'logical'.",
+    "identical_values": false
+  }
+]

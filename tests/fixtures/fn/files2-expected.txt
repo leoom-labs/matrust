@@ -1,0 +1,1535 @@
+@@CASE 1|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); fzm = uint8(magic(4) * 10); imwrite(fzm, fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+  160   20   30  130
+   50  110  100   80
+   90   70   60  120
+   40  140  150   10
+
+@@CLASS uint8 [4 4]
+@@END
+@@CASE 2|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); fzm = uint8(magic(4) * 10); imwrite(fzm, fzf); fzr = imread(fzf); x = {class(fzr), mat2str(size(fzr)), isequal(fzr, fzm)}; rmdir(fzd, 's'); x
+
+x = 
+
+    'uint8'    '[4 4]'    [1]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 3|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); fzm = uint8(cat(3, [0 255; 128 64], [10 20; 30 40], [255 0; 1 2])); imwrite(fzm, fzf); fzr = imread(fzf); x = {class(fzr), mat2str(size(fzr)), isequal(fzr, fzm)}; rmdir(fzd, 's'); x
+
+x = 
+
+    'uint8'    '[2 2 3]'    [1]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 4|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); fzm = uint8(cat(3, [0 255; 128 64], [10 20; 30 40], [255 0; 1 2])); imwrite(fzm, fzf); fzr = imread(fzf); x = fzr(:, :, 3); rmdir(fzd, 's'); x
+
+x =
+
+  255    0
+    1    2
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 5|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([0 0.5; 1 0.25; 0.1 0.9], fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0  128
+  255   64
+   26  230
+
+@@CLASS uint8 [3 2]
+@@END
+@@CASE 6|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([2 -1; 0.5 NaN], fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+  255    0
+  128  255
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 7|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(logical([1 0 1; 0 1 0]), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     0     1
+     0     1     0
+
+@@CLASS logical [2 3]
+@@END
+@@CASE 8|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint16([0 1000; 65535 300]), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+      0   1000
+  65535    300
+
+@@CLASS uint16 [2 2]
+@@END
+@@CASE 9|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 128; 255 1]), fzf, 'BitDepth', 16); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+      0  32896
+  65535    257
+
+@@CLASS uint16 [2 2]
+@@END
+@@CASE 10|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 128; 255 17]), fzf, 'BitDepth', 4); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0  136
+  255   17
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 11|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 128; 255 17]), fzf, 'BitDepth', 2); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0  170
+  255    0
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 12|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 200; 255 17]), fzf, 'BitDepth', 1); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     0     1
+     1     1
+
+@@CLASS logical [2 2]
+@@END
+@@CASE 13|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 1; 2 1]), [1 0 0; 0 1 0; 0 0 1], fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0    1
+    2    1
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 14|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 1; 2 1]), [1 0 0; 0 1 0; 0 0 1], fzf); [~, x] = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     0     0
+     0     1     0
+     0     0     1
+
+@@CLASS double [3 3]
+@@END
+@@CASE 15|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([1 2; 3 1], [1 0 0; 0 1 0; 0.5 0.5 0.5], fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0    1
+    2    0
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 16|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([1 2; 3 1], [1 0 0; 0 1 0; 0.5 0.5 0.5], fzf); [~, x] = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+   1.000000000000000                   0                   0
+                   0   1.000000000000000                   0
+   0.501960784313725   0.501960784313725   0.501960784313725
+
+@@CLASS double [3 3]
+@@END
+@@CASE 17|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf, 'Alpha', [0 0.5; 1 0.25]); [~, ~, x] = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    0  128
+  255   64
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 18|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf); [~, ~, x] = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 19|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf); x = imread(fzf, 'png'); rmdir(fzd, 's'); x
+
+x =
+
+   10   20
+   30   40
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 20|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'b'); imwrite(uint8([10 20; 30 40]), fzf, 'png'); fzl = dir(fzd); fzl = sort({fzl(~[fzl.isdir]).name}); x = [fzl, {mat2str(imread(fzf, 'png'))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'b'    '[10 20;30 40]'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 21|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(zeros(0, 3)), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+ERR Expected DATA to be nonempty.
+@@END
+@@CASE 22|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(7), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    7
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 23|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(int8([1 2]), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+ERR Expected input to be one of these types:
+
+double, single, logical, uint8, uint16
+
+Instead its type was int8.
+@@END
+@@CASE 24|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.bmp'); imwrite(uint8(magic(3)), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    8    1    6
+    3    5    7
+    4    9    2
+
+@@CLASS uint8 [3 3]
+@@END
+@@CASE 25|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.tif'); imwrite(uint8(magic(3)), fzf); x = imread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    8    1    6
+    3    5    7
+    4    9    2
+
+@@CLASS uint8 [3 3]
+@@END
+@@CASE 26|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.gif'); imwrite(uint8([0 1; 2 3]), [0 0 0; 1 0 0; 0 1 0; 0 0 1], fzf); [fzr, fzmap] = imread(fzf); x = {mat2str(fzr), mat2str(size(fzmap)), mat2str(fzmap(1:4, :))}; rmdir(fzd, 's'); x
+
+x = 
+
+    '[0 1;2 3]'    '[4 3]'    '[0 0 0;1 0 0;0 1 0;0 0 1]'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 27|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8) * 4), fzf, 'Quality', 90); fzr = imread(fzf); x = {class(fzr), mat2str(size(fzr))}; rmdir(fzd, 's'); x
+
+x = 
+
+    'uint8'    '[8 8]'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 28|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(cat(3, magic(8), magic(8), magic(8)) * 4), fzf); fzr = imread(fzf); x = {class(fzr), mat2str(size(fzr))}; rmdir(fzd, 's'); x
+
+x = 
+
+    'uint8'    '[8 8 3]'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 29|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8) * 4), fzf, 'Quality', 100); fzr = imread(fzf); x = max(max(abs(double(fzr) - magic(8) * 4))) <= 4; rmdir(fzd, 's'); x
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 30|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8)), fzf, 'Quality', 101); x = 1; rmdir(fzd, 's'); x
+ERR Expected QUALITY to be a scalar with value <= 100.
+@@END
+@@CASE 31|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.zzq'); imwrite(uint8(1), fzf); x = 1; rmdir(fzd, 's'); x
+ERR Unable to determine the file format from the file name.
+@@END
+@@CASE 32|x = imread('no_such_zz.png')
+ERR File "no_such_zz.png" does not exist.
+@@END
+@@CASE 33|x = imread()
+ERR Too few input arguments.
+@@END
+@@CASE 34|x = 1; imwrite(uint8(1))
+ERR Wrong number of input arguments.
+@@END
+@@CASE 35|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([1 2]), fzf, 'BitDepth', 3); x = 1; rmdir(fzd, 's'); x
+ERR Invalid bitdepth for grayscale image; must be 1, 2, 4, 8, or 16.
+@@END
+@@CASE 36|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([1 2]), fzf, 'Bogus', 3); x = 1; rmdir(fzd, 's'); x
+ERR Text chunk must be a string.
+@@END
+@@CASE 37|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(ones(2, 2, 2)), fzf); x = 1; rmdir(fzd, 's'); x
+ERR PNG image data must be either MxN or MxNx3.
+@@END
+@@CASE 38|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf); x = strjoin(fieldnames(fzi)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Filename FileModDate FileSize Format FormatVersion Width Height BitDepth ColorType FormatSignature Colormap Histogram InterlaceType Transparency SimpleTransparencyData BackgroundColor RenderingIntent Chromaticities Gamma XResolution YResolution ResolutionUnit XOffset YOffset OffsetUnit SignificantBits ImageModTime Title Author Description Copyright CreationTime Software Disclaimer Warning Source Comment OtherText
+
+@@CLASS char [1 416]
+@@END
+@@CASE 39|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf); x = {fzi.Format, fzi.FormatVersion, fzi.Width, fzi.Height, fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    'png'    []    [4]    [4]    [8]    'grayscale'
+
+@@CLASS cell [1 6]
+@@END
+@@CASE 40|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(ones(2, 3, 3)), fzf); fzi = imfinfo(fzf); x = {fzi.Width, fzi.Height, fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    [3]    [2]    [24]    'truecolor'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 41|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(true(2, 3), fzf); fzi = imfinfo(fzf); x = {fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    [1]    'grayscale'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 42|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint16(ones(2)), fzf); fzi = imfinfo(fzf); x = {fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    [16]    'grayscale'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 43|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 1; 2 1]), [1 0 0; 0 1 0; 0 0 1], fzf); fzi = imfinfo(fzf); x = {fzi.BitDepth, fzi.ColorType, mat2str(fzi.Colormap)}; rmdir(fzd, 's'); x
+
+x = 
+
+    [8]    'indexed'    '[1 0 0;0 1 0;0 0 1]'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 44|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf, 'Alpha', [0 0.5; 1 0.25]); fzi = imfinfo(fzf); x = {fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    [8]    'grayscale'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 45|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf, 'png'); x = {fzi.Format, fzi.Width}; rmdir(fzd, 's'); x
+
+x = 
+
+    'png'    [4]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 46|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf); x = {fzi.InterlaceType, fzi.Transparency, fzi.SimpleTransparencyData, fzi.BackgroundColor, fzi.Gamma}; rmdir(fzd, 's'); x
+
+x = 
+
+    'none'    'none'    []    []    []
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 47|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8)), fzf); fzi = imfinfo(fzf); x = strjoin(fieldnames(fzi)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Filename FileModDate FileSize Format FormatVersion Width Height BitDepth ColorType FormatSignature NumberOfSamples CodingMethod CodingProcess Comment
+
+@@CLASS char [1 149]
+@@END
+@@CASE 48|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8)), fzf); fzi = imfinfo(fzf); x = {fzi.Format, fzi.Width, fzi.Height, fzi.BitDepth, fzi.ColorType, fzi.NumberOfSamples, fzi.CodingMethod, fzi.CodingProcess}; rmdir(fzd, 's'); x
+
+x = 
+
+    'jpg'    [8]    [8]    [8]    'grayscale'    [1]    'Huffman'    'Sequential'
+
+@@CLASS cell [1 8]
+@@END
+@@CASE 49|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.bmp'); imwrite(uint8(magic(3)), fzf); fzi = imfinfo(fzf); x = {fzi.Format, fzi.Width, fzi.Height, fzi.BitDepth, fzi.ColorType}; rmdir(fzd, 's'); x
+
+x = 
+
+    'bmp'    [3]    [3]    [8]    'indexed'
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 50|x = imfinfo('no_such_zz.png')
+ERR Unable to open file "no_such_zz.png" for reading.
+@@END
+@@CASE 51|x = imfinfo()
+ERR Not enough input arguments.
+@@END
+@@CASE 52|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+                   0
+   0.500000000000000
+  -0.500000000000000
+   0.299987792968750
+  -1.000000000000000
+   0.999969482421875
+
+@@CLASS double [6 1]
+@@END
+@@CASE 53|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); [~, x] = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+        8000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 54|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+      0
+  16384
+ -16384
+   9830
+ -32768
+  32767
+
+@@CLASS int16 [6 1]
+@@END
+@@CASE 55|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, [2 4]); rmdir(fzd, 's'); x
+
+x =
+
+   0.500000000000000
+  -0.500000000000000
+   0.299987792968750
+
+@@CLASS double [3 1]
+@@END
+@@CASE 56|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, [3 Inf], 'native'); rmdir(fzd, 's'); x
+
+x =
+
+ -16384
+   9830
+ -32768
+  32767
+
+@@CLASS int16 [4 1]
+@@END
+@@CASE 57|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, [2 2], 'native'); rmdir(fzd, 's'); x
+
+x =
+
+  16384
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 58|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzr = audioread(fzf, 'double'); x = class(fzr); rmdir(fzd, 's'); x
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 59|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0 0.25; 0.5 -0.25; -0.5 1; 0.125 -1]; audiowrite(fzf, fzy, 44100); x = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+                   0   0.250000000000000
+   0.500000000000000  -0.250000000000000
+  -0.500000000000000   0.999969482421875
+   0.125000000000000  -1.000000000000000
+
+@@CLASS double [4 2]
+@@END
+@@CASE 60|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0 0.25; 0.5 -0.25; -0.5 1; 0.125 -1]; audiowrite(fzf, fzy, 44100); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+      0   8192
+  16384  -8192
+ -16384  32767
+   4096 -32768
+
+@@CLASS int16 [4 2]
+@@END
+@@CASE 61|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 8); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+  128
+  192
+   64
+  166
+    0
+  255
+
+@@CLASS uint8 [6 1]
+@@END
+@@CASE 62|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 8); x = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+                   0
+   0.500000000000000
+  -0.500000000000000
+   0.296875000000000
+  -1.000000000000000
+   0.992187500000000
+
+@@CLASS double [6 1]
+@@END
+@@CASE 63|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 24); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+           0
+  1073741824
+ -1073741824
+   644244992
+ -2147483648
+  2147483392
+
+@@CLASS int32 [6 1]
+@@END
+@@CASE 64|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 32); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+         0
+    0.5000
+   -0.5000
+    0.3000
+   -1.0000
+    1.0000
+
+@@CLASS single [6 1]
+@@END
+@@CASE 65|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 64); fzr = audioread(fzf, 'native'); x = {class(fzr), isequal(fzr, fzy)}; rmdir(fzd, 's'); x
+
+x = 
+
+    'double'    [1]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 66|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, int16([0; 100; -100; 32767; -32768]), 8000); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+      0
+    100
+   -100
+  32767
+ -32768
+
+@@CLASS int16 [5 1]
+@@END
+@@CASE 67|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, int16([0; 100; -100; 32767; -32768]), 8000); x = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+                   0
+   0.003051757812500
+  -0.003051757812500
+   0.999969482421875
+  -1.000000000000000
+
+@@CLASS double [5 1]
+@@END
+@@CASE 68|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, uint8([0; 128; 255]), 8000); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+ -32768
+      0
+  32512
+
+@@CLASS int16 [3 1]
+@@END
+@@CASE 69|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, single([0; 0.5; -0.25]), 8000); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+      0
+  16384
+  -8192
+
+@@CLASS int16 [3 1]
+@@END
+@@CASE 70|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, [0; 1.5; -2; 0.5], 8000); x = audioread(fzf); rmdir(fzd, 's'); x
+[Warning: Data clipped when writing file.] 
+[> In audiowrite>clipInputData (line 396)
+  In audiowrite (line 176)
+  In snippet (line 71)
+  In runner (line 2)] 
+
+x =
+
+                   0
+   0.999969482421875
+  -1.000000000000000
+   0.500000000000000
+
+@@CLASS double [4 1]
+@@END
+@@CASE 71|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, [0 0.5 -0.5], 8000); fzr = audioread(fzf); x = size(fzr); rmdir(fzd, 's'); x
+
+x =
+
+     3     1
+
+@@CLASS double [1 2]
+@@END
+@@CASE 72|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.flac'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf); rmdir(fzd, 's'); x
+
+x =
+
+                   0
+   0.500000000000000
+  -0.500000000000000
+   0.299987792968750
+  -1.000000000000000
+   0.999969482421875
+
+@@CLASS double [6 1]
+@@END
+@@CASE 73|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.flac'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 24); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
+
+x =
+
+           0
+  1073741824
+ -1073741824
+   644244992
+ -2147483648
+  2147483392
+
+@@CLASS int32 [6 1]
+@@END
+@@CASE 74|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.ogg'); fzy = sin((1:800)' / 10) / 2; audiowrite(fzf, fzy, 8000); fzr = audioread(fzf); x = {class(fzr), mat2str(size(fzr))}; rmdir(fzd, 's'); x
+
+x = 
+
+    'double'    '[800 1]'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 75|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'Title', 'Tone', 'Artist', 'Me', 'Comment', 'hi'); fzi = audioinfo(fzf); x = {fzi.Title, fzi.Artist, fzi.Comment}; rmdir(fzd, 's'); x
+
+x = 
+
+    'Tone'    'Me'    'hi'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 76|x = audioread('no_such_zz.wav')
+ERR The filename specified was not found in the MATLAB path.
+@@END
+@@CASE 77|x = audioread()
+ERR Not enough input arguments.
+@@END
+@@CASE 78|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, [5 100]); rmdir(fzd, 's'); x
+ERR Range requested is greater than the total number of samples in the file. TotalSamples is 6.
+@@END
+@@CASE 79|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, [4 2]); rmdir(fzd, 's'); x
+ERR Range must be a 1x2 vector of sample indexes with the first value less than or equal to the second value.
+@@END
+@@CASE 80|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = audioread(fzf, 'bogus'); rmdir(fzd, 's'); x
+ERR Expected datatype to match one of these strings:
+
+'double', 'native'
+
+The input, 'bogus', did not match any of the valid strings.
+@@END
+@@CASE 81|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy); x = 1; rmdir(fzd, 's'); x
+ERR Not enough input arguments.
+@@END
+@@CASE 82|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 12); x = 1; rmdir(fzd, 's'); x
+ERR Invalid BitsPerSample 12.  Valid values are: 8,16,24,32,64
+@@END
+@@CASE 83|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); audiowrite(fzf, {1, 2}, 8000); x = 1; rmdir(fzd, 's'); x
+ERR The value of 'y' is invalid. Expected input to be one of these types:
+
+uint8, int16, int32, single, double
+
+Instead its type was cell.
+@@END
+@@CASE 84|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, -5); x = 1; rmdir(fzd, 's'); x
+ERR The value of 'Fs' is invalid. Expected input to be positive.
+@@END
+@@CASE 85|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf = fullfile(fzd, 'a.zzq'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+Incorrect file extension for file <D>\a.zzq.
+Supported extensions are:
+	.flac
+	.m4a
+	.mp4
+	.oga
+	.ogg
+	.wav
+
+@@CLASS char [1 107]
+@@END
+@@CASE 86|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = strjoin(fieldnames(fzi)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Filename CompressionMethod NumChannels SampleRate TotalSamples Duration Title Comment Artist BitsPerSample
+
+@@CLASS char [1 106]
+@@END
+@@CASE 87|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = {fzi.CompressionMethod, fzi.NumChannels, fzi.SampleRate, fzi.TotalSamples, fzi.BitsPerSample}; rmdir(fzd, 's'); x
+
+x = 
+
+    'Uncompressed'    [1]    [8000]    [6]    [16]
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 88|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = fzi.Duration; rmdir(fzd, 's'); x
+
+x =
+
+     7.500000000000000e-04
+
+@@CLASS double [1 1]
+@@END
+@@CASE 89|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = {fzi.Title, fzi.Comment, fzi.Artist}; rmdir(fzd, 's'); x
+
+x = 
+
+    []    []    []
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 90|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0 0.25; 0.5 -0.25; -0.5 1; 0.125 -1]; audiowrite(fzf, fzy, 44100, 'BitsPerSample', 24); fzi = audioinfo(fzf); x = {fzi.NumChannels, fzi.SampleRate, fzi.TotalSamples, fzi.BitsPerSample}; rmdir(fzd, 's'); x
+
+x = 
+
+    [2]    [44100]    [4]    [24]
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 91|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 32); fzi = audioinfo(fzf); x = {fzi.CompressionMethod, fzi.BitsPerSample}; rmdir(fzd, 's'); x
+
+x = 
+
+    'Uncompressed'    [32]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 92|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.flac'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = {fzi.CompressionMethod, fzi.BitsPerSample, fzi.TotalSamples}; rmdir(fzd, 's'); x
+
+x = 
+
+    'FLAC'    [16]    [6]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 93|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.flac'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = strjoin(fieldnames(fzi)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Filename CompressionMethod NumChannels SampleRate TotalSamples Duration Title Comment Artist BitsPerSample
+
+@@CLASS char [1 106]
+@@END
+@@CASE 94|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.ogg'); fzy = sin((1:800)' / 10) / 2; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = {fzi.CompressionMethod, fzi.NumChannels, fzi.SampleRate}; rmdir(fzd, 's'); x
+
+x = 
+
+    'Vorbis'    [1]    [8000]
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 95|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.ogg'); fzy = sin((1:800)' / 10) / 2; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = strjoin(fieldnames(fzi)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Filename CompressionMethod NumChannels SampleRate TotalSamples Duration Title Comment Artist
+
+@@CLASS char [1 92]
+@@END
+@@CASE 96|x = audioinfo('no_such_zz.wav')
+ERR The filename specified was not found in the MATLAB path.
+@@END
+@@CASE 97|x = audioinfo()
+ERR Not enough input arguments.
+@@END
+@@CASE 98|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'n.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1 2 3\n4 5 6\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 99|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'n.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1,2,3\n4,5,6\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 100|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'n.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1.5,-2,3e2\n4,,6\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+    1.5000   -2.0000  300.0000
+    4.0000       NaN    6.0000
+
+@@CLASS double [2 3]
+@@END
+@@CASE 101|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'n.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1,2,3\n4,5,6\n'); fclose(fzid); [~, x] = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+,
+
+@@CLASS char [1 1]
+@@END
+@@CASE 102|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'n.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1 2 3\n4 5 6\n'); fclose(fzid); [~, ~, x] = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     0
+
+@@CLASS double [1 1]
+@@END
+@@CASE 103|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a,b,c\n1,2,3\n4,5,6\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x = 
+
+          data: [2x3 double]
+      textdata: {'a'  'b'  'c'}
+    colheaders: {'a'  'b'  'c'}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 104|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a,b,c\n1,2,3\n4,5,6\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.data; rmdir(fzd, 's'); x
+
+x =
+
+     1     2     3
+     4     5     6
+
+@@CLASS double [2 3]
+@@END
+@@CASE 105|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a,b,c\n1,2,3\n4,5,6\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.textdata; rmdir(fzd, 's'); x
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 106|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a,b,c\n1,2,3\n4,5,6\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.colheaders; rmdir(fzd, 's'); x
+
+x = 
+
+    'a'    'b'    'c'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 107|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a,b,c\n1,2,3\n4,5,6\n'); fclose(fzid); [~, fzr, x] = importdata(fzf); x = {fzr, x}; rmdir(fzd, 's'); x
+
+x = 
+
+    ','    [1]
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 108|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'a;b\n1;2\n3;4\n'); fclose(fzid); fzr = importdata(fzf, ';'); x = fzr.colheaders; rmdir(fzd, 's'); x
+
+x = 
+
+    'a'    'b'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 109|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1;2\n3;4\n'); fclose(fzid); x = importdata(fzf, ';'); rmdir(fzd, 's'); x
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 110|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'Title line\nx y\n1 2\n3 4\n'); fclose(fzid); fzr = importdata(fzf, ' ', 2); x = fzr.textdata; rmdir(fzd, 's'); x
+
+x = 
+
+    'Title line'     []
+    'x'             'y'
+
+@@CLASS cell [2 2]
+@@END
+@@CASE 111|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'Title line\nx y\n1 2\n3 4\n'); fclose(fzid); fzr = importdata(fzf, ' ', 2); x = fzr.colheaders; rmdir(fzd, 's'); x
+
+x = 
+
+    'x'    'y'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 112|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'Title line\nx y\n1 2\n3 4\n'); fclose(fzid); fzr = importdata(fzf, ' ', 2); x = fzr.data; rmdir(fzd, 's'); x
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 113|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'skip me\n1 2\n3 4\n'); fclose(fzid); fzr = importdata(fzf, ' ', 1); x = fzr; rmdir(fzd, 's'); x
+
+x = 
+
+          data: [2x2 double]
+      textdata: {'skip'  'me'}
+    colheaders: {'skip'  'me'}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 114|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'h.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1 2\n3 4\n5 6\n'); fclose(fzid); x = importdata(fzf, ' ', 1); rmdir(fzd, 's'); x
+
+x = 
+
+          data: [2x2 double]
+      textdata: {'1'  '2'}
+    colheaders: {'1'  '2'}
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 115|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'r.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'x\t1\t2\ny\t3\t4\n'); fclose(fzid); fzr = importdata(fzf); x = fieldnames(fzr)'; rmdir(fzd, 's'); x
+
+x = 
+
+    'data'    'textdata'    'rowheaders'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 116|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'r.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'x\t1\t2\ny\t3\t4\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.textdata; rmdir(fzd, 's'); x
+
+x = 
+
+    'x'
+    'y'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 117|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'r.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'k\tp\tq\nx\t1\t2\ny\t3\t4\n'); fclose(fzid); fzr = importdata(fzf); x = fieldnames(fzr)'; rmdir(fzd, 's'); x
+
+x = 
+
+    'data'    'textdata'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 118|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'r.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'k\tp\tq\nx\t1\t2\ny\t3\t4\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.textdata; rmdir(fzd, 's'); x
+
+x = 
+
+    'k'    'p'    'q'
+    'x'    ''     '' 
+    'y'    ''     '' 
+
+@@CLASS cell [3 3]
+@@END
+@@CASE 119|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'r.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'k\tp\tq\nx\t1\t2\ny\t3\t4\n'); fclose(fzid); fzr = importdata(fzf); x = fzr.data; rmdir(fzd, 's'); x
+
+x =
+
+     1     2
+     3     4
+
+@@CLASS double [2 2]
+@@END
+@@CASE 120|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 't.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, 'hello\nworld wide\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x = 
+
+    'hello'
+    'world wide'
+
+@@CLASS cell [2 1]
+@@END
+@@CASE 121|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'e.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, ''); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     []
+
+@@CLASS double [0 0]
+@@END
+@@CASE 122|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'm.csv'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1,2,3\n4,5\n7,8,9\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     2     3
+     4     5   NaN
+     7     8     9
+
+@@CLASS double [3 3]
+@@END
+@@CASE 123|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'p.txt'); fzid = fopen(fzf, 'w'); fprintf(fzid, '1 NaN Inf\n-Inf 2 3\n'); fclose(fzid); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1   NaN   Inf
+  -Inf     2     3
+
+@@CLASS double [2 3]
+@@END
+@@CASE 124|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+   10   20
+   30   40
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 125|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(cat(3, [1 2; 3 4], [5 6; 7 8], [9 10; 11 12])), fzf); fzr = importdata(fzf); x = {class(fzr), mat2str(size(fzr))}; rmdir(fzd, 's'); x
+
+x = 
+
+    'uint8'    '[2 2 3]'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 126|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzr = importdata(fzf); x = [fieldnames(fzr)', {fzr.fs, mat2str(size(fzr.data))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'data'    'fs'    [8000]    '[6 1]'
+
+@@CLASS cell [1 4]
+@@END
+@@CASE 127|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzr = importdata(fzf); x = fzr.data; rmdir(fzd, 's'); x
+
+x =
+
+                   0
+   0.500000000000000
+  -0.500000000000000
+   0.299987792968750
+  -1.000000000000000
+   0.999969482421875
+
+@@CLASS double [6 1]
+@@END
+@@CASE 128|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'v.mat'); fzv1 = [1 2]; fzv2 = 'ab'; save(fzf, 'fzv1', 'fzv2'); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x = 
+
+    fzv1: [1 2]
+    fzv2: 'ab'
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 129|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'v.mat'); fzv1 = [1 2]; save(fzf, 'fzv1'); x = importdata(fzf); rmdir(fzd, 's'); x
+
+x =
+
+     1     2
+
+@@CLASS double [1 2]
+@@END
+@@CASE 130|x = importdata('no_such_zz.txt')
+ERR Unable to open file.
+@@END
+@@CASE 131|x = importdata()
+ERR Not enough input arguments.
+@@END
+@@CASE 132|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); x = zip(fullfile(fzd, 'a.zip'), {'f1.txt', 'f2.txt'}, fzd); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 133|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = zip(fullfile(fzd, 'a.zip'), {fzf1, fzf2}); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 134|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); mkdir(fullfile(fzd, 'sub')); fzf3 = fullfile(fzd, 'sub/g.txt'); fzid = fopen(fzf3, 'w'); fprintf(fzid, 'gee\n'); fclose(fzid); x = zip(fullfile(fzd, 'a.zip'), 'sub', fzd); rmdir(fzd, 's'); x
+
+x = 
+
+    'sub/g.txt'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 135|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); mkdir(fullfile(fzd, 'sub')); fzf3 = fullfile(fzd, 'sub/g.txt'); fzid = fopen(fzf3, 'w'); fprintf(fzid, 'gee\n'); fclose(fzid); x = zip(fullfile(fzd, 'a.zip'), {'*.txt', 'sub'}, fzd); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f2.txt'    'sub/g.txt'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 136|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'b'), 'f1.txt', fzd); fzl = dir(fzd); fzl = sort({fzl(~[fzl.isdir]).name}); x = fzl; rmdir(fzd, 's'); x
+
+x = 
+
+    'b.zip'    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 137|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), {'f1.txt', 'f2.txt'}, fzd); fzq = unzip(fullfile(fzd, 'a.zip'), fullfile(fzd, 'out')); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'out\f2.txt'    'out\f1.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 138|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); mkdir(fullfile(fzd, 'sub')); fzf3 = fullfile(fzd, 'sub/g.txt'); fzid = fopen(fzf3, 'w'); fprintf(fzid, 'gee\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), {'f1.txt', 'sub'}, fzd); fzq = unzip(fullfile(fzd, 'a.zip'), fullfile(fzd, 'out')); x = [strrep(fzq, [fzd filesep], ''), {strtrim(fileread(fullfile(fzd, 'out', 'sub', 'g.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'out\sub\g.txt'    'out\f1.txt'    'gee'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 139|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), 'f2.txt', fzd); fzo = cd(fzd); mkdir('u'); cd('u'); fzq = unzip('../a.zip'); cd(fzo); x = [fzq, {strtrim(fileread(fullfile(fzd, 'u', 'f2.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'f2.txt'    'two two'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 140|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), 'f1.txt', fzd); unzip(fullfile(fzd, 'a.zip'), fullfile(fzd, 'out')); x = fileread(fullfile(fzd, 'out', 'f1.txt')); rmdir(fzd, 's'); x
+
+x =
+
+one
+
+
+@@CLASS char [1 4]
+@@END
+@@CASE 141|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), 'no_such_zz.txt', fzd); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+File "<D>\no_such_zz.txt" does not exist.
+
+@@CLASS char [1 41]
+@@END
+@@CASE 142|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, unzip(fullfile(fzd, 'missing.zip'), fzd); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+Function UNZIP was unable to find file ''<D>\missing.zip''.
+
+@@CLASS char [1 59]
+@@END
+@@CASE 143|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); unzip(fzf1, fullfile(fzd, 'out')); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+Invalid zip file "<D>\f1.txt".
+
+@@CLASS char [1 30]
+@@END
+@@CASE 144|x = 1; zip('only_one_arg_zz.zip')
+ERR Not enough input arguments.
+@@END
+@@CASE 145|x = 1; unzip()
+ERR Not enough input arguments.
+@@END
+@@CASE 146|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = gzip(fzf1); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt.gz'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 147|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = gzip({fzf1, fzf2}, fullfile(fzd, 'gz')); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'gz\f1.txt.gz'    'gz\f2.txt.gz'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 148|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); gzip(fzf1); fzl = dir(fzd); fzl = sort({fzl(~[fzl.isdir]).name}); x = fzl; rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f1.txt.gz'    'f2.txt'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 149|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = gzip(fullfile(fzd, '*.txt')); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt.gz'    'f2.txt.gz'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 150|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); gzip(fzf2, fullfile(fzd, 'gz')); fzq = gunzip(fullfile(fzd, 'gz', 'f2.txt.gz'), fullfile(fzd, 'out')); x = [strrep(fzq, [fzd filesep], ''), {strtrim(fileread(fullfile(fzd, 'out', 'f2.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'out\f2.txt'    'two two'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 151|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzg = gzip(fzf1, fullfile(fzd, 'gz')); delete(fzf1); fzq = gunzip(fzg{1}); x = [strrep(fzq, [fzd filesep], ''), {strtrim(fileread(fullfile(fzd, 'gz', 'f1.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'gz\f1.txt'    'one'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 152|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); gzip(fullfile(fzd, 'no_such_zz.txt')); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+File "<D>\no_such_zz.txt" does not exist.
+
+@@CLASS char [1 41]
+@@END
+@@CASE 153|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); gunzip(fzf1, fullfile(fzd, 'out')); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+File "<D>/f1.txt" is not in GZIP format.
+
+@@CLASS char [1 40]
+@@END
+@@CASE 154|x = 1; gzip()
+ERR Not enough input arguments.
+@@END
+@@CASE 155|x = 1; gunzip()
+ERR Not enough input arguments.
+@@END
+@@CASE 156|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); x = tar(fullfile(fzd, 'a.tar'), {'f1.txt', 'f2.txt'}, fzd); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 157|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); mkdir(fullfile(fzd, 'sub')); fzf3 = fullfile(fzd, 'sub/g.txt'); fzid = fopen(fzf3, 'w'); fprintf(fzid, 'gee\n'); fclose(fzid); x = tar(fullfile(fzd, 'a.tar'), {'f1.txt', 'sub'}, fzd); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'sub/g.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 158|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = tar(fullfile(fzd, 'a.tar'), {fzf1, fzf2}); x = strrep(fzq, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x = 
+
+    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 159|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); tar(fullfile(fzd, 'b'), 'f1.txt', fzd); tar(fullfile(fzd, 'c.tgz'), 'f1.txt', fzd); tar(fullfile(fzd, 'd.tar.gz'), 'f1.txt', fzd); fzl = dir(fzd); fzl = sort({fzl(~[fzl.isdir]).name}); x = fzl; rmdir(fzd, 's'); x
+
+x = 
+
+    'b.tar'    'c.tgz'    'd.tar.gz'    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 5]
+@@END
+@@CASE 160|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); tar(fullfile(fzd, 'a.tar'), {'f1.txt', 'f2.txt'}, fzd); fzq = untar(fullfile(fzd, 'a.tar'), fullfile(fzd, 'out')); x = [strrep(fzq, [fzd filesep], ''), {strtrim(fileread(fullfile(fzd, 'out', 'f2.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'out\f1.txt'    'out\f2.txt'    'two two'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 161|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); mkdir(fullfile(fzd, 'sub')); fzf3 = fullfile(fzd, 'sub/g.txt'); fzid = fopen(fzf3, 'w'); fprintf(fzid, 'gee\n'); fclose(fzid); tar(fullfile(fzd, 'a.tgz'), {'f1.txt', 'sub'}, fzd); fzq = untar(fullfile(fzd, 'a.tgz'), fullfile(fzd, 'out')); x = [strrep(fzq, [fzd filesep], ''), {strtrim(fileread(fullfile(fzd, 'out', 'sub', 'g.txt')))}]; rmdir(fzd, 's'); x
+
+x = 
+
+    'out\f1.txt'    'out\sub\g.txt'    'gee'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 162|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), 'f1.txt', fzd); untar(fullfile(fzd, 'a.zip'), fullfile(fzd, 'out')); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+Invalid Tar file <D>\a.zip.
+
+@@CLASS char [1 27]
+@@END
+@@CASE 163|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); tar(fullfile(fzd, 'a.tar'), 'no_such_zz.txt', fzd); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+File "<D>\no_such_zz.txt" does not exist.
+
+@@CLASS char [1 41]
+@@END
+@@CASE 164|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); try, untar(fullfile(fzd, 'missing.tar'), fzd); x = 1; catch fzerr, x = strrep(strrep(fzerr.message, fzd, '<D>'), strrep(fzd, '\', '/'), '<D>'); end; rmdir(fzd, 's'); x
+
+x =
+
+Function UNTAR was unable to find file ''<D>\missing.tar''.
+
+@@CLASS char [1 59]
+@@END
+@@CASE 165|x = 1; tar('only_one_arg_zz.tar')
+ERR Not enough input arguments.
+@@END
+@@CASE 166|x = 1; untar()
+ERR Not enough input arguments.
+@@END
+@@CASE 167|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); x = fileattrib(fzf1); rmdir(fzd, 's'); x
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 168|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fzf1); x = strjoin(fieldnames(fzr)', ' '); rmdir(fzd, 's'); x
+
+x =
+
+Name archive system hidden directory UserRead UserWrite UserExecute GroupRead GroupWrite GroupExecute OtherRead OtherWrite OtherExecute
+
+@@CLASS char [1 135]
+@@END
+@@CASE 169|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fzf1); x = rmfield(fzr, 'Name'); rmdir(fzd, 's'); x
+
+x = 
+
+         archive: 1
+          system: 0
+          hidden: 0
+       directory: 0
+        UserRead: 1
+       UserWrite: 1
+     UserExecute: 1
+       GroupRead: NaN
+      GroupWrite: NaN
+    GroupExecute: NaN
+       OtherRead: NaN
+      OtherWrite: NaN
+    OtherExecute: NaN
+
+@@CLASS struct [1 1]
+@@END
+@@CASE 170|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fzf1); x = strrep(fzr.Name, [fzd filesep], ''); rmdir(fzd, 's'); x
+
+x =
+
+f1.txt
+
+@@CLASS char [1 6]
+@@END
+@@CASE 171|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fzd); x = [fzr.directory fzr.UserRead fzr.UserWrite]; rmdir(fzd, 's'); x
+
+x =
+
+     1     1     1
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 172|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fileattrib(fzf1, '-w'); [~, fzr] = fileattrib(fzf1); fileattrib(fzf1, '+w'); [~, fzr2] = fileattrib(fzf1); x = [fzr.UserWrite fzr2.UserWrite]; rmdir(fzd, 's'); x
+
+x =
+
+     0     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 173|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fileattrib(fzf1, '+h'); [~, fzr] = fileattrib(fzf1); fileattrib(fzf1, '-h'); [~, fzr2] = fileattrib(fzf1); x = [fzr.hidden fzr2.hidden]; rmdir(fzd, 's'); x
+
+x =
+
+     1     0
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 174|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzst = fileattrib(fzf1, '+a'); [~, fzr] = fileattrib(fzf1); x = [fzst fzr.archive]; rmdir(fzd, 's'); x
+
+x =
+
+     1     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 175|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fullfile(fzd, '*')); fzq = {fzr.Name}; x = [{mat2str(size(fzr))}, sort(strrep(fzq, [fzd filesep], ''))]; rmdir(fzd, 's'); x
+
+x = 
+
+    '[1 2]'    'f1.txt'    'f2.txt'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 176|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [fzst, fzr] = fileattrib(fzf1, '+q'); x = fzst; rmdir(fzd, 's'); x
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 177|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, x] = fileattrib(fzf1, '+q'); rmdir(fzd, 's'); x
+
+x =
+
+Invalid file mode characters on the current platform.
+
+@@CLASS char [1 53]
+@@END
+@@CASE 178|[fzst, fzr, fzid] = fileattrib('no_such_zz'); x = {fzst, fzr, fzid}
+
+x = 
+
+    [0]    'No such file or directory.'    'MATLAB:FILEATTRIB:CannotFin'
+
+@@CLASS cell [1 3]
+@@END
+@@CASE 179|[~, ~, x] = fileattrib('no_such_zz')
+
+x =
+
+MATLAB:FILEATTRIB:CannotFindFile
+
+@@CLASS char [1 32]
+@@END
+@@CASE 180|x = 1; fileattrib('no_such_zz')
+ERR No such file or directory.
+@@END
+@@CASE 181|x = fileattrib('no_such_zz')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 182|x = 1; fileattrib(5)
+ERR Argument must contain a string.
+@@END
+@@CASE 183|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf); x = {fzi.FileSize, fzi.FileModDate}; rmdir(fzd, 's'); x
+
+x = 
+
+    [104]    '24-Oct-2026 10:13:16'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 184|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8(magic(4)), fzf); fzi = imfinfo(fzf); x = fzi.Filename; rmdir(fzd, 's'); x
+
+x =
+
+C:\reference\temp\files2\a.png
+
+@@CLASS char [1 58]
+@@END
+@@CASE 185|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.jpg'); imwrite(uint8(magic(8)), fzf); fzi = imfinfo(fzf); x = {fzi.FileSize, fzi.FileModDate}; rmdir(fzd, 's'); x
+
+x = 
+
+    [343]    '24-Oct-2026 10:13:16'
+
+@@CLASS cell [1 2]
+@@END
+@@CASE 186|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzi = audioinfo(fzf); x = fzi.Filename; rmdir(fzd, 's'); x
+
+x =
+
+C:\reference\temp\files2\a.wav
+
+@@CLASS char [1 58]
+@@END
+@@CASE 187|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); fzl = dir(fzf); x = fzl.bytes; rmdir(fzd, 's'); x
+
+x =
+
+    56
+
+@@CLASS double [1 1]
+@@END
+@@CASE 188|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), {'f1.txt', 'f2.txt'}, fzd); fzl = dir(fullfile(fzd, 'a.zip')); x = fzl.bytes; rmdir(fzd, 's'); x
+
+x =
+
+   246
+
+@@CLASS double [1 1]
+@@END
+@@CASE 189|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = gzip(fzf1); x = fzq; rmdir(fzd, 's'); x
+
+x = 
+
+    'C:\reference\temp\files2\f1.txt.gz'
+
+@@CLASS cell [1 1]
+@@END
+@@CASE 190|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); fzq = unzip(fullfile(fzd, 'missing.zip')); x = 1; rmdir(fzd, 's'); x
+ERR Function UNZIP was unable to find file ''C:\reference\temp\files2\missing.zip''.
+@@END
+@@CASE 191|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); zip(fullfile(fzd, 'a.zip'), 'no_such_zz.txt', fzd); x = 1; rmdir(fzd, 's'); x
+ERR File "C:\reference\temp\files2\no_such_zz.txt" does not exist.
+@@END
+@@CASE 192|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.zzq'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000); x = 1; rmdir(fzd, 's'); x
+ERR Incorrect file extension for file C:\reference\temp\files2\a.zzq.
+Supported extensions are:
+	.flac
+	.m4a
+	.mp4
+	.oga
+	.ogg
+	.wav
+@@END
+@@CASE 193|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf1 = fullfile(fzd, 'f1.txt'); fzid = fopen(fzf1, 'w'); fprintf(fzid, 'one\n'); fclose(fzid); fzf2 = fullfile(fzd, 'f2.txt'); fzid = fopen(fzf2, 'w'); fprintf(fzid, 'two two\n'); fclose(fzid); [~, fzr] = fileattrib(fzf1); x = fzr.Name; rmdir(fzd, 's'); x
+
+x =
+
+C:\reference\temp\files2\f1.txt
+
+@@CLASS char [1 59]
+@@END
+@@CASE 194|[~, fzr] = fileattrib(); x = fzr.Name
+
+x =
+
+C:\reference\work
+
+@@CLASS char [1 47]
+@@END

@@ -1,0 +1,11 @@
+# Preserve exact fixture, source and evidence bytes for recorded SHA-256 hashes.
+* -text
+*.pdf binary
+*.mat binary
+*.fig binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.bmp binary
+*.tif binary
+*.tiff binary

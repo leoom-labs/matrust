@@ -1,0 +1,3 @@
+disallowed-methods = [
+  { path = "f64::mul_add", reason = "wrong last bit on Windows GNU; use crate::engine::Fma (libm::fma)" },
+]

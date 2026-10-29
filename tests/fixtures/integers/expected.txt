@@ -1,0 +1,1837 @@
+ 
+@@CASE 1|x = int8(5)
+
+x =
+
+    5
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 2|x = int8(2.5)
+
+x =
+
+    3
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 3|x = int8(-2.5)
+
+x =
+
+   -3
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 4|x = int8(3.49)
+
+x =
+
+    3
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 5|x = int8(200)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 6|x = int8(-200)
+
+x =
+
+ -128
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 7|x = int8(NaN)
+
+x =
+
+    0
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 8|x = int8(Inf)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 9|x = int8(-Inf)
+
+x =
+
+ -128
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 10|x = uint8(-3)
+
+x =
+
+    0
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 11|x = uint8(255.5)
+
+x =
+
+  255
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 12|x = int16(40000)
+
+x =
+
+  32767
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 13|x = uint16(70000)
+
+x =
+
+  65535
+
+@@CLASS uint16 [1 1]
+@@END
+@@CASE 14|x = int32(2^31)
+
+x =
+
+  2147483647
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 15|x = uint32(-1)
+
+x =
+
+           0
+
+@@CLASS uint32 [1 1]
+@@END
+@@CASE 16|x = int64(2^63)
+
+x =
+
+  9223372036854775807
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 17|x = int64(-2^63)
+
+x =
+
+ -9223372036854775808
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 18|x = uint64(2^64)
+
+x =
+
+ 18446744073709551615
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 19|x = int64(9007199254740993)
+
+x =
+
+     9007199254740993
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 20|x = uint64(18446744073709551615)
+
+x =
+
+ 18446744073709551615
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 21|x = intmax('int64')
+
+x =
+
+  9223372036854775807
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 22|x = intmin('int64')
+
+x =
+
+ -9223372036854775808
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 23|x = intmax('uint64')
+
+x =
+
+ 18446744073709551615
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 24|x = intmax
+
+x =
+
+  2147483647
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 25|x = intmin
+
+x =
+
+ -2147483648
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 26|x = intmax('int8')
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 27|x = intmin('int16')
+
+x =
+
+ -32768
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 28|x = intmax('uint32')
+
+x =
+
+  4294967295
+
+@@CLASS uint32 [1 1]
+@@END
+@@CASE 29|x = int8([1 2.5 -3.5 300])
+
+x =
+
+    1    3   -4  127
+
+@@CLASS int8 [1 4]
+@@END
+@@CASE 30|x = uint8([1 2; 3 4])
+
+x =
+
+    1    2
+    3    4
+
+@@CLASS uint8 [2 2]
+@@END
+@@CASE 31|x = int16([-1000 2; 3 40000])
+
+x =
+
+  -1000      2
+      3  32767
+
+@@CLASS int16 [2 2]
+@@END
+@@CASE 32|x = int8([])
+
+x =
+
+     []
+
+@@CLASS int8 [0 0]
+@@END
+@@CASE 33|x = zeros(2,3,'int8')
+
+x =
+
+    0    0    0
+    0    0    0
+
+@@CLASS int8 [2 3]
+@@END
+@@CASE 34|x = ones(2,'uint16')
+
+x =
+
+      1      1
+      1      1
+
+@@CLASS uint16 [2 2]
+@@END
+@@CASE 35|x = eye(2,'int32')
+
+x =
+
+           1           0
+           0           1
+
+@@CLASS int32 [2 2]
+@@END
+@@CASE 36|x = zeros(1,3,'single')
+
+x =
+
+     0     0     0
+
+@@CLASS single [1 3]
+@@END
+@@CASE 37|x = int8(true)
+
+x =
+
+    1
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 38|x = int8('a')
+
+x =
+
+   97
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 39|x = uint8('hello')
+
+x =
+
+  104  101  108  108  111
+
+@@CLASS uint8 [1 5]
+@@END
+@@CASE 40|x = single(2.5)
+
+x =
+
+    2.5000
+
+@@CLASS single [1 1]
+@@END
+@@CASE 41|x = single(pi)
+
+x =
+
+    3.1416
+
+@@CLASS single [1 1]
+@@END
+@@CASE 42|x = single([1 2 3])
+
+x =
+
+     1     2     3
+
+@@CLASS single [1 3]
+@@END
+@@CASE 43|x = single([pi exp(1)])
+
+x =
+
+    3.1416    2.7183
+
+@@CLASS single [1 2]
+@@END
+@@CASE 44|x = single(1e40)
+
+x =
+
+   Inf
+
+@@CLASS single [1 1]
+@@END
+@@CASE 45|x = single(-1e-50)
+
+x =
+
+     0
+
+@@CLASS single [1 1]
+@@END
+@@CASE 46|x = single(NaN)
+
+x =
+
+   NaN
+
+@@CLASS single [1 1]
+@@END
+@@CASE 47|x = single([1 NaN Inf])
+
+x =
+
+     1   NaN   Inf
+
+@@CLASS single [1 3]
+@@END
+@@CASE 48|x = double(int8(-5))
+
+x =
+
+    -5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 49|x = double(single(pi))
+
+x =
+
+    3.1416
+
+@@CLASS double [1 1]
+@@END
+@@CASE 50|x = double(intmax('uint64'))
+
+x =
+
+   1.8447e+19
+
+@@CLASS double [1 1]
+@@END
+@@CASE 51|x = cast(3.7,'int16')
+
+x =
+
+      4
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 52|x = cast(int8(5),'double')
+
+x =
+
+     5
+
+@@CLASS double [1 1]
+@@END
+@@CASE 53|x = cast(300,'uint8')
+
+x =
+
+  255
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 54|x = class(int8(1))
+
+x =
+
+int8
+
+@@CLASS char [1 4]
+@@END
+@@CASE 55|x = class(single(1))
+
+x =
+
+single
+
+@@CLASS char [1 6]
+@@END
+@@CASE 56|x = class(uint64(1))
+
+x =
+
+uint64
+
+@@CLASS char [1 6]
+@@END
+@@CASE 57|x = int8(100) + int8(100)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 58|x = int8(-100) - int8(100)
+
+x =
+
+ -128
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 59|x = uint8(5) - uint8(10)
+
+x =
+
+    0
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 60|x = int8(7) / int8(2)
+
+x =
+
+    4
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 61|x = int8(-7) / int8(2)
+
+x =
+
+   -4
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 62|x = int8(7) ./ int8(0)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 63|x = int8(-7) ./ int8(0)
+
+x =
+
+ -128
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 64|x = int8(0) ./ int8(0)
+
+x =
+
+    0
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 65|x = uint8(7) ./ uint8(2)
+
+x =
+
+    4
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 66|x = int16(300) * int16(300)
+
+x =
+
+  32767
+
+@@CLASS int16 [1 1]
+@@END
+@@CASE 67|x = int32(5) .* int32([1 2 3])
+
+x =
+
+           5          10          15
+
+@@CLASS int32 [1 3]
+@@END
+@@CASE 68|x = -int8(-128)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 69|x = -uint8(5)
+
+x =
+
+    0
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 70|x = int8(5) .^ 2
+
+x =
+
+   25
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 71|x = int8(2) .^ int8(7)
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 72|x = int8(-2) .^ 3
+
+x =
+
+   -8
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 73|x = int8(2) .^ 0.5
+ERR Integers can only be raised to positive integral powers.
+@@END
+@@CASE 74|x = int8(10) \ int8(3)
+
+x =
+
+    0
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 75|x = int64(9007199254740993) + int64(1)
+
+x =
+
+     9007199254740994
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 76|x = int64(9223372036854775807) - int64(1)
+
+x =
+
+  9223372036854775806
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 77|x = uint64(18446744073709551615) - uint64(1)
+
+x =
+
+ 18446744073709551614
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 78|x = int64(5) * int64(3)
+
+x =
+
+                   15
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 79|x = int64(2)^62
+
+x =
+
+  4611686018427387904
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 80|x = int64(3) / int64(2)
+
+x =
+
+                    2
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 81|x = int8(5) + 2.7
+
+x =
+
+    8
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 82|x = int8(5) * 0.5
+
+x =
+
+    3
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 83|x = int8(5) * 0.3
+
+x =
+
+    2
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 84|x = 2.7 + int8(5)
+
+x =
+
+    8
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 85|x = int8([1 2 3]) + [0.4 0.5 0.6]
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 86|x = int8(5) + true
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 87|x = int8(5) + 'a'
+
+x =
+
+  102
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 88|x = int8(100) + 'a'
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 89|x = uint8(5) / 2
+
+x =
+
+    3
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 90|x = 10 / int8(4)
+
+x =
+
+    3
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 91|x = int16(7) .* [0.5 1.5]
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 92|x = int64(9007199254740993) + 1
+
+x =
+
+     9007199254740994
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 93|x = int64(9007199254740993) * 1
+
+x =
+
+     9007199254740993
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 94|x = int64(9007199254740993) + 0.5
+
+x =
+
+     9007199254740994
+
+@@CLASS int64 [1 1]
+@@END
+@@CASE 95|x = uint64(18446744073709551615) * 0.5
+
+x =
+
+  9223372036854775808
+
+@@CLASS uint64 [1 1]
+@@END
+@@CASE 96|x = int8(5) + int16(5)
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 97|x = int8(5) + single(2.5)
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 98|x = single(2.5) + 2.25
+
+x =
+
+    4.7500
+
+@@CLASS single [1 1]
+@@END
+@@CASE 99|x = single(1) / 3
+
+x =
+
+    0.3333
+
+@@CLASS single [1 1]
+@@END
+@@CASE 100|x = single(1) + int8(2)
+ERR Integers can only be combined with integers of the same class, or scalar doubles.
+@@END
+@@CASE 101|x = single(16777216) + 1
+
+x =
+
+    16777216
+
+@@CLASS single [1 1]
+@@END
+@@CASE 102|x = single(1) + true
+
+x =
+
+     2
+
+@@CLASS single [1 1]
+@@END
+@@CASE 103|x = single(2) * 'a'
+
+x =
+
+   194
+
+@@CLASS single [1 1]
+@@END
+@@CASE 104|x = int8([1 2; 3 4]) * int8([1; 1])
+ERR MTIMES is not fully supported for integer classes. At least one input must be scalar.
+To compute elementwise TIMES, use TIMES (.*) instead.
+@@END
+@@CASE 105|x = int8([1 2; 3 4]) * 2
+
+x =
+
+    2    4
+    6    8
+
+@@CLASS int8 [2 2]
+@@END
+@@CASE 106|x = 2 * int8([1 2; 3 4])
+
+x =
+
+    2    4
+    6    8
+
+@@CLASS int8 [2 2]
+@@END
+@@CASE 107|x = int8([1 2]) * [1; 1]
+ERR MTIMES is not fully supported for integer classes. At least one input must be scalar.
+To compute elementwise TIMES, use TIMES (.*) instead.
+@@END
+@@CASE 108|x = single([1 2; 3 4]) * single([1; 1])
+
+x =
+
+     3
+     7
+
+@@CLASS single [2 1]
+@@END
+@@CASE 109|x = single([1 2; 3 4]) \ single([1; 2])
+
+x =
+
+         0
+    0.5000
+
+@@CLASS single [2 1]
+@@END
+@@CASE 110|x = int8([2 4]) / int8(2)
+
+x =
+
+    1    2
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 111|x = int8([1 2; 3 4]) / int8([1 2; 3 4])
+ERR Linear algebra is not supported for integer data types.
+To compute elementwise RDIVIDE, use RDIVIDE (./) instead.
+@@END
+@@CASE 112|x = int8(5) == 5
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 113|x = int8(5) == 5.2
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 114|x = int8(5) < 5.5
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 115|x = uint8(200) > int8(100)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 116|x = int64(9007199254740993) == 9007199254740992
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 117|x = int64(9007199254740993) == int64(9007199254740992)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 118|x = single(0.1) == 0.1
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 119|x = int8([1 2 3]) ~= 2
+
+x =
+
+     1     0     1
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 120|x = ~int8([0 1 2])
+
+x =
+
+     1     0     0
+
+@@CLASS logical [1 3]
+@@END
+@@CASE 121|x = int8(3) & 0
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 122|x = isequal(int8(1), 1)
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 123|x = isequal(single(0.1), 0.1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 124|x = isequal(int8([1 2]), uint8([1 2]))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 125|x = isinteger(int8(1))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 126|x = isinteger(1)
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 127|x = isfloat(single(1))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 128|x = isfloat(int8(1))
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 129|x = isnumeric(uint16(1))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 130|x = isa(int8(1),'integer')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 131|x = isa(int8(1),'numeric')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 132|x = isa(single(1),'float')
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 133|x = isa(int8(1),'float')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 134|x = isa(uint8(1),'int8')
+
+x =
+
+     0
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 135|x = isreal(int8(1))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 136|x = intmax('int8') + 1
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 137|x = realmax('single')
+
+x =
+
+  3.4028e+38
+
+@@CLASS single [1 1]
+@@END
+@@CASE 138|x = realmin('single')
+
+x =
+
+  1.1755e-38
+
+@@CLASS single [1 1]
+@@END
+@@CASE 139|x = eps('single')
+
+x =
+
+  1.1921e-07
+
+@@CLASS single [1 1]
+@@END
+@@CASE 140|x = eps(single(1000))
+
+x =
+
+  6.1035e-05
+
+@@CLASS single [1 1]
+@@END
+@@CASE 141|x = flintmax('single')
+
+x =
+
+    16777216
+
+@@CLASS single [1 1]
+@@END
+@@CASE 142|x = class(realmax('single'))
+
+x =
+
+single
+
+@@CLASS char [1 6]
+@@END
+@@CASE 143|x = [int8(1) 2.7]
+
+x =
+
+    1    3
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 144|x = [2.7 int8(1)]
+
+x =
+
+    3    1
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 145|x = [int8(1) int16(1000)]
+
+x =
+
+    1  127
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 146|x = [int16(1000) int8(1)]
+
+x =
+
+   1000      1
+
+@@CLASS int16 [1 2]
+@@END
+@@CASE 147|x = [int8(1) single(2.5)]
+
+x =
+
+    1    3
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 148|x = [single(2.5) 1]
+
+x =
+
+    2.5000    1.0000
+
+@@CLASS single [1 2]
+@@END
+@@CASE 149|x = [int8(65) 'a']
+
+x =
+
+Aa
+
+@@CLASS char [1 2]
+@@END
+@@CASE 150|x = ['a' int8(66)]
+
+x =
+
+aB
+
+@@CLASS char [1 2]
+@@END
+@@CASE 151|x = [int8(1) true]
+
+x =
+
+    1    1
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 152|x = [uint8(1); 300]
+
+x =
+
+    1
+  255
+
+@@CLASS uint8 [2 1]
+@@END
+@@CASE 153|x = [single(1) 'a']
+
+x =
+
+a
+
+@@CLASS char [1 2]
+@@END
+@@CASE 154|x = int8([1 2 3]); x(2) = 300
+
+x =
+
+    1  127    3
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 155|x = int8([1 2 3]); x(2) = 2.5
+
+x =
+
+    1    3    3
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 156|x = [1 2 3]; x(2) = int8(5)
+
+x =
+
+     1     5     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 157|x = [1 2 3]; x(2) = single(5)
+
+x =
+
+     1     5     3
+
+@@CLASS double [1 3]
+@@END
+@@CASE 158|x = single([1 2 3]); x(2) = pi
+
+x =
+
+    1.0000    3.1416    3.0000
+
+@@CLASS single [1 3]
+@@END
+@@CASE 159|x = int8([1 2 3]); x(5) = 9
+
+x =
+
+    1    2    3    0    9
+
+@@CLASS int8 [1 5]
+@@END
+@@CASE 160|x = uint8([10 20 30]); x = x([3 1])
+
+x =
+
+   30   10
+
+@@CLASS uint8 [1 2]
+@@END
+@@CASE 161|x = int8([1 2 3]); x(end+1) = -1
+
+x =
+
+    1    2    3   -1
+
+@@CLASS int8 [1 4]
+@@END
+@@CASE 162|x = zeros(1,2); x(1) = uint8(7); x = class(x)
+
+x =
+
+double
+
+@@CLASS char [1 6]
+@@END
+@@CASE 163|x = int8(1):int8(5)
+
+x =
+
+    1    2    3    4    5
+
+@@CLASS int8 [1 5]
+@@END
+@@CASE 164|x = int8(1):0.5:int8(3)
+ERR Double operands interacting with int8 operands must have integer values.
+@@END
+@@CASE 165|x = uint8(5):-1:uint8(1)
+
+x =
+
+    5    4    3    2    1
+
+@@CLASS uint8 [1 5]
+@@END
+@@CASE 166|x = single(0):0.25:single(1)
+
+x =
+
+         0    0.2500    0.5000    0.7500    1.0000
+
+@@CLASS single [1 5]
+@@END
+@@CASE 167|x = 1:int8(3)
+
+x =
+
+    1    2    3
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 168|x = sum(int8([100 100]))
+
+x =
+
+   200
+
+@@CLASS double [1 1]
+@@END
+@@CASE 169|x = sum(uint8([200 100]))
+
+x =
+
+   300
+
+@@CLASS double [1 1]
+@@END
+@@CASE 170|x = sum(int8([100 100]), 'native')
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 171|x = sum(int8([100 100]), 'double')
+
+x =
+
+   200
+
+@@CLASS double [1 1]
+@@END
+@@CASE 172|x = sum(single([1 2]))
+
+x =
+
+     3
+
+@@CLASS single [1 1]
+@@END
+@@CASE 173|x = prod(int8([20 20]))
+
+x =
+
+   400
+
+@@CLASS double [1 1]
+@@END
+@@CASE 174|x = cumsum(int8([100 100]))
+
+x =
+
+  100  127
+
+@@CLASS int8 [1 2]
+@@END
+@@CASE 175|x = mean(int8([1 2]))
+
+x =
+
+    1.5000
+
+@@CLASS double [1 1]
+@@END
+@@CASE 176|x = mean(single([1 2]))
+
+x =
+
+    1.5000
+
+@@CLASS single [1 1]
+@@END
+@@CASE 177|x = max(int8([1 5 3]))
+
+x =
+
+    5
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 178|x = min(uint8([4 2 9]))
+
+x =
+
+    2
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 179|x = max(int8(5), 7.6)
+
+x =
+
+    8
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 180|x = abs(int8(-128))
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 181|x = sign(int8([-3 0 4]))
+
+x =
+
+   -1    0    1
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 182|x = mod(int8(-7), int8(3))
+
+x =
+
+    2
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 183|x = rem(int8(-7), int8(3))
+
+x =
+
+   -1
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 184|x = mod(uint8(10), 3)
+
+x =
+
+    1
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 185|x = idivide(int32(7), int32(2))
+
+x =
+
+           3
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 186|x = idivide(int32(7), int32(2), 'floor')
+
+x =
+
+           3
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 187|x = idivide(int32(-7), int32(2), 'round')
+
+x =
+
+          -4
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 188|x = idivide(int32(-7), int32(2), 'ceil')
+
+x =
+
+          -3
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 189|x = idivide(int32(7), int32(2), 'fix')
+
+x =
+
+           3
+
+@@CLASS int32 [1 1]
+@@END
+@@CASE 190|x = bitand(uint8(12), uint8(10))
+
+x =
+
+    8
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 191|x = bitor(uint8(12), uint8(10))
+
+x =
+
+   14
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 192|x = bitxor(uint8(12), uint8(10))
+
+x =
+
+    6
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 193|x = bitshift(uint8(255), 1)
+
+x =
+
+  254
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 194|x = bitshift(int8(-8), -1)
+
+x =
+
+   -4
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 195|x = bitcmp(uint8(0))
+
+x =
+
+  255
+
+@@CLASS uint8 [1 1]
+@@END
+@@CASE 196|x = floor(int8(5))
+
+x =
+
+    5
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 197|x = round(single(2.5))
+
+x =
+
+     3
+
+@@CLASS single [1 1]
+@@END
+@@CASE 198|x = sqrt(int8(16))
+ERR Undefined function 'sqrt' for input arguments of type 'int8'.
+@@END
+@@CASE 199|x = sqrt(single(2))
+
+x =
+
+    1.4142
+
+@@CLASS single [1 1]
+@@END
+@@CASE 200|x = exp(single(1))
+
+x =
+
+    2.7183
+
+@@CLASS single [1 1]
+@@END
+@@CASE 201|x = sin(int8(1))
+ERR Undefined function 'sin' for input arguments of type 'int8'.
+@@END
+@@CASE 202|x = sort(int8([3 -1 2]))
+
+x =
+
+   -1    2    3
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 203|x = unique(uint8([3 1 3]))
+
+x =
+
+    1    3
+
+@@CLASS uint8 [1 2]
+@@END
+@@CASE 204|x = find(int8([0 3 0 4]))
+
+x =
+
+     2     4
+
+@@CLASS double [1 2]
+@@END
+@@CASE 205|x = any(int8([0 0 1]))
+
+x =
+
+     1
+
+@@CLASS logical [1 1]
+@@END
+@@CASE 206|x = numel(int8([1 2 3]))
+
+x =
+
+     3
+
+@@CLASS double [1 1]
+@@END
+@@CASE 207|x = size(single(ones(2,3)))
+
+x =
+
+     2     3
+
+@@CLASS double [1 2]
+@@END
+@@CASE 208|x = diff(uint8([5 3 8]))
+
+x =
+
+    0    5
+
+@@CLASS uint8 [1 2]
+@@END
+@@CASE 209|x = num2str(int8(-5))
+
+x =
+
+-5
+
+@@CLASS char [1 2]
+@@END
+@@CASE 210|x = num2str(single(pi))
+
+x =
+
+3.1416
+
+@@CLASS char [1 6]
+@@END
+@@CASE 211|x = sprintf('%d', int8(-5))
+
+x =
+
+-5
+
+@@CLASS char [1 2]
+@@END
+@@CASE 212|x = sprintf('%f', single(0.1))
+
+x =
+
+0.100000
+
+@@CLASS char [1 8]
+@@END
+@@CASE 213|x = mat2str(int8([1 2]))
+
+x =
+
+[1 2]
+
+@@CLASS char [1 5]
+@@END
+@@CASE 214|x = mat2str(single(pi))
+
+x =
+
+3.14159274101257
+
+@@CLASS char [1 16]
+@@END
+@@CASE 215|x = int2str(2.5)
+
+x =
+
+3
+
+@@CLASS char [1 1]
+@@END
+@@CASE 216|x = floor(int8(7)/int8(2))
+
+x =
+
+    4
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 217|x = inv(single([2 0; 0 4]))
+
+x =
+
+    0.5000         0
+         0    0.2500
+
+@@CLASS single [2 2]
+@@END
+@@CASE 218|x = inv(int8([2 0; 0 4]))
+ERR Undefined function 'inv' for input arguments of type 'int8'.
+@@END
+@@CASE 219|x = det(single([1 2; 3 4]))
+
+x =
+
+   -2.0000
+
+@@CLASS single [1 1]
+@@END
+@@CASE 220|x = norm(single([3 4]))
+
+x =
+
+     5
+
+@@CLASS single [1 1]
+@@END
+@@CASE 221|x = linspace(single(0), 1, 3)
+
+x =
+
+         0    0.5000    1.0000
+
+@@CLASS single [1 3]
+@@END
+@@CASE 222|x = rand(1,2,'single') < 2
+
+x =
+
+     1     1
+
+@@CLASS logical [1 2]
+@@END
+@@CASE 223|x = class(rand(1,'single'))
+
+x =
+
+single
+
+@@CLASS char [1 6]
+@@END
+@@CASE 224|x = repmat(int8(7), 1, 3)
+
+x =
+
+    7    7    7
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 225|x = reshape(int16(1:4), 2, 2)
+
+x =
+
+      1      3
+      2      4
+
+@@CLASS int16 [2 2]
+@@END
+@@CASE 226|x = int8(1:4)'
+
+x =
+
+    1
+    2
+    3
+    4
+
+@@CLASS int8 [4 1]
+@@END
+@@CASE 227|x = typecast(single(1), 'uint32')
+
+x =
+
+  1065353216
+
+@@CLASS uint32 [1 1]
+@@END
+@@CASE 228|x = typecast(uint8([1 0 0 0]), 'uint32')
+
+x =
+
+           1
+
+@@CLASS uint32 [1 1]
+@@END
+@@CASE 229|x = int8(5); x = x * 30
+
+x =
+
+  127
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 230|x = uint8(250):uint8(255)
+
+x =
+
+  250  251  252  253  254  255
+
+@@CLASS uint8 [1 6]
+@@END
+@@CASE 231|x = int8(127) + 1 - 1
+
+x =
+
+  126
+
+@@CLASS int8 [1 1]
+@@END
+@@CASE 232|x = single(pi)
+
+x =
+
+   3.1415927
+
+@@CLASS single [1 1]
+@@END
+@@CASE 233|x = single([pi exp(1)])
+
+x =
+
+   3.1415927   2.7182817
+
+@@CLASS single [1 2]
+@@END
+@@CASE 234|x = single(0.1)
+
+x =
+
+   0.1000000
+
+@@CLASS single [1 1]
+@@END
+@@CASE 235|x = int8([1 -2 100])
+
+x =
+
+    1   -2  100
+
+@@CLASS int8 [1 3]
+@@END
+@@CASE 236|x = [single(1) 2.5]
+
+x =
+
+   1.0000000   2.5000000
+
+@@CLASS single [1 2]
+@@END

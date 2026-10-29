@@ -1,0 +1,28 @@
+---
+import Base from '../layouts/Base.astro';
+import { examples } from '../try/examples';
+---
+<Base title="Try online" app>
+  <div class="container wide console-app">
+    <div class="console-title"><div><h1>Browser console.</h1><p>Write a script. Run it here.</p></div><p id="editor-keys">Ctrl / ⌘ + Enter to run · Esc then Tab leaves the editor · 10 s per run</p></div>
+    <p class="preview-banner" id="preview-banner" role="status" hidden>Preview engine: results are canned</p>
+    <div class="loading" id="engine-loading" role="status" hidden><label id="loading-label" for="engine-progress">Loading MatRust…</label><progress id="engine-progress" aria-labelledby="loading-label"></progress></div>
+    <div class="console-grid">
+      <section aria-label="Script editor">
+        <div class="editor-shell">
+          <div class="editor-toolbar"><label class="sr-only" for="example-picker">Example</label><select class="example-picker" id="example-picker">{examples.map((example,i)=><option value={i}>{example.name}</option>)}</select><button class="primary" type="button" id="run">Run</button><button type="button" id="stop" disabled>Stop</button><button type="button" id="reset">Reset</button><button type="button" id="share">Share</button></div>
+          <div class="editor-area"><pre class="line-numbers" id="line-numbers" aria-hidden="true">1</pre><label class="sr-only" for="editor">Script</label><textarea id="editor" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-describedby="editor-keys editor-note" maxlength="65536">{examples[0].code}</textarea></div>
+        </div>
+        <p class="editor-note" id="editor-note">Runs on your device. No files, no toolboxes; same functions as the desktop app.</p>
+        <p class="editor-note">64 KB of code per run. Unsupported syntax and engine limits return an error. Stopping a run clears its workspace. <a id="report" href="https://github.com/leoom-labs/matrust/issues/new?template=script.yml&amp;version=browser&amp;os=browser" target="_blank" rel="noopener">Report a problem with this script</a></p>
+      </section>
+      <section aria-label="Results">
+        <div class="output-panel"><h2 class="panel-heading"><span>Command Window</span><span class="muted" id="run-status" role="status">Ready</span></h2><div class="command-output" id="command-output" role="log" aria-live="polite" aria-relevant="additions"><p class="output-placeholder small">Run a script to see output here. The engine loads on your first run.</p></div></div>
+        <div class="output-panel figures-section"><h2>Figures</h2><p id="figure-placeholder" class="muted small figure-placeholder">Plots from your script appear here.</p><div class="figure-grid" id="figures" hidden></div></div>
+      </section>
+    </div>
+    <section class="workspace-panel" aria-labelledby="workspace-title"><h2 id="workspace-title">Workspace</h2><div class="table-scroll"><table><thead><tr><th scope="col">Name</th><th scope="col">Class</th><th scope="col">Size</th><th scope="col">Value</th></tr></thead><tbody id="workspace"><tr><td class="workspace-empty" colspan="4">Workspace is empty.</td></tr></tbody></table></div></section>
+    <dialog class="figure-dialog" id="figure-dialog" aria-label="Enlarged figure"><button class="dialog-close" type="button" id="figure-close">Close figure</button><img id="figure-large" alt="Enlarged plot from the script" /></dialog>
+  </div>
+  <script>import '../try/console';</script>
+</Base>
