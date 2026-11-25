@@ -10,22 +10,25 @@ One-minute demo (MP4, 0.6 MB, no sound). Try it in your browser at [matrust.dev/
 
 ## What works
 
-- Language: scripts, functions in `.m` or `.mr` files, control flow, structs, cells, function handles, `try/catch` and `switch`.
-- Numeric types: double, single, `int8` to `uint64`, logical, char and complex.
-- Over 750 functions have a help page (`help <name>` or `assets/help/functions.md`). Each page states how the function differs from MATLAB.
+- Language: scripts, functions in `.m` or `.mr` files, control flow, structs, cells, function handles, `try/catch` and `switch`, `arguments` blocks, and `classdef` value and handle classes with inheritance.
+- Numeric types: double, single, `int8` to `uint64`, logical, char and complex; N-D arrays; tables, `timetable` and `categorical`; sparse matrices in part (solves, `ichol`, `ilu`, iterative solvers).
+- Over 750 functions have a help page (`help <name>` or `assets/help/functions.md`). Help gives syntax and examples; many entries also describe differences.
 - Plotting, with figure export to image and vector formats.
-- MAT files and CSV files (`save`, `load`, `readmatrix`, `writematrix`).
-- A Filter Designer and a discrete-time Block Simulation tool in the desktop app.
+- MAT files and CSV files (`save`, `load`, `readmatrix`, `writematrix`). Strings, `datetime`, `duration` and objects cannot be saved to MAT files yet.
+- The desktop Apps menu has 46 apps, including App Designer, which saves a runnable `.m` file. In the desktop Command Window, try `pidTuner`, `imtool` or `nftool`. UI components (`uifigure`, `uibutton`, `uiaxes` and others) work in code.
+- Subsets of toolboxes: part of the 2-D PDE toolbox, shallow neural networks, fuzzy logic, communications, econometrics, model predictive control, and image, video and DICOM.
+- Sound output (`sound`, `audioplayer`) and recording (`audiorecorder`). Playback without an output device continues silently; recording needs an input device.
+- A discrete-time Block Simulation tool in the desktop app.
 - The command-line program `matrust` uses the same engine as the desktop app.
 
 ## What does not work yet
 
-- Toolboxes.
+- Most toolbox functions. The subsets above are partial.
 - Simulink. The block tool is small and discrete-time only.
-- Object-oriented MATLAB (`classdef`). `containers.Map` is available.
-- N-dimensional arrays and sparse matrices.
-- Many option flags. Calls outside a function's stated limits are rejected with an error, not approximated.
-- Very long or very large runs. The desktop app and the `matrust` command line have no step or per-run output-size limit; Stop or Ctrl+C ends a run. The per-statement evaluation guard and for-loop input guard scale with RAM.
+- 3-D PDE, `uihtml`, GUIDE `.fig` files, `?Name` metaclass syntax and enumeration object arrays.
+- Many option flags. Some unsupported options raise errors; others warn or are ignored. If a script gives a wrong answer silently, that is a bug, please report it.
+- App windows open on the desktop only. Browser scripts can create UI objects and read their properties, and `createpde` works.
+- Very long or very large runs. The desktop app and the `matrust` command line have no step or per-run output-size limit by default (`matrust --max-steps` sets one); Stop or Ctrl+C ends a run. The per-statement evaluation guard and for-loop input guard scale with RAM.
   Many individual functions still refuse arrays above 32 Mi elements (256 MiB) for now. One displayed value may be up to 32 MiB on desktop/CLI and 2 MiB in the browser; larger values fail with an error, so use semicolons to suppress output.
 - The browser console keeps per-run limits on execution steps (1,000,000) and output (2,000 entries or 2 MiB). Figures and series are limited everywhere (see the user guide).
 
