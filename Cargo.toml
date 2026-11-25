@@ -1,24 +1,31 @@
 [package]
 name = "matrust"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "A numerical workspace in Rust that runs a subset of the MATLAB language"
 license = "GPL-3.0-or-later"
 default-run = "matrust"
+# Integration tests are grouped into suites (tests/suites/*.rs); see tests/suite_coverage.rs.
+autotests = false
 
 [features]
 default = ["mat-v73"]
-desktop = ["dep:eframe", "dep:egui_plot", "dep:png", "dep:rfd", "plot-export", "dep:windows", "dep:windows-future", "mat-v73"]
+desktop = ["dep:eframe", "dep:egui_plot", "dep:png", "dep:rfd", "plot-export", "dep:windows", "dep:windows-future", "mat-v73", "audio"]
+audio = ["dep:cpal", "dep:libloading"]
 plot-export = ["dep:png", "dep:resvg", "dep:svg2pdf", "dep:image", "dep:tiff"]
 # MAT-file v7.3 (HDF5, C library). Off in the browser build (web/).
 mat-v73 = ["dep:hdf5", "dep:hdf5-sys"]
 
 [dependencies]
+openjp2 = { version = "=0.7.2", default-features = false }
+jpeg-decoder = { version = "0.3", default-features = false }
 robust = "1"
 rustfft = "=6.4.1"
 zip = { version = "=9.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 quick-xml = { version = "=0.41.0", default-features = false }
 nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
+# Sparse LU/Cholesky and AMD/COLAMD orderings (MIT). No rayon: runs with Par::Seq.
+faer = { version = "=0.24.4", default-features = false, features = ["std", "sparse-linalg"] }
 rayon = "1.11"
 wide = "0.7.33"
 bytemuck = "1"
@@ -40,10 +47,24 @@ eframe = { version = "0.36.2", optional = true, default-features = false, featur
 egui_plot = { version = "0.37.0", optional = true }
 png = { version = "0.18", optional = true }
 rfd = { version = "0.15", optional = true }
-resvg = { version = "0.45", optional = true, default-features = false, features = ["text", "system-fonts"] }
+resvg = { version = "0.45", optional = true, default-features = false, features = ["text", "system-fonts", "raster-images"] }
 svg2pdf = { version = "0.13", optional = true, default-features = false, features = ["text"] }
 tiff = { version = "0.11.3", optional = true, default-features = false, features = ["deflate"] }
 image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg", "bmp", "tiff"] }
+
+# Ctrl+C in the matrust CLI (src/main.rs); the browser build has no signals.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ctrlc = "3.5"
+# Native DICOM UUIDv4 identifiers from OS randomness (MIT OR Apache-2.0).
+uuid = { version = "=1.28.0", features = ["v4"] }
+# xlsx/xls readers (readmatrix, readcell, xlsread); pure Rust, MIT. Not in the browser build.
+calamine = { version = "=0.37.0", default-features = false }
+
+[target.'cfg(all(not(target_arch = "wasm32"), not(target_os = "linux")))'.dependencies]
+cpal = { version = "=0.17.3", optional = true, default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = { version = "=0.8.9", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62.2", optional = true, features = ["Data_Pdf", "Storage_Streams", "UI", "Win32_System_WinRT", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_Graphics_Gdi", "Win32_UI_HiDpi", "Win32_UI_WindowsAndMessaging"] }
@@ -157,6 +178,14 @@ strip = "debuginfo"
 
 # Release packages: same code as release, symbols stripped (programs 41 MB vs 51 MB, zip 16.9 MB; tool/size-probe.ps1,
 # 2026-10-22). Fat LTO failed to build the desktop binary and is not used.
+# Test builds for the gate: release code without LTO and with 16 codegen units. Measured 2026-11-03
+# (tool/test-profile-bench.sh): ~6 s per extra test program instead of ~78 s, so ~25 min instead of ~3 h
+# for the ~210 test programs. Release programs and packages keep the release profile.
+[profile.gate]
+inherits = "release"
+lto = false
+codegen-units = 16
+
 [profile.dist]
 inherits = "release"
 strip = "symbols"
@@ -172,3 +201,63 @@ required-features = ["desktop"]
 
 [patch.crates-io]
 hdf5-metno-src = { path = "vendor/hdf5-metno-src" }
+
+[[bench]]
+name = "nd_engine"
+path = "benches/nd_engine.rs"
+harness = false
+
+[[bench]]
+name = "nd_values"
+path = "benches/nd_values.rs"
+harness = false
+
+[[bench]]
+name = "string_class"
+path = "benches/string_class.rs"
+harness = false
+
+[[test]]
+name = "suite_engine"
+path = "tests/suites/engine.rs"
+
+[[test]]
+name = "suite_cli"
+path = "tests/suites/cli.rs"
+
+[[test]]
+name = "suite_containers"
+path = "tests/suites/containers.rs"
+
+[[test]]
+name = "suite_desktop"
+path = "tests/suites/desktop.rs"
+
+[[test]]
+name = "suite_exports"
+path = "tests/suites/exports.rs"
+
+[[test]]
+name = "suite_math"
+path = "tests/suites/math.rs"
+
+[[test]]
+name = "suite_plots"
+path = "tests/suites/plots.rs"
+
+[[test]]
+name = "suite_signal"
+path = "tests/suites/signal.rs"
+
+[[test]]
+name = "suite_solvers"
+path = "tests/suites/solvers.rs"
+
+[[test]]
+name = "suite_worker_pool"
+path = "tests/suites/worker_pool.rs"
+
+# The suite guard alone, so `--test suite_coverage` runs it quickly (it is also a module of suite_engine).
+[[test]]
+name = "suite_coverage"
+path = "tests/suite_coverage.rs"

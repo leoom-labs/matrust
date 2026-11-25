@@ -1,6 +1,6 @@
 //! Bounded, non-materializing baseline observations and private-candidate edits.
 use super::*;
-use crate::plot::Series;
+use crate::plot::{MAX_PLOT_SERIES, Series};
 
 #[derive(Clone, Copy)]
 pub struct BaselineObservation<'a> {
@@ -11,7 +11,7 @@ pub struct BaselineObservation<'a> {
 
 impl Axes {
     fn baseline_observation_bounds(&self) -> Result<()> {
-        if self.series.len() > MAX_SERIES
+        if self.series.len() > MAX_PLOT_SERIES
             || self.baselines.len() > MAX_BASELINES
             || self
                 .baselines
@@ -77,7 +77,7 @@ impl Axes {
         check: &impl Fn() -> Result<()>,
     ) -> Result<Option<Vec<ObjectIdentity>>> {
         check()?;
-        if self.series.len() > MAX_SERIES
+        if self.series.len() > MAX_PLOT_SERIES
             || records.len() > MAX_BASELINES
             || records
                 .iter()
@@ -133,7 +133,6 @@ impl Axes {
     pub fn implicit_bar_baselines(&self) -> impl Iterator<Item = usize> + '_ {
         self.series
             .iter()
-            .take(MAX_SERIES)
             .enumerate()
             .filter_map(|(index, series)| {
                 (series.kind == PlotKind::Bar

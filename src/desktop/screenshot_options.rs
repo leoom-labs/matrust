@@ -10,13 +10,13 @@ pub(super) enum IirDesignerCase {
     Bandstop20,
 }
 impl IirDesignerCase {
-    pub(super) fn settings(self) -> (matrust::dsp::Band, usize) {
-        use matrust::dsp::Band;
+    pub(super) fn settings(self) -> (super::filter_spec::Response, usize) {
+        use super::filter_spec::Response;
         match self {
-            Self::Bandpass1 => (Band::Bandpass, 1),
-            Self::Bandpass20 => (Band::Bandpass, 20),
-            Self::Bandstop1 => (Band::Bandstop, 1),
-            Self::Bandstop20 => (Band::Bandstop, 20),
+            Self::Bandpass1 => (Response::Bandpass, 1),
+            Self::Bandpass20 => (Response::Bandpass, 20),
+            Self::Bandstop1 => (Response::Bandstop, 1),
+            Self::Bandstop20 => (Response::Bandstop, 20),
         }
     }
     pub(super) fn name(self) -> &'static str {
@@ -410,10 +410,10 @@ mod iir_capture_tests {
     #[test]
     fn iir_capture_accepts_only_four_isolated_screenshot_cases() {
         for (name, band, order) in [
-            ("bandpass-1", matrust::dsp::Band::Bandpass, 1),
-            ("bandpass-20", matrust::dsp::Band::Bandpass, 20),
-            ("bandstop-1", matrust::dsp::Band::Bandstop, 1),
-            ("bandstop-20", matrust::dsp::Band::Bandstop, 20),
+            ("bandpass-1", crate::filter_spec::Response::Bandpass, 1),
+            ("bandpass-20", crate::filter_spec::Response::Bandpass, 20),
+            ("bandstop-1", crate::filter_spec::Response::Bandstop, 1),
+            ("bandstop-20", crate::filter_spec::Response::Bandstop, 20),
         ] {
             let options = parse(&[
                 "--screenshot",

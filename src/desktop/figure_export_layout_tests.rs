@@ -578,3 +578,20 @@ fn workspace_late_stop_close_replacement_busy_and_quit_retire_picker_before_fina
         }
     }
 }
+
+#[test]
+fn a_3d_view_is_not_written_into_the_export_limits() {
+    // Review rev3 F1: the projected screen box of a 3-D axes is not an x/y range.
+    let mut engine = matrust::Engine::default();
+    engine
+        .execute("plot3([0 1 2], [0 3 0], [1 2 3]); xlim([0 2]);")
+        .unwrap();
+    let dialog = Dialog::new(
+        1,
+        engine.figures().next().unwrap().1,
+        Some([-0.7, 0.7, -0.6, 0.6]),
+        Settings::default(),
+    );
+    assert_eq!(dialog.figure.xlim, Some([0., 2.]));
+    assert_eq!(dialog.figure.ylim, None);
+}

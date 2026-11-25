@@ -262,10 +262,15 @@ fn malformed_complex_payloads_fail_without_partial_workspace_or_destination_chan
 }
 
 #[test]
-fn metadata_rejects_non_double_logical_complex_nd_and_double_component_memory_overflow() {
+fn metadata_rejects_unsupported_logical_complex_nd_and_double_component_memory_overflow() {
     let cancel = AtomicBool::new(false);
     let dir = tempfile::tempdir().unwrap();
-    for (flags, rows, cols) in [(0x807, 1, 1), (0xa06, 1, 1), (0x806, 8_388_609, 1)] {
+    for (flags, rows, cols) in [
+        (0x808, 1, 1),
+        (0xa06, 1, 1),
+        (0x806, 8_388_609, 1),
+        (0x807, 8_388_609, 1),
+    ] {
         let path = dir.path().join("bounded.mat");
         std::fs::write(&path, file(&[array("Z", flags, rows, cols, &[])], false)).unwrap();
         let catalog = files::inspect_workspace(&path, &cancel).unwrap();
@@ -281,15 +286,9 @@ fn metadata_rejects_non_double_logical_complex_nd_and_double_component_memory_ov
     let path = dir.path().join("three-d.mat");
     std::fs::write(&path, file(&[element(14, &body)], false)).unwrap();
     let catalog = files::inspect_workspace(&path, &cancel).unwrap();
-    assert!(
-        catalog
-            .variable(0)
-            .unwrap()
-            .unavailable
-            .as_ref()
-            .unwrap()
-            .contains("two-dimensional")
-    );
+    // A complex 1x1x2 header is valid since the legacy N-D work, but this one has no
+    // real or imaginary payload, so loading it must still fail.
+    assert!(files::load_selected_arrays(&catalog, &names(&["Z"]), &cancel).is_err());
     let empty_payload = [component(9, &[], false), component(9, &[], false)].concat();
     let path = dir.path().join("huge-empty.mat");
     std::fs::write(
@@ -417,5 +416,122 @@ fn independent_writer_inspection_verifies_two_components_and_complex_flag() {
             &plain[start + 32..],
             &[3f64.to_le_bytes(), (-0.0f64).to_le_bytes()].concat()
         );
+    }
+}
+
+#[test]
+fn single_complex_wire_and_independent_fixture_preserve_class_shape_and_components() {
+    let cancel = AtomicBool::new(false);
+    let dir = tempfile::tempdir().unwrap();
+    let mut engine = Engine::default();
+    engine.execute("a=single(0); a(1)=1i;").unwrap();
+    let constructed = engine.array("a").unwrap();
+    assert_eq!(constructed.class(), "single");
+    assert_eq!(
+        constructed.as_complex().unwrap().data(),
+        &[Complex64::new(0., 1.)]
+    );
+    engine
+        .execute(
+            "a(1)=1.5+2.25i; a(2)=3.5-4.25i; a(3)=-5.5+6.25i; a(4)=7.5-8.25i; a=reshape(a,2,2);",
+        )
+        .unwrap();
+    let source = engine.array("a").unwrap();
+    assert_eq!(source.class(), "single");
+    let real = [1.5f32, 3.5, -5.5, 7.5];
+    let imag = [2.25f32, -4.25, 6.25, -8.25];
+    let bytes = |v: &[f32]| v.iter().flat_map(|x| x.to_le_bytes()).collect::<Vec<_>>();
+    for compressed in [false, true] {
+        let path = dir.path().join("single.mat");
+        let vars = BTreeMap::from([("a".into(), source.clone())]);
+        if compressed {
+            files::save_array_workspace(&path, &vars, &cancel)
+        } else {
+            files::save_array_workspace_uncompressed(&path, &vars, &cancel)
+        }
+        .unwrap();
+        let disk = std::fs::read(&path).unwrap();
+        let mut wire = Vec::new();
+        if compressed {
+            flate2::read::ZlibDecoder::new(&disk[136..])
+                .read_to_end(&mut wire)
+                .unwrap();
+        } else {
+            wire.extend_from_slice(&disk[128..]);
+        }
+        let expected = array(
+            "a",
+            0x807,
+            2,
+            2,
+            &[
+                component(7, &bytes(&real), false),
+                component(7, &bytes(&imag), false),
+            ]
+            .concat(),
+        );
+        assert_eq!(wire, expected);
+        let catalog = files::inspect_workspace(&path, &cancel).unwrap();
+        let info = catalog.variable(0).unwrap();
+        assert_eq!(
+            (
+                info.class.as_str(),
+                info.complex,
+                info.dimensions.as_slice(),
+                info.storage_bytes()
+            ),
+            ("single", true, &[2, 2][..], Some(64))
+        );
+        let loaded = files::load_selected_arrays(&catalog, &names(&["a"]), &cancel).unwrap();
+        assert_eq!(loaded["a"].class(), "single");
+        assert_eq!(bits(&loaded["a"]), bits(&source));
+    }
+    for (rows, cols, re, im, compact) in [
+        (2, 2, real.as_slice(), imag.as_slice(), false),
+        (1, 1, &real[..1], &imag[..1], true),
+        (1, 4, real.as_slice(), imag.as_slice(), false),
+        (4, 1, real.as_slice(), imag.as_slice(), false),
+        (0, 3, &real[..0], &imag[..0], false),
+        (4, 0, &real[..0], &imag[..0], false),
+    ] {
+        let payload = [
+            component(7, &bytes(re), compact),
+            component(7, &bytes(im), compact),
+        ]
+        .concat();
+        let path = dir.path().join("fixture.mat");
+        std::fs::write(
+            &path,
+            file(&[array("Z", 0x807, rows, cols, &payload)], false),
+        )
+        .unwrap();
+        let catalog = files::inspect_workspace(&path, &cancel).unwrap();
+        let info = catalog.variable(0).unwrap();
+        assert_eq!(info.class, "single");
+        assert!(info.complex && info.unavailable.is_none());
+        assert_eq!(info.dimensions, vec![rows as usize, cols as usize]);
+        let loaded = files::load_selected_arrays(&catalog, &names(&["Z"]), &cancel).unwrap();
+        assert_eq!(loaded["Z"].class(), "single");
+        assert_eq!(loaded["Z"].dims().as_ref(), &[rows as usize, cols as usize]);
+        let expected: Vec<_> = re
+            .iter()
+            .zip(im)
+            .map(|(&r, &i)| Complex64::new(r as f64, i as f64))
+            .collect();
+        assert_eq!(loaded["Z"].as_complex().unwrap().data(), expected);
+        let output = dir.path().join("rewritten.mat");
+        files::save_array_workspace_uncompressed(&output, &loaded, &cancel).unwrap();
+        let expected_wire = array(
+            "Z",
+            0x807,
+            rows,
+            cols,
+            &[
+                component(7, &bytes(re), false),
+                component(7, &bytes(im), false),
+            ]
+            .concat(),
+        );
+        assert_eq!(&std::fs::read(output).unwrap()[128..], expected_wire);
     }
 }

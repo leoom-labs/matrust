@@ -8,7 +8,6 @@ use crate::{Array, Complex64, ComplexMatrix, Matrix, Result};
 use std::f64::consts::{FRAC_PI_2, PI};
 
 const CHUNK: usize = 4096;
-const EVALUATION_UNITS: usize = 32 * 1024 * 1024;
 const TO_DEGREES: f64 = 180. / PI;
 const TO_RADIANS: f64 = PI / 180.;
 
@@ -224,18 +223,18 @@ fn trigx_reciprocal(z: Complex64) -> Complex64 {
 impl Base {
     fn real(self, x: f64) -> f64 {
         match self {
-            Self::Sin => x.sin(),
-            Self::Cos => x.cos(),
-            Self::Tan => x.tan(),
-            Self::Asin => x.asin(),
-            Self::Acos => x.acos(),
-            Self::Atan => x.atan(),
-            Self::Sinh => x.sinh(),
-            Self::Cosh => x.cosh(),
-            Self::Tanh => x.tanh(),
-            Self::Asinh => x.asinh(),
-            Self::Acosh => x.acosh(),
-            Self::Atanh => x.atanh(),
+            Self::Sin => libm::sin(x),
+            Self::Cos => libm::cos(x),
+            Self::Tan => libm::tan(x),
+            Self::Asin => libm::asin(x),
+            Self::Acos => libm::acos(x),
+            Self::Atan => libm::atan(x),
+            Self::Sinh => libm::sinh(x),
+            Self::Cosh => libm::cosh(x),
+            Self::Tanh => libm::tanh(x),
+            Self::Asinh => libm::asinh(x),
+            Self::Acosh => libm::acosh(x),
+            Self::Atanh => libm::atanh(x),
             Self::SinD => sind(x),
             Self::CosD => cosd(x),
             Self::TanD => tand(x),
@@ -258,8 +257,8 @@ impl Base {
             Self::Acos => acos_promoted(x),
             Self::Atanh => atanh_promoted(x),
             // Exact branches: platform complex acosh leaves a -2e-16 real part on Windows.
-            Self::Acosh if x >= -1. => Complex64::new(0., x.acos()),
-            Self::Acosh => Complex64::new((-x).acosh(), std::f64::consts::PI),
+            Self::Acosh if x >= -1. => Complex64::new(0., libm::acos(x)),
+            Self::Acosh => Complex64::new(libm::acosh(-x), std::f64::consts::PI),
             _ => Complex64::new(self.real(x), 0.),
         }
     }
@@ -327,12 +326,17 @@ fn rejected_class(value: &Value) -> Option<&'static str> {
         Value::Container(array @ Array::Typed(_)) => array.class(),
         Value::Text(_) | Value::Container(Array::Character(_)) => "char",
         Value::Logical(_) | Value::Container(Array::Logical(_)) => "logical",
-        Value::QuotedString(_) => "string",
+        Value::QuotedString(_) | Value::Container(Array::Str(_)) => "string",
         Value::Container(Array::Cell(_)) => "cell",
         Value::Container(Array::Struct(_)) => "struct",
         Value::Container(Array::Handle(_)) => "function_handle",
+        Value::Container(Array::Categorical(_)) => "categorical",
+        Value::Container(Array::Datetime(_)) => "datetime",
+        Value::Container(Array::Duration(_)) => "duration",
+        Value::Container(Array::Table(_)) => "table",
         Value::Container(Array::Graphics(_)) => "matlab.graphics.Graphics",
         Value::Void => "double",
+        Value::Container(array @ Array::Sparse(_)) => array.class(),
     })
 }
 
@@ -373,14 +377,7 @@ impl Engine {
     }
 
     fn trigx_budget(&self, units: usize) -> Result<()> {
-        if self
-            .evaluated_elements
-            .checked_add(units)
-            .is_none_or(|n| n > EVALUATION_UNITS)
-        {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-        }
-        Ok(())
+        self.preflight_elements(units)
     }
 
     fn trigx_map<T>(&self, len: usize, value: impl Fn(usize) -> T) -> Result<Vec<T>> {
@@ -538,24 +535,24 @@ impl Engine {
                 continue;
             }
             let data = match (name, output) {
-                ("cart2pol", 0) => self.trigx_map(len, |i| at(1, i).atan2(at(0, i)))?,
-                ("cart2pol", _) => self.trigx_map(len, |i| at(0, i).hypot(at(1, i)))?,
-                ("pol2cart", 0) => self.trigx_map(len, |i| at(1, i) * at(0, i).cos())?,
-                ("pol2cart", _) => self.trigx_map(len, |i| at(1, i) * at(0, i).sin())?,
-                ("cart2sph", 0) => self.trigx_map(len, |i| at(1, i).atan2(at(0, i)))?,
-                ("cart2sph", 1) => {
-                    self.trigx_map(len, |i| at(2, i).atan2(at(0, i).hypot(at(1, i))))?
-                }
-                ("cart2sph", _) => {
-                    self.trigx_map(len, |i| at(0, i).hypot(at(1, i)).hypot(at(2, i)))?
-                }
-                ("sph2cart", 0) => {
-                    self.trigx_map(len, |i| at(2, i) * at(1, i).cos() * at(0, i).cos())?
-                }
-                ("sph2cart", 1) => {
-                    self.trigx_map(len, |i| at(2, i) * at(1, i).cos() * at(0, i).sin())?
-                }
-                _ => self.trigx_map(len, |i| at(2, i) * at(1, i).sin())?,
+                ("cart2pol", 0) => self.trigx_map(len, |i| libm::atan2(at(1, i), at(0, i)))?,
+                ("cart2pol", _) => self.trigx_map(len, |i| libm::hypot(at(0, i), at(1, i)))?,
+                ("pol2cart", 0) => self.trigx_map(len, |i| at(1, i) * libm::cos(at(0, i)))?,
+                ("pol2cart", _) => self.trigx_map(len, |i| at(1, i) * libm::sin(at(0, i)))?,
+                ("cart2sph", 0) => self.trigx_map(len, |i| libm::atan2(at(1, i), at(0, i)))?,
+                ("cart2sph", 1) => self.trigx_map(len, |i| {
+                    libm::atan2(at(2, i), libm::hypot(at(0, i), at(1, i)))
+                })?,
+                ("cart2sph", _) => self.trigx_map(len, |i| {
+                    libm::hypot(libm::hypot(at(0, i), at(1, i)), at(2, i))
+                })?,
+                ("sph2cart", 0) => self.trigx_map(len, |i| {
+                    at(2, i) * libm::cos(at(1, i)) * libm::cos(at(0, i))
+                })?,
+                ("sph2cart", 1) => self.trigx_map(len, |i| {
+                    at(2, i) * libm::cos(at(1, i)) * libm::sin(at(0, i))
+                })?,
+                _ => self.trigx_map(len, |i| at(2, i) * libm::sin(at(1, i)))?,
             };
             values.push(column(data)?);
         }

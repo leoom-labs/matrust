@@ -1,7 +1,9 @@
 //! Number theory, special functions, bit operations and base conversion.
 //! Real double (plus logical) inputs only; character arguments are accepted
 //! where MATLAB takes text (`nchoosek`, `bin2dec`, ...). User functions resolve first.
+use super::logical_values::broadcast_error;
 use super::{Engine, Value};
+use crate::broadcast2::Broadcast2;
 use crate::engine::Fma;
 use crate::{Array, CharacterRow, LogicalMatrix, Matrix, Result};
 
@@ -354,7 +356,7 @@ fn erfcinv_core(x: f64) -> f64 {
     t
 }
 
-fn erfcinv_fn(x: f64) -> f64 {
+pub(super) fn erfcinv_fn(x: f64) -> f64 {
     if x.is_nan() || !(0.0..=2.0).contains(&x) {
         return f64::NAN;
     }
@@ -618,6 +620,19 @@ impl Engine {
         Ok(Value::Matrix(a.zip(b, f)?))
     }
 
+    fn numtheory_bit_pair(
+        &mut self,
+        a: &Matrix,
+        b: &Matrix,
+        f: impl Fn(f64, f64) -> f64 + Sync + Send,
+    ) -> Result<Value> {
+        let shape = Broadcast2::new((a.rows(), a.cols()), (b.rows(), b.cols()))
+            .map_err(|message| broadcast_error(self, message))?;
+        self.numtheory_charge(shape.len())?;
+        self.preflight_elements(shape.len())?;
+        Ok(Value::Matrix(shape.zip_real(a, b, &self.cancel, f)?))
+    }
+
     /// Every element of `x` must satisfy `ok` (cancel checked in blocks).
     fn numtheory_require(&self, x: &Matrix, ok: impl Fn(f64) -> bool, message: &str) -> Result<()> {
         for chunk in x.data().chunks(65_536) {
@@ -630,7 +645,7 @@ impl Engine {
     }
 
     pub(super) fn numtheory_outputs(
-        &self,
+        &mut self,
         name: &str,
         args: &[Value],
         count: usize,
@@ -843,15 +858,12 @@ impl Engine {
                         "Input must not exceed flintmax (2^53).",
                     )?;
                 }
-                if a.len() != 1 && b.len() != 1 && (a.rows(), a.cols()) != (b.rows(), b.cols()) {
-                    return Err("Inputs must have the same size.".into());
-                }
                 let op: fn(u64, u64) -> u64 = match name {
                     "bitand" => |x, y| x & y,
                     "bitor" => |x, y| x | y,
                     _ => |x, y| x ^ y,
                 };
-                Ok(vec![self.numtheory_zip(&a, &b, move |x, y| {
+                Ok(vec![self.numtheory_bit_pair(&a, &b, move |x, y| {
                     op(x as u64, y as u64) as f64
                 })?])
             }
@@ -864,7 +876,7 @@ impl Engine {
                 let assumed = self.numtheory_assumed_type(args.get(2))?;
                 self.numtheory_bit_input(&a, assumed)?;
                 self.numtheory_require(&k, is_int, "Shift counts must be integers.")?;
-                Ok(vec![self.numtheory_zip(&a, &k, move |x, s| {
+                Ok(vec![self.numtheory_bit_pair(&a, &k, move |x, s| {
                     let bits = assumed.encode(x);
                     let shifted = if s >= 0.0 {
                         if s >= 64.0 { 0 } else { bits << s as u32 }

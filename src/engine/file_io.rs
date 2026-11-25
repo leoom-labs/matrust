@@ -10,7 +10,7 @@ use super::{
     text_format::{self as tf, Item, MAX_TEXT},
 };
 use crate::{
-    Array, CellArray, CharacterRow, LogicalMatrix, Matrix, Result,
+    Array, CellArray, CharacterRow, LogicalMatrix, Matrix, Result, files::strip_utf8_bom,
     script_containers::MAX_CHARACTER_UNITS,
 };
 use std::{
@@ -23,7 +23,7 @@ use std::{
 
 const NAMES: &[&str] = &[
     "fopen", "fclose", "fgetl", "fgets", "feof", "ftell", "fseek", "frewind", "fwrite", "fread",
-    "fscanf", "textscan", "dlmread", "dlmwrite", "csvread", "csvwrite", "type", "exist",
+    "fscanf", "textscan", "dlmread", "dlmwrite", "csvread", "csvwrite", "type", "exist", "ferror",
 ];
 
 pub(super) fn handles(name: &str) -> bool {
@@ -54,9 +54,27 @@ struct OpenFile {
     data: Vec<u8>,
     pos: usize,
     eof: bool,
+    last_error: String,
+    last_errnum: i32,
 }
 
 impl OpenFile {
+    fn clear_error(&mut self) {
+        self.last_error.clear();
+        self.last_errnum = 0;
+    }
+
+    fn set_error(&mut self, message: String, number: i32) {
+        self.last_error = message;
+        self.last_errnum = number;
+    }
+
+    fn end_of_file(&mut self, who: &str) {
+        self.eof = true;
+        // GNU Octave ferror after an exhausted read: "fgetl: at end of file", -1.
+        self.set_error(format!("{who}: at end of file"), -1);
+    }
+
     fn write(&mut self, bytes: &[u8]) -> Result<usize> {
         if !self.writable {
             return Ok(0);
@@ -92,11 +110,16 @@ impl OpenFile {
             self.data.resize(end, 0);
         }
         self.data[at..end].copy_from_slice(&bytes);
-        self.file
+        if let Err(e) = self
+            .file
             .seek(SeekFrom::Start(at as u64))
             .and_then(|_| self.file.write_all(&bytes))
-            .map_err(|e| e.to_string())?;
+        {
+            self.set_error(e.to_string(), e.raw_os_error().unwrap_or(-1));
+            return Err(e.to_string());
+        }
         self.pos = end;
+        self.clear_error();
         Ok(written)
     }
 
@@ -136,10 +159,25 @@ impl OpenFile {
         }
     }
 
+    fn text_bom_len(&self) -> usize {
+        if self.pos == 0 && self.text && !self.latin1 {
+            self.data.len() - strip_utf8_bom(&self.data).len()
+        } else {
+            0
+        }
+    }
+
     /// One line, with its terminator (LF, CR LF or a lone CR, as the reference's
     /// fgets reads them). `None` at end of file.
     fn line(&mut self, limit: Option<usize>) -> Option<Vec<u8>> {
-        if !self.readable || self.pos >= self.data.len() {
+        if !self.readable {
+            self.eof = true;
+            return None;
+        }
+        if limit != Some(0) {
+            self.pos += self.text_bom_len();
+        }
+        if self.pos >= self.data.len() {
             self.eof = true;
             return None;
         }
@@ -357,6 +395,13 @@ fn scalar_arg(who: &str, what: &str, v: &Value) -> Result<f64> {
     }
 }
 
+/// Functions MATLAB ships as program files (`exist` gives 2, `'builtin'` gives 0).
+pub(super) fn is_program_file(name: &str) -> bool {
+    super::import_options::NAMES.contains(&name)
+        || super::stats_gaps::PROGRAM_FILES.contains(&name)
+        || super::outliers::PROGRAM_FILES.contains(&name)
+}
+
 fn number(v: f64) -> Value {
     Value::Matrix(Matrix::scalar(v))
 }
@@ -428,8 +473,8 @@ pub(super) fn shape_values(mut values: Vec<f64>, spec: SizeSpec) -> (usize, usiz
 }
 
 impl Engine {
-    /// Resolve a file name against the current folder; no network paths.
-    fn fileio_path(&self, who: &str, name: &str) -> Result<PathBuf> {
+    /// Resolve a local file name, with search-path fallback for reads.
+    fn fileio_path(&self, who: &str, name: &str, read: bool) -> Result<PathBuf> {
         if name.is_empty() || name.len() > 32768 || name.contains('\0') {
             return Err(format!(
                 "{who}: file name is empty, oversized or contains NUL"
@@ -439,12 +484,18 @@ impl Engine {
             return Err(format!("{who}: network paths and URLs are not supported"));
         }
         let path = PathBuf::from(name);
+        crate::files::read_fallback::reject_drive_relative(&path)?;
         if path.is_relative() {
             let base = self
                 .file_directory
                 .as_ref()
                 .ok_or_else(|| format!("{who}: no current folder is available"))?;
-            return Ok(base.join(path));
+            let local = base.join(&path);
+            return Ok(if read {
+                super::file_commands::resolve_read_path(self, &path, local)
+            } else {
+                local
+            });
         }
         Ok(path)
     }
@@ -576,7 +627,10 @@ impl Engine {
                 if args.len() > 1 {
                     return Err(TOO_MANY.into());
                 }
-                one(number(self.fileio_with(&args[0], |f| Ok(f.pos as f64))?))
+                one(number(self.fileio_with(&args[0], |f| {
+                    f.clear_error();
+                    Ok(f.pos as f64)
+                })?))
             }
             "frewind" => {
                 if args.len() > 1 {
@@ -585,6 +639,7 @@ impl Engine {
                 self.fileio_with(&args[0], |f| {
                     f.pos = 0;
                     f.eof = false;
+                    f.clear_error();
                     Ok(())
                 })?;
                 Ok(Vec::new())
@@ -608,6 +663,7 @@ impl Engine {
                 Ok(Vec::new())
             }
             "exist" => self.fileio_exist(args),
+            "ferror" => self.fileio_ferror(args, count),
             _ => unreachable!("names checked above"),
         }
     }
@@ -615,7 +671,7 @@ impl Engine {
     /// Whole file, bounded by the open-file size limit; `.m` is tried when the
     /// name has no extension and does not exist (type).
     fn fileio_slurp(&self, who: &str, name: &str) -> Result<Vec<u8>> {
-        let mut path = self.fileio_path(who, name)?;
+        let mut path = self.fileio_path(who, name, who != "type")?;
         if who == "type" && !path.exists() && path.extension().is_none() {
             let mut with_m = path.clone().into_os_string();
             with_m.push(".m");
@@ -711,7 +767,10 @@ impl Engine {
             Some(_) => return Err("fopen: encoding must be a character row".into()),
         };
         let fail = |text: String| Ok(vec![number(-1.), Value::Text(text)]);
-        let path = self.fileio_path(who, file_name)?;
+        // Only a read-only open may be found in an added folder; `r+` and every
+        // other write-capable permission resolve in the current folder alone.
+        let search = crate::files::read_fallback::mode_is_eligible(&mode);
+        let path = self.fileio_path(who, file_name, search)?;
         // Opening a FIFO blocks and a device never ends: only regular files.
         match std::fs::metadata(&path) {
             Ok(m) if m.is_dir() => return fail("Is a directory".into()),
@@ -758,7 +817,12 @@ impl Engine {
             };
         }
         let append = mode.starts_with('a');
-        let pos = if mode == "a" { data.len() } else { 0 };
+        // 'a' starts at EOF. 'a+' starts at EOF on Windows and macOS, and at 0 on Linux.
+        let pos = if mode == "a" || (mode == "a+" && cfg!(any(windows, target_os = "macos"))) {
+            data.len()
+        } else {
+            0
+        };
         table[slot] = Some(OpenFile {
             file,
             name: path.to_string_lossy().into_owned(),
@@ -772,6 +836,8 @@ impl Engine {
             data,
             pos,
             eof: false,
+            last_error: String::new(),
+            last_errnum: 0,
         });
         let fid = (slot + FIRST_FID) as f64;
         drop(table);
@@ -795,7 +861,12 @@ impl Engine {
         };
         // The reference reads '' (not -1) from a file opened only for writing.
         let (line, latin1) = self.fileio_with(&args[0], |f| {
-            Ok((f.readable.then(|| f.line(limit)), f.latin1))
+            f.clear_error();
+            let line = f.readable.then(|| f.line(limit));
+            if matches!(line, Some(None)) {
+                f.end_of_file(name);
+            }
+            Ok((line, f.latin1))
         })?;
         let Some(line) = line else {
             return Ok(vec![Value::Text(String::new()), Value::Text(String::new())]);
@@ -855,8 +926,11 @@ impl Engine {
             f.eof = false;
             let target = base + offset;
             if target < 0. || target > f.data.len() as f64 {
+                // GNU Octave uses this message and -1 for a failed fseek.
+                f.set_error("fseek: failed to seek to requested position".into(), -1);
                 return Ok(-1.);
             }
+            f.clear_error();
             f.pos = target as usize;
             Ok(0.)
         })?;
@@ -940,6 +1014,7 @@ impl Engine {
         let arch = Self::fileio_arch("fread", &args[3.min(args.len())..])?;
         let width = kind.size();
         let (values, _) = self.fileio_with(&args[0], |f| {
+            f.clear_error();
             let big = arch.unwrap_or(f.big);
             let mut values = Vec::new();
             if !f.readable {
@@ -950,7 +1025,7 @@ impl Engine {
                 'values: while values.len() < spec.limit {
                     for b in &mut bytes[..width] {
                         let Some(next) = f.read_byte() else {
-                            f.eof = true;
+                            f.end_of_file("fread");
                             break 'values;
                         };
                         *b = next;
@@ -973,7 +1048,7 @@ impl Engine {
             f.pos += take * width;
             if take < spec.limit {
                 f.pos = f.data.len();
-                f.eof = true;
+                f.end_of_file("fread");
             }
             Ok((values, take))
         })?;
@@ -1015,13 +1090,48 @@ impl Engine {
             if name.is_empty() || name.contains('\0') || name.contains("://") {
                 return 0.;
             }
-            match self.fileio_path("exist", name).map(std::fs::metadata) {
+            let read = matches!(kind, "" | "file");
+            match self.fileio_path("exist", name, read).map(std::fs::metadata) {
                 Ok(Ok(m)) if m.is_dir() => 7.,
                 Ok(Ok(_)) => 2.,
                 _ => 0.,
             }
         };
         let builtin = || crate::session::FUNCTIONS.contains(&name);
+        // A .mr/.m file found by name (or name.m / name.mr) through the import
+        // list, in the private folder of the running file, in the current
+        // folder or on the search path, in the order calls use; for a
+        // package-qualified name (`a.fn`), the file of that package.
+        let on_path = || {
+            let (stem, extension) = match name.rsplit_once('.') {
+                Some((stem, e @ ("m" | "mr"))) => (stem, Some(e)),
+                _ => (name, None),
+            };
+            let named = |p: &std::path::PathBuf| {
+                extension.is_none_or(|e| p.extension().is_some_and(|x| x == e))
+            };
+            self.imp_files(stem, true).iter().any(named)
+                || self.prv_files(stem).iter().any(named)
+                || self.spath_files(stem, true).iter().any(named)
+        };
+        let program_file = || is_program_file(name);
+        // A method file `@Class/name.m` on the path, not inside a package.
+        // After builtins, so `exist('sin')` stays 5 and a program file stays 2.
+        let method_file = || {
+            let (stem, extension) = match name.rsplit_once('.') {
+                Some((stem, ext @ ("m" | "mr"))) => (stem, Some(ext)),
+                _ => (name, None),
+            };
+            if !crate::files::valid_name(stem) {
+                return false;
+            }
+            let named = |path: &std::path::Path| {
+                extension.is_none_or(|ext| path.extension().is_some_and(|x| x == ext))
+            };
+            crate::help::method_files(&self.help_path(), stem, true)
+                .iter()
+                .any(|hit| named(&hit.path))
+        };
         let code = match kind {
             "var" => f64::from(u8::from(is_var)),
             "dir" => {
@@ -1033,28 +1143,54 @@ impl Engine {
             }
             "file" => {
                 let k = path_kind();
-                if k == 0. && builtin() { 2. } else { k }
+                if k == 0. && (on_path() || builtin() || method_file()) {
+                    2.
+                } else {
+                    k
+                }
             }
             "builtin" => {
-                if builtin() {
+                if builtin() && !program_file() {
                     5.
                 } else {
                     0.
                 }
             }
-            _ => {
-                if is_var {
-                    1.
-                } else if path_kind() != 0. {
-                    path_kind()
-                } else if builtin() {
-                    5.
-                } else {
-                    0.
-                }
-            }
+            _ if is_var => 1.,
+            _ => match path_kind() {
+                0. if on_path() || program_file() => 2.,
+                0. if builtin() => 5.,
+                0. if method_file() => 2.,
+                k => k,
+            },
         };
         Ok(vec![number(code)])
+    }
+
+    fn fileio_ferror(&self, args: &[Value], count: usize) -> Result<Vec<Value>> {
+        if args.len() > 2 {
+            return Err(TOO_MANY.into());
+        }
+        if count > 2 {
+            return Err("Too many output arguments.".into());
+        }
+        let clear = match args.get(1) {
+            None => false,
+            Some(Value::Text(t)) if t == "clear" => true,
+            Some(_) => return Err("ferror: second argument must be 'clear'".into()),
+        };
+        self.fileio_with(&args[0], |f| {
+            let msg = f.last_error.clone();
+            let errnum = f.last_errnum;
+            if clear {
+                f.clear_error();
+            }
+            if count == 2 {
+                Ok(vec![Value::Text(msg), number(f64::from(errnum))])
+            } else {
+                Ok(vec![Value::Text(msg)])
+            }
+        })
     }
 }
 
@@ -1346,6 +1482,7 @@ impl Engine {
         let spec = size_spec("fscanf", args.get(2))?;
         let cancel = self.cancel.clone();
         let scanned = self.fileio_with(&args[0], |f| {
+            f.clear_error();
             if !f.readable {
                 return Ok(Scanned {
                     values: Vec::new(),
@@ -1356,8 +1493,8 @@ impl Engine {
             }
             let s = scan(&f.scan_data(), &items, spec.limit, f.latin1, &cancel)?;
             f.advance_scanned(s.consumed);
-            if f.pos >= f.data.len() {
-                f.eof = true;
+            if f.pos >= f.data.len() && s.values.len() < spec.limit {
+                f.end_of_file("fscanf");
             }
             Ok(s)
         })?;
@@ -1406,6 +1543,20 @@ struct TextOptions {
     header_lines: usize,
     collect: bool,
     latin1: bool,
+    end_of_line: Option<Vec<u8>>,
+}
+
+fn at_eol(data: &[u8], at: usize, eol: Option<&[u8]>) -> usize {
+    match eol {
+        None => match data.get(at) {
+            Some(b'\r') => 1 + usize::from(data.get(at + 1) == Some(&b'\n')),
+            Some(b'\n') => 1,
+            _ => 0,
+        },
+        Some([]) => 0,
+        Some(pat) if data[at..].starts_with(pat) => pat.len(),
+        Some(_) => 0,
+    }
 }
 
 fn text_format(fmt: &str) -> Result<Vec<TextItem>> {
@@ -1458,7 +1609,7 @@ fn text_scan(
     options: &TextOptions,
     repeat: Option<usize>,
     cancel: &std::sync::atomic::AtomicBool,
-) -> Result<(Vec<Column>, usize)> {
+) -> Result<(Vec<Column>, usize, usize)> {
     let mut columns: Vec<Column> = items
         .iter()
         .filter_map(|i| match i {
@@ -1468,13 +1619,32 @@ fn text_scan(
         })
         .collect();
     let mut at = 0;
+    let eol = options.end_of_line.as_deref();
     for _ in 0..options.header_lines {
-        match data[at..].iter().position(|&b| b == b'\n') {
-            Some(i) => at += i + 1,
-            None => {
+        match eol {
+            None => match data[at..].iter().position(|&b| b == b'\r' || b == b'\n') {
+                Some(i) => {
+                    at += i + 1;
+                    if data.get(at - 1) == Some(&b'\r') && data.get(at) == Some(&b'\n') {
+                        at += 1;
+                    }
+                }
+                None => {
+                    at = data.len();
+                    break;
+                }
+            },
+            Some([]) => {
                 at = data.len();
                 break;
             }
+            Some(pat) => match data[at..].windows(pat.len()).position(|w| w == pat) {
+                Some(i) => at += i + pat.len(),
+                None => {
+                    at = data.len();
+                    break;
+                }
+            },
         }
     }
     let delimited = !options.delimiters.is_empty();
@@ -1501,8 +1671,8 @@ fn text_scan(
         let mut after_delim = false;
         for item in items {
             while at < data.len()
-                && (blank(data[at])
-                    || (!delimited && is_ws(data[at]) && !matches!(data[at], b'\r' | b'\n')))
+                && at_eol(data, at, eol) == 0
+                && (blank(data[at]) || (!delimited && is_ws(data[at])))
             {
                 at += 1;
             }
@@ -1512,7 +1682,7 @@ fn text_scan(
                 break 'rows;
             }
             after_delim = false;
-            if matches!(data.get(at), Some(b'\n' | b'\r')) {
+            if at_eol(data, at, eol) > 0 {
                 // End this record before reading anything from the next line.
                 for missing in &mut columns[column..] {
                     match missing {
@@ -1533,9 +1703,9 @@ fn text_scan(
             let start = at;
             while at < data.len()
                 && if delimited {
-                    !is_delim(data[at]) && data[at] != b'\n' && data[at] != b'\r'
+                    !is_delim(data[at]) && at_eol(data, at, eol) == 0
                 } else {
-                    !is_ws(data[at])
+                    !is_ws(data[at]) && at_eol(data, at, eol) == 0
                 }
             {
                 at += 1;
@@ -1580,23 +1750,15 @@ fn text_scan(
                 column += 1;
             }
             // Keep a line break until the remaining fields have been filled.
-            if delimited
-                && at < data.len()
-                && is_delim(data[at])
-                && !matches!(data[at], b'\n' | b'\r')
-            {
+            if delimited && at < data.len() && is_delim(data[at]) && at_eol(data, at, eol) == 0 {
                 at += 1;
                 after_delim = true;
             }
         }
-        if data.get(at) == Some(&b'\r') {
-            at += 1 + usize::from(data.get(at + 1) == Some(&b'\n'));
-        } else if data.get(at) == Some(&b'\n') {
-            at += 1;
-        }
+        at += at_eol(data, at, eol);
         rows += 1;
     }
-    Ok((columns, at))
+    Ok((columns, at, rows))
 }
 
 impl Engine {
@@ -1629,6 +1791,7 @@ impl Engine {
             header_lines: 0,
             collect: false,
             latin1: false,
+            end_of_line: None,
         };
         if !rest.len().is_multiple_of(2) {
             return Err("textscan: options must be name/value pairs".into());
@@ -1645,6 +1808,19 @@ impl Engine {
                 ("collectoutput", v) => {
                     options.collect = scalar_arg(who, "CollectOutput", v)? != 0.
                 }
+                ("endofline", Value::Text(eol)) => {
+                    let bytes = tf::unescape(eol).into_bytes();
+                    if bytes == b"\r\n" {
+                        options.end_of_line = None;
+                    } else if bytes.is_empty() || bytes.len() == 1 {
+                        options.end_of_line = Some(bytes);
+                    } else {
+                        return Err(
+                            "textscan: EndOfLine must be '', '\\r\\n', or a single character"
+                                .into(),
+                        );
+                    }
+                }
                 _ => return Err(format!("textscan: unsupported option '{key}'")),
             }
         }
@@ -1656,29 +1832,37 @@ impl Engine {
             return Err("textscan: format has no conversions".into());
         }
         let cancel = self.cancel.clone();
-        let (columns, from_file) = match &args[0] {
+        let columns = match &args[0] {
             Value::Text(text) => {
                 if text.len() > MAX_TEXT {
                     return Err("textscan: text is too long".into());
                 }
-                let (columns, _) = text_scan(text.as_bytes(), &items, &options, repeat, &cancel)?;
-                (columns, false)
+                text_scan(text.as_bytes(), &items, &options, repeat, &cancel)?.0
             }
-            fid => {
-                options.latin1 = self.fileio_with(fid, |f| Ok(f.latin1))?;
-                let columns = self.fileio_with(fid, |f| {
-                    let (columns, used) =
-                        text_scan(&f.scan_data(), &items, &options, repeat, &cancel)?;
-                    f.advance_scanned(used);
-                    if f.pos >= f.data.len() {
-                        f.eof = true;
-                    }
-                    Ok(columns)
-                })?;
-                (columns, true)
-            }
+            fid => self.fileio_with(fid, |f| {
+                options.latin1 = f.latin1;
+                f.clear_error();
+                let bom = if repeat == Some(0) {
+                    0
+                } else {
+                    f.text_bom_len()
+                };
+                let (columns, _used, rows) = if options.end_of_line.is_some() {
+                    let raw = &f.data[f.pos + bom..];
+                    let res = text_scan(raw, &items, &options, repeat, &cancel)?;
+                    f.pos += bom + res.1;
+                    res
+                } else {
+                    let res = text_scan(&f.scan_data()[bom..], &items, &options, repeat, &cancel)?;
+                    f.advance_scanned(bom + res.1);
+                    res
+                };
+                if f.pos >= f.data.len() && repeat.is_none_or(|r| rows < r) {
+                    f.end_of_file("textscan");
+                }
+                Ok(columns)
+            })?,
         };
-        let _ = from_file;
         // Adjacent numeric columns of one length merge into a matrix.
         let mut cells: Vec<Array> = Vec::new();
         let mut pending: Vec<Vec<f64>> = Vec::new();
@@ -1725,7 +1909,14 @@ impl Engine {
 
 // ---- dlmread / dlmwrite -----------------------------------------------------
 
-fn dlm_parse(text: &[u8], delimiter: Option<&[u8]>) -> Result<Vec<Vec<f64>>> {
+fn dlm_parse(
+    text: &[u8],
+    delimiter: Option<&[u8]>,
+    r1: usize,
+    c1: usize,
+    r2: usize,
+    c2: usize,
+) -> Result<Vec<Vec<f64>>> {
     let lines: Vec<(usize, &[u8])> = text
         .split(|&b| b == b'\n')
         .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
@@ -1744,7 +1935,7 @@ fn dlm_parse(text: &[u8], delimiter: Option<&[u8]>) -> Result<Vec<Vec<f64>>> {
     };
     let space = delimiter == *b" ";
     let mut rows: Vec<Vec<f64>> = Vec::with_capacity(lines.len());
-    for (row, line) in lines {
+    for (index, (row, line)) in lines.into_iter().enumerate() {
         let fields: Vec<&[u8]> = if space {
             line.split(|&b| is_ws(b))
                 .filter(|f| !f.is_empty())
@@ -1752,6 +1943,10 @@ fn dlm_parse(text: &[u8], delimiter: Option<&[u8]>) -> Result<Vec<Vec<f64>>> {
         } else {
             line.split(|b| delimiter.contains(b)).collect()
         };
+        if index < r1 || index > r2 {
+            rows.push(vec![0.; fields.len()]);
+            continue;
+        }
         let mut values = Vec::with_capacity(fields.len());
         let mut offset = 0;
         for (column, field) in fields.into_iter().enumerate() {
@@ -1759,6 +1954,11 @@ fn dlm_parse(text: &[u8], delimiter: Option<&[u8]>) -> Result<Vec<Vec<f64>>> {
                 while offset < line.len() && is_ws(line[offset]) {
                     offset += 1;
                 }
+            }
+            if column < c1 || column > c2 {
+                values.push(0.);
+                offset += field.len() + usize::from(!space);
+                continue;
             }
             let f = field.trim_ascii();
             if f.is_empty() {
@@ -1846,7 +2046,7 @@ impl Engine {
         }
         let data = self.fileio_slurp(name, file)?;
         self.check_cancel()?;
-        let rows = dlm_parse(&data, delimiter.as_deref())?;
+        let rows = dlm_parse(strip_utf8_bom(&data), delimiter.as_deref(), r1, c1, r2, c2)?;
         let width = rows.iter().map(Vec::len).max().unwrap_or(0);
         let r_end = r2.saturating_add(1).min(rows.len());
         let c_end = c2.saturating_add(1).min(width);
@@ -1965,7 +2165,7 @@ impl Engine {
             }
             i += 2;
         }
-        let path = self.fileio_path(name, file)?;
+        let path = self.fileio_path(name, file, false)?;
         let width = cols
             .checked_add(coff)
             .ok_or_else(|| format!("{name}: output exceeds the 8 MiB limit"))?;

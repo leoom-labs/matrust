@@ -8,6 +8,11 @@ mod focus_area_cases {
         -> (egui::Context, Workspace, tempfile::TempDir) {
         let ctx = egui::Context::default();
         let mut app = Workspace::with_context(ctx.clone(), true);
+        // This fixture exercises all simultaneously visible focus destinations.
+        // Compact windows can keep Workspace docked below Files instead of in a sheet.
+        if size.x < 1100. {
+            app.set_workspace_dock(&ctx, session::WorkspaceDock::BelowFiles);
+        }
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("focus.m"), "untouched=1;\n").unwrap();
         assert!(app.change_folder(dir.path().to_owned())); finish_folder(&mut app);
@@ -117,7 +122,7 @@ mod focus_area_cases {
         app.toolkits.open_tool(toolkits::Tool::Model);
         for _ in 0..3 { frame_at(&mut app,&ctx,size,vec![]); }
         let areas=|ctx:&egui::Context| focus_areas::observations(ctx,false).iter().map(|(a,_)|*a).collect::<Vec<_>>();
-        assert_eq!(areas(&ctx),vec![Area::Files,Area::Workspace,Area::Command,Area::Model]);
+        assert_eq!(areas(&ctx),vec![Area::Command,Area::Model]);
         let docs=app.documents.clone();
         let settle=|app:&mut Workspace| for _ in 0..3 { frame_at(app,&ctx,size,vec![]); };
         // F6 walks the ring (cards included); a tool tab joins it when selected.
@@ -132,7 +137,7 @@ mod focus_area_cases {
         assert!(reach(&mut app,Area::Command,CTRL));
         assert!(reach(&mut app,Area::Designer,CTRL));
         assert_eq!(app.toolkits.selected_tool(),Some(toolkits::Tool::Designer));
-        assert_eq!(areas(&ctx),vec![Area::Files,Area::Workspace,Area::Command,Area::Designer]);
+        assert_eq!(areas(&ctx),vec![Area::Command,Area::Designer]);
         assert!(reach(&mut app,Area::Model,CTRL));
         assert_eq!(app.toolkits.selected_tool(),Some(toolkits::Tool::Model));
         assert_eq!(app.generic_save_target(),document_save::Pane::Model);

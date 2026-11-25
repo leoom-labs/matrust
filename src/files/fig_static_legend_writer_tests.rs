@@ -309,17 +309,35 @@ fn public_one_and_sixty_four_member_boundaries_and_subplot_rejection() {
 
 #[test]
 fn no_legend_plain_and_subplot_bytes_match_exact_predecessor_encoder() {
-    for command in [
-        "plot([-0 1],[2 3]);title('Plain');grid off;",
-        "plot([-0 1],[2 3]);grid on;set(gca,'GridColor',[0.2 0.3 0.4],'GridAlpha',0.4);",
-        "subplot(1,2,1);plot([0 1],[2 3]);subplot(1,2,2);plot([0 1],[4 5]);subplot(1,2,1);",
+    use sha2::{Digest, Sha256};
+
+    // Fingerprints from the predecessor's public saveas, independent of
+    // encode_axes, which both root encoders below use.
+    for (command, predecessor_hash) in [
+        (
+            "plot([-0 1],[2 3]);title('Plain');grid off;",
+            "d42a3d95e86c06b065a48d8e308b302c852b0e33fe08f549d7544faacee13e78",
+        ),
+        (
+            "plot([-0 1],[2 3]);grid on;set(gca,'GridColor',[0.2 0.3 0.4],'GridAlpha',0.4);",
+            "572835b32135541303e18d8091438c26ec978108ae97329a23cfef06178c09c6",
+        ),
+        (
+            "subplot(1,2,1);plot([0 1],[2 3]);subplot(1,2,2);plot([0 1],[4 5]);subplot(1,2,1);",
+            "afa26e5fe61e748f3059e73a9aa63fcec9ee97b6b360fd9db39d950c6afebdbd",
+        ),
     ] {
         let mut engine = crate::Engine::default();
         engine.execute(command).unwrap();
         let figure = engine.figure.as_ref().unwrap();
+        let predecessor = predecessor_no_legend_encoder(figure, BaseTheme::Light, false).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&predecessor)),
+            predecessor_hash
+        );
         assert_eq!(
             encode_matlab_figure_with_theme(figure, BaseTheme::Light).unwrap(),
-            predecessor_no_legend_encoder(figure, BaseTheme::Light).unwrap()
+            predecessor_no_legend_encoder(figure, BaseTheme::Light, true).unwrap()
         );
         let mut legacy = figure.clone();
         legacy.appearance = None;
@@ -328,12 +346,26 @@ fn no_legend_plain_and_subplot_bytes_match_exact_predecessor_encoder() {
         }
         assert_eq!(
             encode_matlab_figure_with_theme(&legacy, BaseTheme::Light).unwrap(),
-            predecessor_no_legend_encoder(&legacy, BaseTheme::Light).unwrap()
+            predecessor_no_legend_encoder(&legacy, BaseTheme::Light, true).unwrap()
         );
     }
+
+    let mut engine = crate::Engine::default();
+    engine.execute(r"plot([1 2]);title('\alpha_1');").unwrap();
+    let bytes = encode_matlab_figure(engine.figure.as_ref().unwrap()).unwrap();
+    let reopened = decode_matlab_figure(&bytes).unwrap();
+    assert_eq!(reopened.title, r"\alpha_1");
+    assert_eq!(
+        reopened.extras.label_interpreters[0],
+        crate::plot::text_markup::Interpreter::Tex
+    );
 }
-// Exact graphics18 root encoder, changing only its name and the new None argument.
-fn predecessor_no_legend_encoder(figure: &Figure, host: crate::plot::BaseTheme) -> Result<Vec<u8>> {
+// Keep the graphics18 root encoder and allow only the six new figure fields.
+fn predecessor_no_legend_encoder(
+    figure: &Figure,
+    host: BaseTheme,
+    with_figure_fields: bool,
+) -> Result<Vec<u8>> {
     figure.validate()?;
     if let Some(reason) = matlab_figure_export_restriction_with_theme(figure, host) {
         return Err(reason.into());
@@ -375,13 +407,22 @@ fn predecessor_no_legend_encoder(figure: &Figure, host: crate::plot::BaseTheme) 
             None,
         )?);
     }
-    let mut props = vec![
-        ("Visible", mat::text("off")),
-        (
-            "Color",
-            num(&appearance.canvas.map(|c| f64::from(c) / 255.)),
-        ),
-    ];
+    let mut props = if with_figure_fields {
+        vec![
+            ("Visible", mat::text("on")),
+            ("Units", mat::text("pixels")),
+            ("Position", num(&[100., 100., 960., 560.])),
+            ("Resize", mat::text("on")),
+            ("NumberTitle", mat::text("on")),
+            ("WindowState", mat::text("normal")),
+        ]
+    } else {
+        vec![("Visible", mat::text("off"))]
+    };
+    props.push((
+        "Color",
+        num(&appearance.canvas.map(|c| f64::from(c) / 255.)),
+    ));
     if !figure.name.is_empty() {
         props.push(("Name", mat::text(&figure.name)));
     }

@@ -54,6 +54,8 @@ pub enum Action {
 }
 impl Editor {
     pub fn new(id: u32, figure: &Figure, view: Option<[f64; 4]>) -> Self {
+        // A 3-D axes has no x/y zoom view to copy into the limits.
+        let view = view.filter(|_| !matrust::plot::view3d::is_3d(figure.view));
         // Opening Properties must remain O(series), even with huge plots. The
         // displayed view already has bounds; do not rescan samples on the UI.
         let limits = [figure.xlim, figure.ylim]
@@ -509,7 +511,7 @@ impl Editor {
             let mut color = self.draft.resolve_appearance(host).canvas;
             ui.horizontal(|ui| {
                 ui.label("Canvas color");
-                if ui.color_edit_button_srgb(&mut color).changed() {
+                if crate::tokens::color_edit_button(ui, &mut color).changed() {
                     self.draft.set_canvas_color(color);
                 }
             });
@@ -520,29 +522,40 @@ impl Editor {
         let field_width = (ui.available_width() - 90.).clamp(70., 390.);
         if let Some(layout) = &mut self.draft.layout {
             ui.label("Shared figure title");
-            ui.add(
-                egui::TextEdit::singleline(&mut layout.title)
-                    .char_limit(4096)
-                    .desired_width(f32::INFINITY),
-            );
+            if ui
+                .add(
+                    egui::TextEdit::singleline(&mut layout.title)
+                        .char_limit(4096)
+                        .desired_width(f32::INFINITY),
+                )
+                .changed()
+            {
+                layout.text_lines[0] = None;
+            }
             ui.add_space(8.);
         }
         egui::Grid::new("figure_labels")
             .num_columns(2)
             .spacing([16., 8.])
             .show(ui, |ui| {
-                for (name, text) in [
-                    ("Title", &mut self.draft.axes.title),
-                    ("X label", &mut self.draft.axes.xlabel),
-                    ("Y label", &mut self.draft.axes.ylabel),
+                let [title_lines, x_lines, y_lines, _] = &mut self.draft.axes.extras.label_lines;
+                for (name, text, lines) in [
+                    ("Title", &mut self.draft.axes.title, title_lines),
+                    ("X label", &mut self.draft.axes.xlabel, x_lines),
+                    ("Y label", &mut self.draft.axes.ylabel, y_lines),
                 ] {
                     ui.label(name);
-                    ui.add(
-                        egui::TextEdit::singleline(text)
-                            .id(egui::Id::new(("figure_property", name)))
-                            .char_limit(4096)
-                            .desired_width(field_width),
-                    );
+                    if ui
+                        .add(
+                            egui::TextEdit::singleline(text)
+                                .id(egui::Id::new(("figure_property", name)))
+                                .char_limit(4096)
+                                .desired_width(field_width),
+                        )
+                        .changed()
+                    {
+                        *lines = None;
+                    }
                     ui.end_row();
                 }
             });
@@ -667,7 +680,7 @@ impl Editor {
         ui.horizontal_wrapped(|ui| {
             ui.label("Color");
             let mut color = appearance.series_color(s);
-            if ui.color_edit_button_srgb(&mut color).changed() {
+            if crate::tokens::color_edit_button(ui, &mut color).changed() {
                 s.color = color;
                 s.explicit_color = true;
             }
@@ -709,7 +722,7 @@ impl Editor {
                     }
                 }
                 if let Some(edge) = &mut s.face_edge_color {
-                    ui.color_edit_button_srgb(edge);
+                    crate::tokens::color_edit_button(ui, edge);
                 }
             });
         }
@@ -1086,13 +1099,16 @@ mod tests {
             .unwrap();
         let mut editor = Editor::new(1, &source, None);
         editor.auto[0] = false;
-        for limits in [["bad", "2"], ["1", "inf"], ["NaN", "2"]] {
+        for limits in [["bad", "2"], ["1", "-inf"], ["NaN", "2"]] {
             editor.limits[0] = limits.map(str::to_owned);
             assert!(editor.candidate().is_err());
         }
         editor.limits[0] = ["-1".into(), "2".into()];
         editor.draft.xscale = AxisScale::Log;
         assert!(editor.candidate().is_err());
+        editor.draft.xscale = AxisScale::Linear;
+        editor.limits[0] = ["1".into(), "inf".into()];
+        assert_eq!(editor.candidate().unwrap().xlim, Some([1., f64::INFINITY]));
         editor.auto[0] = true;
         editor.draft.series[0].kind = PlotKind::Bar;
         assert!(editor.candidate().is_err());

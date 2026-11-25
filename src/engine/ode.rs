@@ -1,15 +1,19 @@
 //! Embedded Runge-Kutta pairs of Dormand & Prince (1980) and Bogacki & Shampine
 //! (1989), with scaled maximum-norm control (Shampine & Reichelt, 1997, section 2)
 //! and continuous output (Shampine, 1986), plus odeset/odeget.
-//! Option sets are 1-by-1 structs with odeset's 22 fields; unset fields are [].
-use super::{Engine, Execution, Value};
-use crate::{
-    Array, CharacterRow, FunctionHandle, Matrix, Result, StructArray, matrix::MAX_ELEMENTS,
+//! Option sets are 1-by-1 structs with odeset's 23 fields; unset fields are [].
+use super::ode_more::{
+    Callable,
+    num::{Located, odezero},
+    ode_event_arrays, ode_event_option, ode_non_negative_option, ode_nonneg_clamp_input,
+    ode_nonneg_zero_slope, ode_output_fcn_option, ode_output_sel_option,
 };
+use super::{Engine, Execution, Value};
+use crate::{Array, CharacterRow, Matrix, Result, StructArray, matrix::MAX_ELEMENTS};
 use std::sync::Arc;
 
 /// odeset property names (reference order). Names match by case-insensitive prefix.
-const ODE_NAMES: [&str; 22] = [
+const ODE_NAMES: [&str; 23] = [
     "AbsTol",
     "BDF",
     "Events",
@@ -21,6 +25,7 @@ const ODE_NAMES: [&str; 22] = [
     "MassSingular",
     "MaxOrder",
     "MaxStep",
+    "MinStep",
     "NonNegative",
     "NormControl",
     "OutputFcn",
@@ -33,7 +38,24 @@ const ODE_NAMES: [&str; 22] = [
     "MvPattern",
     "InitialSlope",
 ];
-const ODE_SUPPORTED: [&str; 5] = ["AbsTol", "InitialStep", "MaxStep", "Refine", "RelTol"];
+const ODE_SUPPORTED: [&str; 9] = [
+    "AbsTol",
+    "Events",
+    "InitialStep",
+    "MaxStep",
+    "NonNegative",
+    "OutputFcn",
+    "OutputSel",
+    "Refine",
+    "RelTol",
+];
+
+#[derive(Clone, Default)]
+pub(super) struct OdePlotState {
+    lines: Vec<Value>,
+    x: Vec<f64>,
+    ys: Vec<Vec<f64>>,
+}
 
 pub(super) fn is_solver(name: &str) -> bool {
     matches!(name, "ode45" | "ode23")
@@ -67,27 +89,6 @@ impl OdeMethod {
     }
 }
 
-/// The derivative function f(t, y), supplied by name or handle;
-/// `Engine::ode_derivative` is the one place that evaluates it.
-enum OdeFunction {
-    File(String),
-    Handle(FunctionHandle),
-}
-impl OdeFunction {
-    /// MATLAB returns the solution structure for `sol = odeXX(...)` only when f is a
-    /// function handle; with an ODE-file name the one output is t.
-    fn solution_struct(&self) -> bool {
-        matches!(self, Self::Handle(_))
-    }
-    fn diagnostic_name(&self) -> String {
-        match self {
-            Self::File(name) => name.clone(),
-            // MATLAB's ODE argument diagnostics uppercase the handle text.
-            Self::Handle(handle) => handle.func2str().to_uppercase(),
-        }
-    }
-}
-
 struct OdeProblem {
     method: OdeMethod,
     tspan: Vec<f64>,
@@ -104,6 +105,9 @@ struct OdeProblem {
     refine: usize,
     /// Keep each step's stages for sol.idata.f3d (deval, odextend).
     keep_stages: bool,
+    /// Return solver mesh steps in `out.t`/`out.y` (sol struct mode).
+    solution_output: bool,
+    non_negative: Vec<usize>,
 }
 
 struct OdeOutput {
@@ -119,6 +123,9 @@ struct OdeOutput {
     /// Stages of each accepted step (sol output only).
     stages: Vec<Vec<Vec<f64>>>,
     stages_dropped: bool,
+    events: Option<Located>,
+    /// Original RK step size if an event cuts the final stored interval.
+    terminal_step: Option<f64>,
 }
 impl OdeOutput {
     fn push(&mut self, t: f64, y: &[f64]) -> Result<()> {
@@ -172,6 +179,7 @@ struct OdeAttempt {
     err: f64,
     /// ode45: f1, f3, f4, f5, f6, f7; ode23: f1, f2, f3, f4. The last is f(tnew, ynew).
     stages: Vec<Vec<f64>>,
+    reeval: bool,
 }
 
 type Derivative<'a> = dyn FnMut(f64, &[f64]) -> Result<Vec<f64>> + 'a;
@@ -203,7 +211,7 @@ fn ode_attempt(
     if done {
         h = tnew - t;
     }
-    let (ynew, error, stages) = match p.method {
+    let (mut ynew, error, mut stages) = match p.method {
         OdeMethod::DormandPrince45 => {
             // Dormand & Prince (1980), Table 2: the seven-stage RK5(4)7M pair.
             let k2 = f(t + h / 5., &ode_combine(y, h, &[(1. / 5., f1)]))?;
@@ -288,17 +296,49 @@ fn ode_attempt(
             (next, error, vec![f1.to_vec(), k2, k3, k4])
         }
     };
-    let err = absh * ode_error_norm(&error, y, &ynew, &p.threshold);
+    let mut err = absh * ode_error_norm(&error, y, &ynew, &p.threshold);
+    let mut reeval = false;
+    if !p.non_negative.is_empty() && (err <= p.rtol || err.is_nan() || p.rtol.is_nan()) {
+        let mut err2: f64 = 0.;
+        for &i in &p.non_negative {
+            if ynew[i] < 0. {
+                let scale = y[i].abs().max(p.threshold[i]);
+                err2 = err2.max((-ynew[i]) / scale);
+            }
+        }
+        err = err.max(err2);
+        if (err <= p.rtol || err.is_nan() || p.rtol.is_nan())
+            && p.non_negative.iter().any(|&i| ynew[i] < 0.)
+        {
+            for &i in &p.non_negative {
+                if ynew[i] < 0. {
+                    ynew[i] = 0.;
+                }
+            }
+            if let Some(last) = stages.last_mut() {
+                *last = f(tnew, &ynew)?;
+            }
+            reeval = true;
+        }
+    }
     Ok(OdeAttempt {
         tnew,
         h,
         ynew,
         err,
         stages,
+        reeval,
     })
 }
 
-fn ode_interpolate(method: OdeMethod, tint: f64, t: f64, y: &[f64], step: &OdeAttempt) -> Vec<f64> {
+fn ode_interpolate(
+    method: OdeMethod,
+    tint: f64,
+    t: f64,
+    y: &[f64],
+    step: &OdeAttempt,
+    non_negative: &[usize],
+) -> Vec<f64> {
     if tint == t {
         return y.to_vec();
     }
@@ -306,7 +346,7 @@ fn ode_interpolate(method: OdeMethod, tint: f64, t: f64, y: &[f64], step: &OdeAt
         return step.ynew.clone();
     }
     let s = (tint - t) / step.h;
-    match method {
+    let mut out: Vec<f64> = match method {
         OdeMethod::DormandPrince45 => {
             // Shampine (1986), section 3, (3.1)-(3.5), Case I: the free
             // fourth-order extension of the Dormand-Prince tableau. The
@@ -348,10 +388,82 @@ fn ode_interpolate(method: OdeMethod, tint: f64, t: f64, y: &[f64], step: &OdeAt
                 })
                 .collect()
         }
+    };
+    for &i in non_negative {
+        if out[i] < 0. {
+            out[i] = 0.;
+        }
+    }
+    out
+}
+
+trait OdeCallbacks {
+    fn derivative(&mut self, t: f64, y: &[f64]) -> Result<Vec<f64>>;
+    fn events(&mut self, _t: f64, _y: &[f64]) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+        unreachable!("Events were not configured")
+    }
+    fn has_output(&self) -> bool {
+        false
+    }
+    fn output(&mut self, _t: &[f64], _y: &[f64]) -> Result<bool> {
+        Ok(false)
     }
 }
 
-fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<OdeOutput> {
+struct OdeCalls<'a> {
+    engine: &'a mut Engine,
+    output: &'a mut Execution,
+    f: &'a Callable,
+    event: Option<&'a Callable>,
+    output_fcn: Option<&'a Callable>,
+    output_sel: &'a [usize],
+    non_negative: &'a [usize],
+    tdir: f64,
+    neq: usize,
+    extras: &'a [Value],
+}
+
+impl OdeCallbacks for OdeCalls<'_> {
+    fn derivative(&mut self, t: f64, y: &[f64]) -> Result<Vec<f64>> {
+        let mut scratch = Vec::new();
+        let y_in = ode_nonneg_clamp_input(y, self.non_negative, &mut scratch);
+        let mut dy = self
+            .engine
+            .ode_derivative(self.f, t, y_in, self.extras, self.output)?;
+        ode_nonneg_zero_slope(y, &mut dy, self.non_negative, self.tdir);
+        Ok(dy)
+    }
+
+    fn events(&mut self, t: f64, y: &[f64]) -> Result<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+        let mut args = vec![
+            Value::Matrix(Matrix::scalar(t)),
+            Value::Matrix(Matrix::from_column_slice(y.len(), 1, y)?),
+        ];
+        args.extend_from_slice(self.extras);
+        self.engine
+            .od2_event_values(self.event.unwrap(), args, self.output)
+    }
+
+    fn has_output(&self) -> bool {
+        self.output_fcn.is_some()
+    }
+
+    fn output(&mut self, t: &[f64], y: &[f64]) -> Result<bool> {
+        let Some(fcn) = self.output_fcn else {
+            return Ok(false);
+        };
+        let ys: Vec<Vec<f64>> = y.chunks(self.neq).map(|c| c.to_vec()).collect();
+        self.engine
+            .ode_output_step(fcn, t, &ys, self.output_sel, self.extras, self.output)
+    }
+}
+
+fn ode_integrate(
+    p: &OdeProblem,
+    f0: Vec<f64>,
+    callbacks: &mut dyn OdeCallbacks,
+    mut event_values: Option<Vec<f64>>,
+) -> Result<OdeOutput> {
     let mut out = OdeOutput {
         t: Vec::new(),
         y: Vec::new(),
@@ -361,6 +473,8 @@ fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<Ode
         evals: 1,
         stages: Vec::new(),
         stages_dropped: false,
+        events: event_values.as_ref().map(|_| Located::default()),
+        terminal_step: None,
     };
     out.push(p.t0, &p.y0)?;
     let direction = (p.tfinal - p.t0).signum();
@@ -391,8 +505,10 @@ fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<Ode
             // A retry must keep its reduced length, including at the hmin floor.
             let done = !retried && 1.1 * absh >= (p.tfinal - t).abs();
             let h = if done { p.tfinal - t } else { direction * absh };
-            let step = ode_attempt(p, t, &y, h, h.abs(), done, &first, f)?;
-            out.evals += p.method.evaluations();
+            let step = ode_attempt(p, t, &y, h, h.abs(), done, &first, &mut |time, state| {
+                callbacks.derivative(time, state)
+            })?;
+            out.evals += p.method.evaluations() + usize::from(step.reeval);
             // Reject only err > rtol: an unordered (NaN) comparison accepts.
             if step.err <= p.rtol || step.err.is_nan() || p.rtol.is_nan() {
                 break step;
@@ -413,21 +529,91 @@ fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<Ode
             retried = true;
         };
         out.steps += 1;
-        if p.tspan.len() > 2 {
-            while next < p.tspan.len() && direction * (p.tspan[next] - accepted.tnew) <= 0. {
+        let mut interpolate =
+            |time| ode_interpolate(p.method, time, t, &y, &accepted, &p.non_negative);
+        let located = if let Some(values) = &event_values {
+            let (found, right) = odezero(
+                &mut interpolate,
+                &mut |time, state| callbacks.events(time, state),
+                None,
+                values,
+                t,
+                accepted.tnew,
+                &accepted.ynew,
+            )?;
+            event_values = Some(right);
+            Some(found)
+        } else {
+            None
+        };
+        let terminal = located.as_ref().filter(|found| found.stop);
+        let stop = terminal.is_some();
+        let end = terminal.map_or(accepted.tnew, |found| *found.t.last().unwrap());
+        let end_state = terminal.map_or(accepted.ynew.as_slice(), |found| found.y.last().unwrap());
+        if stop && p.keep_stages && accepted.tnew != end {
+            out.terminal_step = Some(accepted.h);
+        }
+        let step_start = out.t.len();
+        let mut sol_out_t = Vec::new();
+        let mut sol_out_y = Vec::new();
+        if p.solution_output {
+            out.push(end, end_state)?;
+            if callbacks.has_output() && p.tspan.len() > 2 {
+                while next < p.tspan.len() && direction * (p.tspan[next] - end) <= 0. {
+                    let ti = p.tspan[next];
+                    sol_out_t.push(ti);
+                    if ti == end {
+                        sol_out_y.extend_from_slice(end_state);
+                    } else {
+                        sol_out_y.extend_from_slice(&interpolate(ti));
+                    }
+                    next += 1;
+                }
+                if stop && sol_out_t.last() != Some(&end) {
+                    sol_out_t.push(end);
+                    sol_out_y.extend_from_slice(end_state);
+                }
+            }
+        } else if p.tspan.len() > 2 {
+            while next < p.tspan.len() && direction * (p.tspan[next] - end) <= 0. {
                 let ti = p.tspan[next];
-                out.push(ti, &ode_interpolate(p.method, ti, t, &y, &accepted))?;
+                if ti == end {
+                    out.push(ti, end_state)?;
+                } else {
+                    out.push(ti, &interpolate(ti))?;
+                }
                 next += 1;
             }
-        } else {
-            for j in 1..=p.refine {
-                let ti = if j == p.refine {
-                    accepted.tnew
-                } else {
-                    t + accepted.h * (j as f64 / p.refine as f64)
-                };
-                out.push(ti, &ode_interpolate(p.method, ti, t, &y, &accepted))?;
+            if stop && out.t.last() != Some(&end) {
+                out.push(end, end_state)?;
             }
+        } else {
+            let interval = if stop { end - t } else { accepted.h };
+            for j in 1..p.refine {
+                let ti = t + interval * (j as f64 / p.refine as f64);
+                if !stop || (ti != end && Some(&ti) != out.t.last()) {
+                    out.push(ti, &interpolate(ti))?;
+                }
+            }
+            out.push(end, end_state)?;
+        }
+        let neq = y.len();
+        let output_stop = if p.solution_output && p.tspan.len() > 2 {
+            if !sol_out_t.is_empty() {
+                callbacks.output(&sol_out_t, &sol_out_y)?
+            } else {
+                false
+            }
+        } else if out.t.len() > step_start {
+            callbacks.output(&out.t[step_start..], &out.y[step_start * neq..])?
+        } else {
+            false
+        };
+        if let Some(mut found) = located {
+            if output_stop && let Some(&t_last) = out.t.last() {
+                found.retain_through(t_last, direction);
+            }
+            out.events.as_mut().unwrap().append(found, y.len())?;
         }
         if !retried {
             let ratio = libm::pow(accepted.err / p.rtol, p.method.pow()) / 0.8;
@@ -443,14 +629,24 @@ fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<Ode
             let stored = (out.steps + 1)
                 .saturating_mul(y.len())
                 .saturating_mul(accepted.stages.len());
-            if stored > MAX_ELEMENTS {
+            // sol counts x, y and idata.f3d in one 256 MiB struct payload.
+            // The element cap is 48 Mi (384 MiB of f64), so f3d can fit the
+            // cap and still overflow that fixed budget. Drop the history then.
+            let points = out.t.len();
+            let payload = stored
+                .saturating_add(points.saturating_mul(y.len().saturating_add(1)))
+                .saturating_mul(8);
+            const STRUCT_PAYLOAD: usize = 256 * 1024 * 1024;
+            // Slot and nested-struct overhead above the numeric bytes.
+            const STRUCT_OVERHEAD: usize = 1024 * 1024;
+            if stored > MAX_ELEMENTS || payload.saturating_add(STRUCT_OVERHEAD) > STRUCT_PAYLOAD {
                 out.stages.clear();
                 out.stages_dropped = true;
             } else {
                 out.stages.push(accepted.stages);
             }
         }
-        if t == p.tfinal {
+        if stop || output_stop || t == p.tfinal {
             return Ok(out);
         }
     }
@@ -503,6 +699,8 @@ impl Engine {
         Ok(Some(match name {
             "odeset" => self.ode_set(args)?,
             "odeget" => self.ode_get(args)?,
+            "odeplot" => self.ode_plot(args, out)?,
+            "odeprint" => self.ode_print(args, out)?,
             // eval charges this result; ode_solve would charge it a second time.
             _ if is_solver(name) => self.ode_outputs(name, args.to_vec(), 1, out)?.remove(0),
             _ => return Ok(None),
@@ -525,7 +723,7 @@ impl Engine {
     fn ode_outputs(
         &mut self,
         name: &str,
-        args: Vec<Value>,
+        mut args: Vec<Value>,
         count: usize,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
@@ -534,10 +732,8 @@ impl Engine {
         } else {
             OdeMethod::BogackiShampine23
         };
-        if count > 2 {
-            return Err(format!(
-                "{name} supports at most two outputs [t, y]; event outputs (te, ye, ie) are not supported yet"
-            ));
+        if count > 5 {
+            return Err("Too many output arguments.".into());
         }
         if args.is_empty() {
             return Err(format!(
@@ -545,15 +741,11 @@ impl Engine {
                 name.to_uppercase()
             ));
         }
-        if args.len() > 4 {
-            return Err(format!(
-                "{name} extra parameters after options are not supported; pass them through a function instead"
-            ));
-        }
+        let extras = args.split_off(args.len().min(4));
         let args = self.text_arguments(args)?;
         let function = match &args[0] {
-            Value::Text(text) => OdeFunction::File(text.clone()),
-            Value::Container(Array::Handle(handle)) => OdeFunction::Handle(handle.clone()),
+            Value::Text(text) => Callable::Name(text.clone()),
+            Value::Container(Array::Handle(handle)) => Callable::Handle(handle.clone()),
             _ => {
                 return Err(format!(
                     "{name} expects a derivative function handle or function name as text"
@@ -561,7 +753,7 @@ impl Engine {
             }
         };
         if args.len() < 3 || self.ode_is_empty(&args[1]) || self.ode_is_empty(&args[2]) {
-            if matches!(function, OdeFunction::Handle(_)) {
+            if matches!(function, Callable::Handle(_)) {
                 return Err(format!(
                     "When the first argument to {name} is a function handle, the tspan and y0 arguments must be supplied."
                 ));
@@ -600,7 +792,12 @@ impl Engine {
             return Err("The entries in tspan must strictly increase or decrease.".into());
         }
         let neq = y0.len();
-        let f0 = self.ode_derivative(&function, t0, &y0, out)?;
+        let event = ode_event_option(option("Events").map(|a| &**a), &self.cancel)?;
+        let output_fcn = ode_output_fcn_option(option("OutputFcn").map(|a| &**a), &self.cancel)?;
+        let output_sel = ode_output_sel_option(option("OutputSel").map(|a| &**a), neq)?;
+        let non_negative = ode_non_negative_option(option("NonNegative").map(|a| &**a), neq, &y0)?;
+        let mut f0 = self.ode_derivative(&function, t0, &y0, &extras, out)?;
+        ode_nonneg_zero_slope(&y0, &mut f0, &non_negative, tdir);
         let rtol = match option("RelTol") {
             None => 1e-3,
             Some(v) => match &**v {
@@ -632,7 +829,7 @@ impl Engine {
             return Err("AbsTol must be positive.".into());
         }
         if atol.len() != 1 && atol.len() != neq {
-            let f = function.diagnostic_name();
+            let f = function.diagnostic();
             return Err(format!(
                 "Solving {f} requires a scalar AbsTol, or a vector AbsTol of length {neq}"
             ));
@@ -664,12 +861,8 @@ impl Engine {
             return Err("Refine must be a positive integer of at most 1000000".into());
         }
         // sol holds the solver steps: no refinement, no interior output times.
-        let solution_output = count == 1 && function.solution_struct();
-        let (tspan, next, refine) = if solution_output {
-            (vec![t0, tfinal], 1, 1.)
-        } else {
-            (tspan, next, refine)
-        };
+        let solution_output = count == 1 && matches!(function, Callable::Handle(_));
+        let refine = if solution_output { 1. } else { refine };
         let problem = OdeProblem {
             method,
             tspan,
@@ -684,13 +877,35 @@ impl Engine {
             htry,
             refine: refine as usize,
             keep_stages: solution_output,
+            solution_output,
+            non_negative: non_negative.clone(),
         };
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_init(fcn, &problem.tspan, &problem.y0, &output_sel, &extras, out)?;
+        }
         let solution = {
-            let mut derivative = |t: f64, y: &[f64]| -> Result<Vec<f64>> {
-                self.ode_derivative(&function, t, y, out)
+            let mut calls = OdeCalls {
+                engine: self,
+                output: out,
+                f: &function,
+                event: event.as_ref(),
+                output_fcn: output_fcn.as_ref(),
+                output_sel: &output_sel,
+                non_negative: &non_negative,
+                tdir,
+                neq,
+                extras: &extras,
             };
-            ode_integrate(&problem, f0, &mut derivative)?
+            let event_values = if event.is_some() {
+                Some(calls.events(t0, &problem.y0)?.0)
+            } else {
+                None
+            };
+            ode_integrate(&problem, f0, &mut calls, event_values)?
         };
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_done(fcn, &extras, out)?;
+        }
         if let Some((t, hmin)) = solution.failure {
             self.emit(
                 out,
@@ -703,40 +918,53 @@ impl Engine {
         }
         self.check_cancel()?;
         if solution_output {
-            let extdata = self.ode_extdata(&function, args.get(3))?;
-            return Ok(vec![self.ode_solution(name, &solution, neq, extdata)?]);
+            let extdata = self.od2_extdata(&function, args.get(3), &extras, None)?;
+            return Ok(vec![self.ode_solution(
+                name,
+                &solution,
+                neq,
+                &non_negative,
+                extdata,
+            )?]);
         }
         let points = solution.t.len();
         let t = Matrix::from_column_vec(points, 1, solution.t)?;
         let mut outputs = vec![Value::Matrix(t)];
-        if count == 2 {
+        if count >= 2 {
             let mut y = Vec::with_capacity(points * neq);
             for j in 0..neq {
                 y.extend((0..points).map(|i| solution.y[i * neq + j]));
             }
             outputs.push(Value::Matrix(Matrix::from_column_vec(points, neq, y)?));
         }
+        if count >= 3 {
+            let events = solution.events.unwrap_or_default();
+            outputs.extend(ode_event_arrays(&events, neq, false)?.map(Value::from));
+            outputs.truncate(count);
+        }
         Ok(outputs)
     }
     /// Evaluates f(t, y) and checks it returns a column of length numel(y).
     fn ode_derivative(
         &mut self,
-        function: &OdeFunction,
+        function: &Callable,
         t: f64,
         y: &[f64],
+        extras: &[Value],
         out: &mut Execution,
     ) -> Result<Vec<f64>> {
         self.check_cancel()?;
-        let args = vec![
+        let mut args = vec![
             Value::Matrix(Matrix::scalar(t)),
             Value::Matrix(Matrix::from_column_slice(y.len(), 1, y)?),
         ];
+        args.extend_from_slice(extras);
         // Derivatives are transient solver stages, not retained statement outputs.
         // Keep all limits inside the call, then release its charges on both success
         // and error. ode_solve / eval charge the stored solution when it is returned.
         let evaluated = self.evaluated_elements;
         let result = (|| match function {
-            OdeFunction::File(name) => {
+            Callable::Name(name) => {
                 let Some(resolved) = self.resolve_function(name)? else {
                     return Err(format!(
                         "Undefined function '{name}': the ODE function must be a .m/.mr function file in the Current Folder or a local function"
@@ -744,7 +972,7 @@ impl Engine {
                 };
                 self.invoke_function(resolved, args, 1, None, out)
             }
-            OdeFunction::Handle(handle) => self.call_handle(handle, args, 1, None, out),
+            Callable::Handle(handle) => self.call_handle(handle, args, 1, None, out),
         })();
         self.evaluated_elements = evaluated;
         let values = result?;
@@ -754,18 +982,18 @@ impl Engine {
             .ok_or_else(|| {
                 format!(
                     "{} must return a derivative column vector.",
-                    function.diagnostic_name()
+                    function.diagnostic()
                 )
             })?
             .matrix(&self.cancel)?;
         if value.cols() > 1 {
             return Err(format!(
                 "{} must return a column vector.",
-                function.diagnostic_name()
+                function.diagnostic()
             ));
         }
         if value.rows() != y.len() || value.cols() == 0 {
-            let name = function.diagnostic_name();
+            let name = function.diagnostic();
             return Err(format!(
                 "{name} returns a vector of length {}, but the length of initial conditions vector is {}. The vector returned by {name} and the initial conditions vector must have the same number of elements.",
                 value.len(),
@@ -843,7 +1071,11 @@ impl Engine {
                 value if self.ode_is_empty(value) => {}
                 Value::Container(Array::Struct(set)) if set.len() == 1 => {
                     for (slot, name) in slots.iter_mut().zip(ODE_NAMES) {
-                        let Some(field) = set.field_index(name) else {
+                        let Some(field) = set
+                            .field_names()
+                            .iter()
+                            .position(|n| n.eq_ignore_ascii_case(name))
+                        else {
                             continue;
                         };
                         let setting = set.get(field, 0)?;
@@ -928,25 +1160,6 @@ impl Engine {
             _ => default,
         })
     }
-    /// sol.extdata: the ODE function, the options as given and the extra arguments.
-    fn ode_extdata(&self, function: &OdeFunction, options: Option<&Value>) -> Result<Array> {
-        let odefun = match function {
-            OdeFunction::Handle(h) => Array::Handle(h.clone()),
-            OdeFunction::File(n) => Array::Handle(FunctionHandle::named(n)),
-        };
-        let options = match options {
-            Some(v) => v.clone().array(&self.cancel)?,
-            None => Array::Numeric(Matrix::filled(0, 0, 0.)?),
-        };
-        let varargin = Array::Cell(crate::CellArray::empty(1, 0, &self.cancel)?);
-        Ok(Array::Struct(StructArray::from_slots(
-            1,
-            1,
-            ["odefun", "options", "varargin"].map(String::from).to_vec(),
-            vec![Arc::new(odefun), Arc::new(options), Arc::new(varargin)],
-            &self.cancel,
-        )?))
-    }
     /// sol = odeXX(f, ...): solver name, extdata, solver steps x (1-by-N), y (neq-by-N),
     /// stats and idata.f3d (each step's stages, neq-by-(stages*N), zeros for the first point).
     fn ode_solution(
@@ -954,6 +1167,7 @@ impl Engine {
         name: &str,
         solution: &OdeOutput,
         neq: usize,
+        non_negative: &[usize],
         extdata: Array,
     ) -> Result<Value> {
         let points = solution.t.len();
@@ -984,32 +1198,194 @@ impl Engine {
             }
         }
         let f3d = Matrix::from_column_vec(neq, f3d.len() / neq.max(1), f3d)?;
+        let nonneg_arr = if non_negative.is_empty() {
+            Matrix::filled(0, 0, 0.)?
+        } else {
+            let indices: Vec<f64> = non_negative.iter().map(|&i| (i + 1) as f64).collect();
+            Matrix::from_column_vec(1, indices.len(), indices)?
+        };
+        let mut idata_names = vec!["f3d", "idxNonNegative"];
+        let mut idata_slots = vec![
+            Arc::new(Array::Numeric(f3d)),
+            Arc::new(Array::Numeric(nonneg_arr)),
+        ];
+        if let Some(h) = solution.terminal_step.filter(|_| !solution.stages_dropped) {
+            let mut steps = vec![0.; points];
+            steps[points - 1] = h;
+            idata_names.push("eventStep");
+            idata_slots.push(Arc::new(Array::Numeric(Matrix::from_column_vec(
+                1, points, steps,
+            )?)));
+        }
         let idata = StructArray::from_slots(
             1,
             1,
-            ["f3d", "idxNonNegative"].map(String::from).to_vec(),
-            vec![
-                Arc::new(Array::Numeric(f3d)),
-                Arc::new(Array::Numeric(Matrix::filled(0, 0, 0.)?)),
-            ],
+            idata_names.into_iter().map(String::from).collect(),
+            idata_slots,
             &self.cancel,
         )?;
+        let mut names = vec!["solver", "extdata", "x", "y"];
+        let mut slots = vec![
+            Arc::new(Array::Character(solver)),
+            Arc::new(extdata),
+            Arc::new(Array::Numeric(x)),
+            Arc::new(Array::Numeric(y)),
+        ];
+        if let Some(events) = &solution.events {
+            names.extend(["xe", "ye", "ie"]);
+            slots.extend(ode_event_arrays(events, neq, true)?.map(Arc::new));
+        }
+        names.extend(["stats", "idata"]);
+        slots.extend([
+            Arc::new(Array::Struct(stats)),
+            Arc::new(Array::Struct(idata)),
+        ]);
         Ok(Value::Container(Array::Struct(StructArray::from_slots(
             1,
             1,
-            ["solver", "extdata", "x", "y", "stats", "idata"]
-                .map(String::from)
-                .to_vec(),
-            vec![
-                Arc::new(Array::Character(solver)),
-                Arc::new(extdata),
-                Arc::new(Array::Numeric(x)),
-                Arc::new(Array::Numeric(y)),
-                Arc::new(Array::Struct(stats)),
-                Arc::new(Array::Struct(idata)),
-            ],
+            names.into_iter().map(String::from).collect(),
+            slots,
             &self.cancel,
         )?)))
+    }
+    fn ode_flag(&self, arg: Option<&Value>) -> Result<String> {
+        match arg {
+            None | Some(Value::Void) => Ok(String::new()),
+            Some(Value::Text(s)) | Some(Value::QuotedString(s)) => Ok(s.to_lowercase()),
+            Some(v) if self.ode_is_empty(v) => Ok(String::new()),
+            Some(_) => Err("Invalid flag in ODE output function.".into()),
+        }
+    }
+    fn ode_plot(&mut self, args: &[Value], out: &mut Execution) -> Result<Value> {
+        let flag = self.ode_flag(args.get(2))?;
+        match flag.as_str() {
+            "init" => {
+                if args.len() < 2 {
+                    return Err("Not enough input arguments.".into());
+                }
+                let t_vec = self.ode_double(&args[0])?;
+                let y_vec = self.ode_double(&args[1])?;
+                let t0 = *t_vec
+                    .first()
+                    .ok_or("odeplot requires non-empty tspan in 'init'")?;
+                let tfinal = *t_vec.last().unwrap();
+                self.ode_plot = OdePlotState::default();
+                for (i, &yi) in y_vec.iter().enumerate() {
+                    let cmd = if i == 0 { "plot" } else { "line" };
+                    let h = self.call(
+                        cmd,
+                        vec![
+                            Value::Matrix(Matrix::scalar(t0)),
+                            Value::Matrix(Matrix::scalar(yi)),
+                        ],
+                        out,
+                    )?;
+                    self.ode_plot.lines.push(h);
+                    self.ode_plot.ys.push(vec![yi]);
+                }
+                self.ode_plot.x = vec![t0];
+                if t_vec.len() >= 2 && t0 != tfinal {
+                    self.call(
+                        "xlim",
+                        vec![Value::Matrix(Matrix::from_column_slice(
+                            1,
+                            2,
+                            &[t0.min(tfinal), t0.max(tfinal)],
+                        )?)],
+                        out,
+                    )?;
+                }
+                self.call("drawnow", vec![], out)?;
+            }
+            "" => {
+                if args.len() < 2 {
+                    return Err("Not enough input arguments.".into());
+                }
+                let t_mat = args[0].clone().matrix(&self.cancel)?;
+                let y_mat = args[1].clone().matrix(&self.cancel)?;
+                let k = t_mat.len();
+                let m = self.ode_plot.lines.len();
+                if k > 0 && m > 0 {
+                    if y_mat.len() < k * m {
+                        return Err("odeplot: y size does not match selected components.".into());
+                    }
+                    self.ode_plot.x.extend_from_slice(t_mat.data());
+                    for col in 0..k {
+                        for row in 0..m {
+                            self.ode_plot.ys[row].push(y_mat.data()[col * m + row]);
+                        }
+                    }
+                    let x_val = Value::Matrix(Matrix::from_column_slice(
+                        1,
+                        self.ode_plot.x.len(),
+                        &self.ode_plot.x,
+                    )?);
+                    for i in 0..self.ode_plot.lines.len() {
+                        let h = self.ode_plot.lines[i].clone();
+                        let y_val = Value::Matrix(Matrix::from_column_slice(
+                            1,
+                            self.ode_plot.ys[i].len(),
+                            &self.ode_plot.ys[i],
+                        )?);
+                        self.call(
+                            "set",
+                            vec![
+                                h,
+                                Value::Text("XData".into()),
+                                x_val.clone(),
+                                Value::Text("YData".into()),
+                                y_val,
+                            ],
+                            out,
+                        )?;
+                    }
+                    self.call("drawnow", vec![], out)?;
+                }
+            }
+            "done" => {
+                self.ode_plot = OdePlotState::default();
+                self.call("drawnow", vec![], out)?;
+            }
+            other => return Err(format!("Unknown odeplot flag '{other}'.")),
+        }
+        Ok(Value::Matrix(Matrix::scalar(0.)))
+    }
+    fn ode_print(&mut self, args: &[Value], out: &mut Execution) -> Result<Value> {
+        let flag = self.ode_flag(args.get(2))?;
+        match flag.as_str() {
+            "init" => {
+                if args.len() < 2 {
+                    return Err("Not enough input arguments.".into());
+                }
+                let t_vec = self.ode_double(&args[0])?;
+                let t0 = *t_vec
+                    .first()
+                    .ok_or("odeprint requires non-empty tspan in 'init'")?;
+                let y_arr = args[1].clone().array(&self.cancel)?;
+                let t_text = crate::display_format::echo(
+                    "t",
+                    &Array::Numeric(Matrix::scalar(t0)),
+                    &self.display,
+                )?;
+                let y_text = crate::display_format::echo("y", &y_arr, &self.display)?;
+                self.emit(out, t_text)?;
+                self.emit(out, y_text)?;
+            }
+            "" => {
+                if args.len() < 2 {
+                    return Err("Not enough input arguments.".into());
+                }
+                let t_arr = args[0].clone().array(&self.cancel)?;
+                let y_arr = args[1].clone().array(&self.cancel)?;
+                let t_text = crate::display_format::echo("t", &t_arr, &self.display)?;
+                let y_text = crate::display_format::echo("y", &y_arr, &self.display)?;
+                self.emit(out, t_text)?;
+                self.emit(out, y_text)?;
+            }
+            "done" => {}
+            other => return Err(format!("Unknown odeprint flag '{other}'.")),
+        }
+        Ok(Value::Matrix(Matrix::scalar(0.)))
     }
 }
 
@@ -1020,27 +1396,27 @@ mod tests {
     fn transient_derivative_charges_are_released_even_on_error() {
         let mut e = Engine::default();
         e.execute("f=@(t,y) -y; bad=@(t,y) ones(100,1);").unwrap();
-        let f = OdeFunction::Handle(e.handle_variable("f").unwrap());
-        let bad = OdeFunction::Handle(e.handle_variable("bad").unwrap());
+        let f = Callable::Handle(e.handle_variable("f").unwrap());
+        let bad = Callable::Handle(e.handle_variable("bad").unwrap());
         let charged = 32 * 1024 * 1024 - 32;
         e.evaluated_elements = charged;
         let mut out = Execution::default();
         for _ in 0..100 {
             assert_eq!(
-                e.ode_derivative(&f, 0., &[1., 2.], &mut out).unwrap(),
+                e.ode_derivative(&f, 0., &[1., 2.], &[], &mut out).unwrap(),
                 [-1., -2.]
             );
             assert_eq!(e.evaluated_elements, charged);
         }
         assert!(
-            e.ode_derivative(&bad, 0., &[1., 2.], &mut out)
+            e.ode_derivative(&bad, 0., &[1., 2.], &[], &mut out)
                 .unwrap_err()
                 .contains("budget")
         );
         assert_eq!(e.evaluated_elements, charged);
         e.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         assert!(
-            e.ode_derivative(&f, 0., &[1., 2.], &mut out)
+            e.ode_derivative(&f, 0., &[1., 2.], &[], &mut out)
                 .unwrap_err()
                 .contains("cancelled")
         );
@@ -1088,10 +1464,12 @@ mod tests {
             evals: 19,
             stages: Vec::new(),
             stages_dropped: false,
+            events: None,
+            terminal_step: None,
         };
         let e = Engine::default();
         let extdata = Array::Numeric(Matrix::filled(0, 0, 0.).unwrap());
-        let value = e.ode_solution("ode45", &output, 2, extdata).unwrap();
+        let value = e.ode_solution("ode45", &output, 2, &[], extdata).unwrap();
         let Value::Container(Array::Struct(sol)) = value else {
             panic!("sol is a struct");
         };
@@ -1127,6 +1505,16 @@ mod tests {
 mod numerical_tests {
     use super::*;
 
+    fn ode_integrate(p: &OdeProblem, f0: Vec<f64>, f: &mut Derivative) -> Result<OdeOutput> {
+        struct DerivativeOnly<'a, 'b>(&'a mut Derivative<'b>);
+        impl OdeCallbacks for DerivativeOnly<'_, '_> {
+            fn derivative(&mut self, t: f64, y: &[f64]) -> Result<Vec<f64>> {
+                self.0(t, y)
+            }
+        }
+        super::ode_integrate(p, f0, &mut DerivativeOnly(f), None)
+    }
+
     fn problem(method: OdeMethod, tspan: Vec<f64>, y0: Vec<f64>) -> OdeProblem {
         let t0 = tspan[0];
         let tfinal = *tspan.last().unwrap();
@@ -1145,6 +1533,8 @@ mod numerical_tests {
             htry: None,
             refine: 4,
             keep_stages: true,
+            solution_output: false,
+            non_negative: Vec::new(),
         }
     }
 
@@ -1203,11 +1593,12 @@ mod numerical_tests {
                 for theta in [0., 0.1, 0.37, 0.9, 1.] {
                     let t = theta * h;
                     assert!(
-                        (ode_interpolate(method, t, 0., &[0.], &s)[0] - t * t * t).abs() < 1e-15
+                        (ode_interpolate(method, t, 0., &[0.], &s, &[])[0] - t * t * t).abs()
+                            < 1e-15
                     );
                 }
                 let delta = 1e-5;
-                let at = |theta| ode_interpolate(method, theta * h, 0., &[0.], &s)[0];
+                let at = |theta| ode_interpolate(method, theta * h, 0., &[0.], &s, &[])[0];
                 assert!(((at(delta) - at(0.)) / (delta * h)).abs() < 1e-9);
                 assert!(((at(1.) - at(1. - delta)) / (delta * h) - 3. * h * h).abs() < 3e-6);
             }

@@ -50,6 +50,9 @@ const EVAL_COMMANDS: &[&str] = &[
     "fprintf",
     "axes",
     "patch",
+    "xline",
+    "yline",
+    "rectangle",
     "annotation",
     "legend",
     "plot",
@@ -57,13 +60,17 @@ const EVAL_COMMANDS: &[&str] = &[
     "semilogy",
     "loglog",
     "scatter",
+    "plot3",
+    "scatter3",
     "bar",
     "stairs",
     "stem",
     "set",
     "title",
+    "subtitle",
     "xlabel",
     "ylabel",
+    "zlabel",
     "clear",
     "run",
     "help",
@@ -71,6 +78,8 @@ const EVAL_COMMANDS: &[&str] = &[
     "format",
     "tic",
     "toc",
+    "profile",
+    "profsave",
     "save",
     "load",
     "writematrix",
@@ -82,6 +91,7 @@ const EVAL_COMMANDS: &[&str] = &[
     "hold",
     "grid",
     "clf",
+    "cla",
     "close",
     "tiledlayout",
     "nexttile",
@@ -99,6 +109,28 @@ pub(super) struct WarningState {
 impl WarningState {
     fn enabled(&self, identifier: &str) -> bool {
         self.ids.get(identifier).copied().unwrap_or(!self.all_off)
+    }
+    fn entry(&self, identifier: &str) -> (String, &'static str) {
+        if identifier.eq_ignore_ascii_case("all") {
+            ("all".into(), if self.all_off { "off" } else { "on" })
+        } else {
+            (
+                identifier.to_owned(),
+                if self.enabled(identifier) {
+                    "on"
+                } else {
+                    "off"
+                },
+            )
+        }
+    }
+    fn all_entries(&self) -> Vec<(String, &'static str)> {
+        let mut entries = Vec::with_capacity(1 + self.ids.len());
+        entries.push(self.entry("all"));
+        for (id, &on) in &self.ids {
+            entries.push((id.clone(), if on { "on" } else { "off" }));
+        }
+        entries
     }
 }
 
@@ -248,10 +280,7 @@ impl Engine {
                 self.langx_assert(args)?;
                 Value::Void
             }
-            "warning" => {
-                self.langx_warning(args, out)?;
-                Value::Void
-            }
+            "warning" => self.langx_warning(args, true, out)?,
             "eval" => self.langx_eval(args, true, out)?,
             "cell2mat" => self.langx_cell2mat(args)?,
             "cellstr" => self.langx_cellstr(args)?,
@@ -369,7 +398,9 @@ impl Engine {
         let Some(chars) = self.langx_chars(value)? else {
             return Err("Input must be a string.".into());
         };
-        if chars.is_empty() {
+        // Only the 0-by-0 empty, including cellstr(''), is a 1-by-1 {''}.
+        // A 0-by-n or m-by-0 array still has one (possibly empty) cell per row.
+        if chars.rows() == 0 && chars.cols() == 0 {
             let slots = vec![Arc::new(self.langx_empty_char()?)];
             return Ok(Value::Container(
                 CellArray::from_shared(1, 1, slots, &self.cancel)?.into(),
@@ -509,7 +540,7 @@ impl Engine {
             other => match self.langx_chars(other)? {
                 Some(text) => {
                     let text = text.to_utf8(&self.cancel)?;
-                    if !crate::files::valid_name(&text) {
+                    if !crate::files::valid_name(&text) && !super::user_functions::pkg_name(&text) {
                         return Err(format!("{name}: expected a function handle"));
                     }
                     Ok(FunctionHandle::named(&text))
@@ -759,22 +790,132 @@ impl Engine {
         Err(self.raise("Assertion failed.".into(), "MATLAB:assertion:failed".into()))
     }
 
-    fn langx_warning(&mut self, args: &[Value], out: &mut Execution) -> Result<()> {
-        let Some(first) = args.first() else {
-            return Err("warning: querying the warning state is not supported yet".into());
-        };
-        let text = self.langx_string(first, "warning: the message")?;
+    fn langx_warning_text(&self, value: &Value, what: &str) -> Result<String> {
+        match value {
+            Value::QuotedString(text) => Ok(text.clone()),
+            _ => self.langx_string(value, what),
+        }
+    }
+
+    fn warning_struct(&self, entries: &[(String, &'static str)]) -> Result<Value> {
+        let mut slots = Vec::with_capacity(entries.len() * 2);
+        for (id, state) in entries {
+            self.check_cancel()?;
+            slots.push(Arc::new(CharacterRow::from_text(id, &self.cancel)?.into()));
+            slots.push(Arc::new(
+                CharacterRow::from_text(state, &self.cancel)?.into(),
+            ));
+        }
+        let names = vec!["identifier".into(), "state".into()];
+        let array = StructArray::from_slots(entries.len(), 1, names, slots, &self.cancel)?;
+        Ok(Value::Container(array.into()))
+    }
+
+    fn warning_restore(&mut self, s: &StructArray) -> Result<()> {
+        let id_idx = s
+            .field_index("identifier")
+            .ok_or("warning: state struct must have 'identifier' and 'state' fields")?;
+        let st_idx = s
+            .field_index("state")
+            .ok_or("warning: state struct must have 'identifier' and 'state' fields")?;
+        let mut entries = Vec::with_capacity(s.len());
+        for i in 0..s.len() {
+            self.check_cancel()?;
+            let id_val = Value::from(s.get(id_idx, i)?.as_ref().clone());
+            let st_val = Value::from(s.get(st_idx, i)?.as_ref().clone());
+            let id = self.langx_warning_text(&id_val, "warning: identifier")?;
+            let st = self.langx_warning_text(&st_val, "warning: state")?;
+            let enable = if st.eq_ignore_ascii_case("on") {
+                true
+            } else if st.eq_ignore_ascii_case("off") {
+                false
+            } else {
+                return Err("warning: state must be 'on' or 'off'".into());
+            };
+            entries.push((id, enable));
+        }
+        for (_, enable) in entries
+            .iter()
+            .filter(|(id, _)| id.eq_ignore_ascii_case("all"))
+        {
+            self.lang_warnings.all_off = !*enable;
+            self.lang_warnings.ids.clear();
+        }
+        let inherited = !self.lang_warnings.all_off;
+        for (id, enable) in entries
+            .into_iter()
+            .filter(|(id, _)| !id.eq_ignore_ascii_case("all"))
+        {
+            if enable == inherited {
+                self.lang_warnings.ids.remove(&id);
+            } else {
+                if !self.lang_warnings.ids.contains_key(&id)
+                    && self.lang_warnings.ids.len() >= MAX_WARNING_IDS
+                {
+                    return Err(format!(
+                        "warning: at most {MAX_WARNING_IDS} identifiers can have their own state"
+                    ));
+                }
+                self.lang_warnings.ids.insert(id, enable);
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn langx_warning(
+        &mut self,
+        args: &[Value],
+        output_requested: bool,
+        out: &mut Execution,
+    ) -> Result<Value> {
+        if args.is_empty() {
+            let entries = self.lang_warnings.all_entries();
+            if output_requested {
+                return self.warning_struct(&entries);
+            }
+            let mut lines = vec![format!("All warnings have the state '{}'.", entries[0].1)];
+            for (id, st) in &entries[1..] {
+                lines.push(format!("Warning '{id}' is '{st}'."));
+            }
+            self.emit(out, lines.join("\n"))?;
+            return Ok(Value::Void);
+        }
+        if args.len() == 1
+            && let Value::Container(Array::Struct(s)) = &args[0]
+        {
+            let prev = if output_requested {
+                Some(self.warning_struct(&self.lang_warnings.all_entries())?)
+            } else {
+                None
+            };
+            let s = s.clone();
+            self.warning_restore(&s)?;
+            return Ok(prev.unwrap_or(Value::Void));
+        }
+        let text = self.langx_warning_text(&args[0], "warning: the message")?;
         let state = text.to_ascii_lowercase();
         if args.len() <= 2 && matches!(state.as_str(), "on" | "off") {
             let enable = state == "on";
             let target = match args.get(1) {
-                Some(id) => self.langx_string(id, "warning: the message identifier")?,
+                Some(id) => self.langx_warning_text(id, "warning: the message identifier")?,
                 None => "all".into(),
+            };
+            let prev = if output_requested {
+                let entries = if target.eq_ignore_ascii_case("all") {
+                    self.lang_warnings.all_entries()
+                } else {
+                    vec![self.lang_warnings.entry(&target)]
+                };
+                Some(self.warning_struct(&entries)?)
+            } else {
+                None
             };
             let warnings = &mut self.lang_warnings;
             if target.eq_ignore_ascii_case("all") {
                 warnings.all_off = !enable;
                 warnings.ids.clear();
+            } else if enable == !warnings.all_off {
+                warnings.ids.remove(&target);
             } else {
                 if !warnings.ids.contains_key(&target) && warnings.ids.len() >= MAX_WARNING_IDS {
                     return Err(format!(
@@ -783,12 +924,36 @@ impl Engine {
                 }
                 warnings.ids.insert(target, enable);
             }
-            return Ok(());
+            return Ok(prev.unwrap_or(Value::Void));
+        }
+        if args.len() <= 2 && state == "query" {
+            let target = match args.get(1) {
+                Some(id) => self.langx_warning_text(id, "warning: the message identifier")?,
+                None => "all".into(),
+            };
+            if target.eq_ignore_ascii_case("all") {
+                let entries = self.lang_warnings.all_entries();
+                if output_requested {
+                    return self.warning_struct(&entries);
+                }
+                let mut lines = vec![format!("All warnings have the state '{}'.", entries[0].1)];
+                for (id, st) in &entries[1..] {
+                    lines.push(format!("Warning '{id}' is '{st}'."));
+                }
+                self.emit(out, lines.join("\n"))?;
+                return Ok(Value::Void);
+            }
+            let entry = self.lang_warnings.entry(&target);
+            if output_requested {
+                return self.warning_struct(&[entry]);
+            }
+            self.emit(out, format!("Warning '{}' is '{}'.", entry.0, entry.1))?;
+            return Ok(Value::Void);
         }
         if args.len() <= 2
             && matches!(
                 state.as_str(),
-                "query" | "error" | "backtrace" | "verbose" | "debug" | "once" | "always"
+                "error" | "backtrace" | "verbose" | "debug" | "once" | "always"
             )
         {
             return Err(format!("warning('{text}', ...) is not supported yet"));
@@ -805,9 +970,10 @@ impl Engine {
         };
         self.functions.lng.last_warning = (message.clone(), identifier.clone());
         if message.is_empty() || !self.lang_warnings.enabled(&identifier) {
-            return Ok(());
+            return Ok(Value::Void);
         }
-        self.emit(out, format!("Warning: {message}"))
+        self.emit(out, format!("Warning: {message}"))?;
+        Ok(Value::Void)
     }
     /// The message error() would raise for these arguments, without raising it.
     fn langx_format(&mut self, args: &[Value]) -> Result<String> {
@@ -861,7 +1027,7 @@ impl Engine {
         output_requested: bool,
         out: &mut Execution,
     ) -> Result<Value> {
-        let statements = match syntax::parse_detailed(code) {
+        let statements = match syntax::parse_in_workspace(code, &|n| self.contains_array(n)) {
             Ok(statements) => statements,
             Err(_) if syntax::is_incomplete(code) => {
                 return Err("Error: This statement is incomplete.".into());

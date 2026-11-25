@@ -1,7 +1,64 @@
 //! Recognize file command arguments without rewriting source byte positions.
 use super::{Result, Spanned, Token, line_break_len};
 
-pub(super) fn arguments(source: &str, after_name: usize) -> bool {
+/// Names whose command syntax follows the file command rules below rather
+/// than the general rule in `command_syntax`.
+pub(super) fn is_command_name(name: &str) -> bool {
+    matches!(
+        name,
+        "save"
+            | "load"
+            | "savefig"
+            | "openfig"
+            | "clear"
+            | "help"
+            | "doc"
+            | "who"
+            | "whos"
+            | "cd"
+            | "dir"
+            | "ls"
+            | "mkdir"
+            | "rmdir"
+            | "copyfile"
+            | "movefile"
+            | "delete"
+            | "pause"
+            | "beep"
+            | "profile"
+            | "profsave"
+            | "ver"
+            | "clearvars"
+            | "diary"
+            | "which"
+            | "what"
+            | "print"
+            | "addpath"
+            | "rmpath"
+            | "rehash"
+            | "edit"
+            | "web"
+            | "import"
+    )
+}
+
+/// `print` takes command syntax only before an option (`print -dpng f`) or a
+/// plain filename (`print out`), so `print {1}` and `print .x` still index a
+/// variable named print.
+pub(super) fn print_arguments(source: &str, after_name: usize) -> bool {
+    let bytes = source.as_bytes();
+    let mut at = after_name;
+    while bytes.get(at).is_some_and(|c| matches!(c, b' ' | b'\t')) {
+        at += 1;
+    }
+    match bytes.get(at) {
+        Some(b'-') => bytes.get(at + 1).is_some_and(|c| c.is_ascii_alphabetic()),
+        Some(c) => c.is_ascii_alphanumeric() || *c == b'_',
+        None => false,
+    }
+}
+
+pub(super) fn arguments(name: &str, source: &str, after_name: usize) -> bool {
     let bytes = source.as_bytes();
     if !bytes
         .get(after_name)
@@ -16,6 +73,23 @@ pub(super) fn arguments(source: &str, after_name: usize) -> bool {
     let Some(&first) = bytes.get(at) else {
         return false;
     };
+    if first == b'*' && matches!(name, "clear" | "clearvars") {
+        let suffix = &source[at + 1..];
+        let rest = suffix.trim_start_matches([' ', '\t']);
+        if name == "clearvars" || rest.len() == suffix.len() {
+            return true;
+        }
+        // An operator with whitespace on both sides is an expression, so
+        // `clear * n` multiplies. Quoted or wildcard operands stay arguments.
+        let next = rest
+            .split([' ', '\t', '\r', '\n', ';', ',', '%'])
+            .next()
+            .unwrap_or("");
+        return next.is_empty()
+            || next.starts_with(['\'', '"'])
+            || next.starts_with("...")
+            || next.contains(['*', '?']);
+    }
     if b"(=\r\n;,%<>:&|^[]~".contains(&first) {
         return false;
     }

@@ -96,7 +96,7 @@ fn invalid_patch_and_textbox_properties_leave_graph_and_aliases_unchanged() {
         "patch(a,'XData',[0;1;2;0],'YData',[0;0;1;2],'FaceColor',[1 0 0],'EdgeColor','none');",
         "patch(a,'XData',[0;1;0],'YData',[0;0;1],'FaceColor',[1 0 0]);",
         "patch(a,'Parent',a,'XData',[0;1;0],'YData',[0;0;1],'FaceColor',[1 0 0],'EdgeColor','none');",
-        "patch(a,'XData',[0;1;0],'YData',[0;0;1],'FaceColor',[1 0 0],'EdgeColor','none','FaceAlpha',.5);",
+        "patch(a,'XData',[0;1;0],'YData',[0;0;1],'FaceColor',[1 0 0],'EdgeColor','none','Marker','o');",
         "annotation(f,'textbox',[0 0 .5 .1],'String','no implicit TeX');",
         "annotation(f,'textbox',[0 0 .5 .1],'Interpreter','none','EdgeColor','black');",
         "set(t,'String','not published','FontSize',201);",
@@ -180,4 +180,204 @@ fn created_objects_native_roundtrip_preserves_geometry_but_not_live_identity() {
         e.figure.as_ref().unwrap().textboxes[0].text,
         "literal & title"
     );
+}
+
+fn scalar(e: &Engine, name: &str) -> f64 {
+    e.variables[name].data()[0]
+}
+
+/// `fill` and `fill-opacity` of each painted patch polygon, in document order.
+fn painted_fills(svg: &str) -> Vec<(String, String)> {
+    let mut fills = Vec::new();
+    let mut rest = svg;
+    while let Some(start) = rest.find("<polygon fill=\"") {
+        rest = &rest[start + "<polygon fill=\"".len()..];
+        let color = rest.split('"').next().unwrap().to_owned();
+        let header = rest.split("points=\"").next().unwrap();
+        let opacity = header
+            .split("fill-opacity=\"")
+            .nth(1)
+            .map(|v| v.split('"').next().unwrap().to_owned())
+            .unwrap_or_else(|| "1".into());
+        fills.push((color, opacity));
+    }
+    fills
+}
+
+fn red_polygon(svg: &str) -> String {
+    let start = svg.find("<polygon fill=\"#ff0000\"").unwrap();
+    let end = svg[start..].find("/>").unwrap();
+    svg[start..start + end].to_owned()
+}
+
+#[test]
+fn indexed_patch_face_alpha_stays_while_only_none_hides_the_fill() {
+    let mut e = Engine::default();
+    e.execute(
+        "xlim([-1 2]); ylim([-1 2]); \
+         p=patch('Faces',[1 2 3],'Vertices',[0 0 1;1 0 1;0 1 1],'FaceAlpha',.25); \
+         a=p.FaceAlpha;",
+    )
+    .unwrap();
+    assert_eq!(scalar(&e, "a"), 0.25);
+    assert_eq!(
+        painted_fills(&e.figure.as_ref().unwrap().svg()),
+        vec![("#000000".into(), "0.25".into())]
+    );
+    let edge = e.figure.as_ref().unwrap().series[0].face_edge_color;
+    for (color, fill) in [
+        ("'r'", Some("#ff0000")),
+        ("'none'", None),
+        ("'b'", Some("#0000ff")),
+    ] {
+        e.execute(&format!("p.FaceColor={color}; a=p.FaceAlpha;"))
+            .unwrap();
+        assert_eq!(scalar(&e, "a"), 0.25, "{color}");
+        let figure = e.figure.as_ref().unwrap();
+        let series = &figure.series[0];
+        assert_eq!(series.face_alpha, Some(0.25), "{color}");
+        assert_eq!(series.face_edge_color, edge, "{color}");
+        assert_eq!(series.edge_alpha, None, "{color}");
+        let fills = painted_fills(&figure.svg());
+        match fill {
+            Some(hex) => assert_eq!(fills, vec![(hex.into(), "0.25".into())], "{color}"),
+            None => {
+                assert!(series.face_color_none, "{color}");
+                assert!(fills.is_empty(), "{color}: {fills:?}");
+                assert!(figure.svg().contains("stroke=\"#000000\""));
+            }
+        }
+    }
+    e.execute("p.FaceAlpha=0; p.FaceColor='g'; a=p.FaceAlpha;")
+        .unwrap();
+    assert_eq!(scalar(&e, "a"), 0.);
+    let figure = e.figure.as_ref().unwrap();
+    assert_eq!(figure.series[0].face_alpha, Some(0.));
+    assert_eq!(figure.series[0].color, [0, 255, 0]);
+    assert!(!figure.series[0].face_color_none);
+    assert!(painted_fills(&figure.svg()).is_empty());
+
+    e.execute(
+        "figure; xlim([-1 2]); ylim([-1 2]); \
+         q=patch('Faces',[1 2 3],'Vertices',[0 0 1;1 0 1;0 1 1],'FaceColor','none','FaceAlpha',0); \
+         z=q.FaceAlpha;",
+    )
+    .unwrap();
+    assert_eq!(scalar(&e, "z"), 0.);
+    assert!(painted_fills(&e.figure.as_ref().unwrap().svg()).is_empty());
+    e.execute("q.FaceColor='r'; z=q.FaceAlpha;").unwrap();
+    assert_eq!(scalar(&e, "z"), 0.);
+    assert_eq!(e.figure.as_ref().unwrap().series[0].color, [255, 0, 0]);
+    assert!(painted_fills(&e.figure.as_ref().unwrap().svg()).is_empty());
+
+    e.execute(
+        "figure; xlim([-1 2]); ylim([-1 2]); \
+         m=patch('Faces',[1 2 3],'Vertices',[0 0 1;1 0 1;0 1 1],'FaceColor','flat','FaceAlpha',.25); \
+         mode=m.FaceColor; a=m.FaceAlpha;",
+    )
+    .unwrap();
+    assert_eq!(text(&e, "mode"), "flat");
+    assert_eq!(scalar(&e, "a"), 0.25);
+    assert!(e.figure.as_ref().unwrap().series[0].face_color_none);
+    assert!(painted_fills(&e.figure.as_ref().unwrap().svg()).is_empty());
+    e.execute("m.FaceColor='r'; a=m.FaceAlpha;").unwrap();
+    assert_eq!(scalar(&e, "a"), 0.25);
+    assert_eq!(
+        painted_fills(&e.figure.as_ref().unwrap().svg()),
+        vec![("#ff0000".into(), "0.25".into())]
+    );
+
+    e.execute(
+        "figure; xlim([-1 2]); ylim([-1 2]); \
+         c=patch('Faces',[1 2 3],'Vertices',[0 0 1;1 0 1;0 1 1], \
+         'FaceVertexCData',[0;1;2],'FaceColor','flat','FaceAlpha',.25,'EdgeColor','none'); \
+         a=c.FaceAlpha;",
+    )
+    .unwrap();
+    assert_eq!(scalar(&e, "a"), 0.25);
+    let mapped = painted_fills(&e.figure.as_ref().unwrap().svg());
+    assert_eq!(mapped.len(), 1);
+    assert_eq!(mapped[0].1, "0.25");
+    e.execute("c.FaceColor='none'; a=c.FaceAlpha;").unwrap();
+    assert_eq!(scalar(&e, "a"), 0.25);
+    assert!(painted_fills(&e.figure.as_ref().unwrap().svg()).is_empty());
+    e.execute("c.FaceColor='flat'; a=c.FaceAlpha;").unwrap();
+    assert_eq!(scalar(&e, "a"), 0.25);
+    assert_eq!(painted_fills(&e.figure.as_ref().unwrap().svg()), mapped);
+}
+
+fn projected_paint(figure: &matrust::plot::Figure) -> Vec<([u8; 3], Option<f64>)> {
+    let display = matrust::plot::view3d::display_view(&figure.axes);
+    let patches: Vec<_> = display
+        .series
+        .iter()
+        .filter(|s| s.kind == PlotKind::Patch)
+        .collect();
+    assert_eq!(patches.len(), 2);
+    let drawn = patches
+        .iter()
+        .find(|s| s.patch_face_count() == 2)
+        .expect("merged host");
+    let separate = patches
+        .iter()
+        .find(|s| s.patch_face_count() == 0)
+        .expect("separately drawn mesh");
+    assert!(drawn.face_styles.is_some());
+    let model = figure
+        .series
+        .iter()
+        .find(|s| s.identity.same_object(&separate.identity))
+        .unwrap();
+    assert_eq!(separate.face_color_none, model.face_color_none);
+    assert_eq!(separate.face_alpha, Some(0.25));
+    assert_eq!(model.face_alpha, Some(0.25));
+    let mut faces = Vec::new();
+    for face in 0..drawn.patch_face_count() {
+        let color = drawn.face_fill_color(face).unwrap_or(drawn.color);
+        let alpha = drawn.face_style(face).alpha;
+        if alpha == Some(0.25) {
+            assert_eq!(color, [255, 0, 0]);
+        } else {
+            assert_eq!(alpha, Some(0.));
+            assert_eq!(color, [0, 0, 0]);
+        }
+        faces.push((color, alpha));
+    }
+    faces.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.partial_cmp(&b.1).unwrap()));
+    faces
+}
+
+#[test]
+fn indexed_hidden_fill_does_not_steal_a_neighbors_quarter_alpha() {
+    let hidden = "patch('Faces',[1 2 3],'Vertices',[0 0 0;1 0 0;0 1 0],'FaceColor','none','FaceAlpha',.25,'EdgeColor','none')";
+    let colored = "patch('Faces',[1 2 3],'Vertices',[2 0 1;3 0 1;2 1 1],'FaceColor','r','FaceAlpha',.25,'EdgeColor','none')";
+    let mut forward = None;
+    let mut forward_svg = String::new();
+    for (first, second) in [(hidden, colored), (colored, hidden)] {
+        let mut e = Engine::default();
+        e.execute(&format!(
+            "h={first}; k={second}; xlim([0 3]); ylim([0 1]); zlim([0 1]); view(3); \
+             ha=h.FaceAlpha; ka=k.FaceAlpha;"
+        ))
+        .unwrap();
+        assert_eq!(scalar(&e, "ha"), 0.25);
+        assert_eq!(scalar(&e, "ka"), 0.25);
+        let figure = e.figure.as_ref().unwrap();
+        let paint = projected_paint(figure);
+        let svg = figure.svg();
+        let fills = painted_fills(&svg);
+        assert_eq!(fills, vec![("#ff0000".into(), "0.25".into())]);
+        assert!(!svg.contains("<polygon fill=\"#000000\""));
+        let polygon = red_polygon(&svg);
+        match forward {
+            None => {
+                forward = Some(paint);
+                forward_svg = polygon;
+            }
+            Some(ref expected) => {
+                assert_eq!(&paint, expected);
+                assert_eq!(polygon, forward_svg);
+            }
+        }
+    }
 }

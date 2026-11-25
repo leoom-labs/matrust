@@ -88,7 +88,12 @@ fn filtfilt_rejects_short_nonfinite_singular_overflow_and_bounded_work() {
     for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert!(dsp::filtfilt(&[1.], &[1.], &row(&[bad, 0.]), &c).is_err());
     }
-    assert!(dsp::filtfilt(&[1.], &[1.], &row(&[1.]), &c).is_err());
+    // Order 0 used to error ("more than 1 samples"). Pad length is 0, so one
+    // sample is legal: (1/1)^2 * 1 = 1. See review_1111_filtfilt_order0_one_sample_is_squared_gain.
+    assert_eq!(
+        dsp::filtfilt(&[1.], &[1.], &row(&[1.]), &c).unwrap().data(),
+        &[1.]
+    );
     assert!(dsp::filtfilt(&[0.5, 0.5], &[1.], &row(&[1.; 3]), &c).is_err());
     assert!(dsp::filtfilt(&[0.5, 0.5], &[1.], &row(&[1.; 4]), &c).is_ok());
     assert!(
@@ -159,6 +164,30 @@ fn filtfilt_workers_are_bitwise_equal_and_inputs_unchanged() {
     );
     assert_eq!(x.data(), before);
     assert_eq!(alias.data(), before);
+}
+#[test]
+fn review_1111_filtfilt_order0_one_sample_is_squared_gain() {
+    // MATLAB pad length is 3*(max(length(b),length(a))-1) = 0. Forward and
+    // back each apply the gain, so y = (2/1)^2 * 5 = 20.
+    let c = AtomicBool::new(false);
+    assert_eq!(
+        dsp::filtfilt(&[2.], &[1.], &row(&[5.]), &c).unwrap().data(),
+        &[20.]
+    );
+    // Complex coefficients take cxp_filtfilt. That path already uses 3*order,
+    // so length 1 was accepted; this locks the same gain.
+    let mut e = Engine::default();
+    e.execute("y=filtfilt(complex(2,0),complex(1,0),complex(5,0));")
+        .unwrap();
+    let value = match e.workspace().get("y").unwrap() {
+        matrust::Array::Numeric(m) => m.data()[0],
+        matrust::Array::Complex(m) => {
+            assert_eq!(m.data()[0].im, 0.);
+            m.data()[0].re
+        }
+        other => panic!("{}", other.class()),
+    };
+    assert_eq!(value, 20.);
 }
 #[test]
 fn filtfilt_script_workflow_and_failed_assignment_are_atomic() {

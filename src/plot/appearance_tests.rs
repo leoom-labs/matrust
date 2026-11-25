@@ -222,11 +222,11 @@ fn fig_static_light_and_dark_preserve_source_and_reject_unsupported_objects_atom
 }
 
 #[test]
-fn plot_and_clf_keep_figure_intent_but_reset_is_not_silently_substituted() {
+fn plot_and_clf_keep_figure_intent_and_clf_reset_restores_defaults() {
     let mut engine = crate::Engine::default();
     engine.set_graphics_theme_context(BaseTheme::Dark);
     engine
-        .execute("f=figure('Name','persist','Color',[1 1 1],'Theme','dark');plot([1 2],[3 4]);")
+        .execute("f=figure('Name','persist','Color',[1 1 1],'Theme','dark','Units','inches','Position',[1 2 4 3],'NumberTitle','off');plot([1 2],[3 4]);")
         .unwrap();
     let figure = engine.figure.as_ref().unwrap().clone();
     engine.execute("clf;").unwrap();
@@ -234,16 +234,30 @@ fn plot_and_clf_keep_figure_intent_but_reset_is_not_silently_substituted() {
     assert_eq!(cleared.appearance, figure.appearance);
     assert_eq!(cleared.color, figure.color);
     assert_eq!(cleared.name, figure.name);
+    assert_eq!(cleared.position, figure.position);
+    assert_eq!(cleared.units, figure.units);
+    assert_eq!(cleared.number_title, figure.number_title);
     assert!(cleared.identity.same_object(&figure.identity));
     assert!(cleared.series.is_empty());
-    let cleared = cleared.clone();
-    assert!(engine.execute("clf('reset');").is_err());
-    assert!(cleared.same_snapshot(engine.figure.as_ref().unwrap()));
     engine.execute("plot([2 4],[6 8]);").unwrap();
     assert_eq!(
         engine.figure.as_ref().unwrap().appearance,
         figure.appearance
     );
+    let replotted = engine.figure.as_ref().unwrap().clone();
+    assert!(engine.execute("clf('invalid');").is_err());
+    assert!(replotted.same_snapshot(engine.figure.as_ref().unwrap()));
+    engine.execute("clf('reset');").unwrap();
+    let reset = engine.figure.as_ref().unwrap();
+    let defaults = Figure::default();
+    assert_eq!(reset.appearance, defaults.appearance);
+    assert_eq!(reset.color, defaults.color);
+    assert_eq!(reset.name, defaults.name);
+    assert_eq!(reset.number_title, defaults.number_title);
+    assert_eq!(reset.position, figure.position);
+    assert_eq!(reset.units, figure.units);
+    assert!(reset.identity.same_object(&figure.identity));
+    assert!(reset.series.is_empty());
 }
 
 #[test]

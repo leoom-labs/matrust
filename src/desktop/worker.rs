@@ -25,16 +25,15 @@ pub enum Job {
     PrepareDetached(Box<super::detached_figures::Prepare>),
     SelectExistingFigure(super::figure_target::Select),
     CloseExistingFigure(super::figure_target::Key),
-    ApplyFilter(Box<super::designer_apply::Request>),
-    FirBlock(super::fir_designer::Design),
-    IirBlock(super::iir_designer::Design),
-    SaveIirDesign(Box<super::iir_designer::Save>),
-    SaveFirDesign(Box<super::fir_designer::Save>),
+    SaveDesign(Box<super::designer_output::Save>),
+    /// A Filter Designer Apply script: runs on a copy of the Engine and is
+    /// published only when it finishes, so a failure or Stop changes nothing.
+    ApplyDesign(String, PathBuf),
     EditWorkspace(Box<super::workspace_edit::Request>),
     ScriptIo(Box<super::script_io::Request>),
     ModelWrite(Box<super::model_write::Request>),
     ReadModel(super::model_read::Request),
-    PrepareOpen(Box<super::open_files::Request>),
+    PrepareOpen(Box<super::open_files::EditorOpen>),
     PrepareExportBatch(Box<super::export_batch::Prepare>),
     ExportBatch(Box<super::export_batch::Run>),
     PickSample(Box<super::sample_inspector::Request>),
@@ -46,6 +45,13 @@ pub enum Job {
     #[cfg(test)]
     Script(String),
     ScriptInFolder(String, PathBuf),
+    /// An unsaved editor tab's text: a script, so command syntax is lexical.
+    UnsavedDocumentInFolder(String, PathBuf),
+    ExportAppScript(String, PathBuf),
+    ExportVolumeSettings(
+        Box<super::apps::volume_viewer::LabelSettingsExport>,
+        PathBuf,
+    ),
     DocumentInFolder(String, PathBuf, PathBuf),
     SelectionInFolder(Arc<str>, std::ops::Range<usize>, PathBuf),
     ScriptViewContext(Box<Job>, Vec<(u32, HistoryView)>),
@@ -54,7 +60,6 @@ pub enum Job {
     LoadSelectedWorkspace(Box<files::MatCatalog>, std::collections::BTreeSet<String>),
     SaveWorkspace(PathBuf),
     SaveWorkspaceV73(PathBuf),
-    ImportCsv(Box<super::csv_import::Request>),
     ExportVariable(PathBuf, String),
     #[cfg(test)]
     SetCell(String, usize, usize, matrust::Scalar),
@@ -82,6 +87,8 @@ pub enum Job {
     #[cfg(test)]
     ExportFigure(PathBuf, Option<[f64; 4]>),
     ExportSnapshot(Box<ExportRequest>),
+    /// Drain queued interactive UI component events on the engine thread.
+    DrainUiEvents,
 }
 pub struct ExportRequest {
     pub vector: Option<matrust::plot::Canvas>,
@@ -100,13 +107,9 @@ impl Job {
                 .map_err(|e| e.to_string())
         };
         Ok(match self {
-            Self::SaveFirDesign(mut request) => {
+            Self::SaveDesign(mut request) => {
                 request.path = absolute(std::mem::take(&mut request.path))?;
-                Self::SaveFirDesign(request)
-            }
-            Self::SaveIirDesign(mut request) => {
-                request.path = absolute(std::mem::take(&mut request.path))?;
-                Self::SaveIirDesign(request)
+                Self::SaveDesign(request)
             }
             Self::ScriptIo(mut request) => {
                 if let super::script_io::Kind::Save { path, .. }
@@ -127,7 +130,7 @@ impl Job {
                 Self::ReadModel(request)
             }
             Self::PrepareOpen(mut request) => {
-                request.path = absolute(request.path)?;
+                request.file.path = absolute(request.file.path)?;
                 Self::PrepareOpen(request)
             }
             Self::DocumentInFolder(source, path, directory) => {
@@ -135,10 +138,6 @@ impl Job {
             }
             Self::SaveWorkspace(p) => Self::SaveWorkspace(absolute(p)?),
             Self::SaveWorkspaceV73(p) => Self::SaveWorkspaceV73(absolute(p)?),
-            Self::ImportCsv(mut request) => {
-                request.path = absolute(request.path)?;
-                Self::ImportCsv(request)
-            }
             Self::ExportVariable(p, name) => Self::ExportVariable(absolute(p)?, name),
             Self::PrepareExportBatch(mut request) => {
                 request.folder = absolute(request.folder)?;
@@ -250,6 +249,11 @@ pub struct SearchOpened {
     pub result: Result<super::open_files::Prepared>,
 }
 pub struct Finished {
+    pub app_launches: Vec<matrust::engine::app_launchers::Launch>,
+    pub mpc_catalogue: Vec<matrust::engine::mpc_app_hooks::Source>,
+    pub fuzzy_catalogue: Vec<(String, matrust::engine::fuzzy_app_hooks::System)>,
+    pub registration_catalogue: Vec<matrust::engine::regest_app_hooks::GeoVariable>,
+    pub profiler_viewer: Option<Result<Array>>,
     pub current_folder: Option<PathBuf>,
     /// The engine's `format` setting after the job, for workspace previews.
     pub display: matrust::display_format::DisplayFormat,
@@ -260,7 +264,6 @@ pub struct Finished {
     pub cell_replacement: Option<super::cell_replace_job::Finished>,
     pub detached_prepared: Option<super::detached_figures::Prepared>,
     pub selected_existing: Option<super::figure_target::Acknowledgement>,
-    pub fir_block: Option<Result<matrust::simulation::Block>>,
     pub design_save: Option<Result<PathBuf>>,
     pub workspace_change: Option<super::workspace_edit::Change>,
     pub script_io: Option<super::script_io::Finished>,
@@ -291,6 +294,7 @@ pub struct Finished {
     pub diagnostic: Option<matrust::syntax::Diagnostic>,
     pub file_diagnostic: Option<matrust::engine::FileDiagnostic>,
     pub partial_output: Execution,
+    pub ui_snapshot: matrust::engine::UiSnapshot,
 }
 /// Immutable host context bound to a job at submission, never read on the worker.
 pub struct Request {
@@ -309,24 +313,408 @@ impl From<Job> for Request {
     }
 }
 
+/// A script asked for a line (`input`, bare `pause`): the output it printed
+/// before the prompt, then the prompt the Command Window shows.
+pub struct InputRequest {
+    pub output: Vec<String>,
+    pub clear: bool,
+    pub prompt: String,
+}
+/// A script's dialog (uigetfile, inputdlg, msgbox, waitbar, ...) with the
+/// output it printed before; `reply` is set when the script waits for the answer.
+pub struct DialogTicket {
+    pub request: matrust::engine::DialogRequest,
+    pub reply: Option<mpsc::Sender<matrust::engine::DialogReply>>,
+    pub output: Vec<String>,
+    pub clear: bool,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditPath {
+    pub path: PathBuf,
+    pub source_read_only: bool,
+}
+
+/// Editor open request from `edit` in a running script.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditRequest {
+    pub path: Option<EditPath>,
+    pub untitled_name: Option<String>,
+}
+
+/// The engine's console host on the worker: prompts go to the UI and the
+/// answer comes back from the Command Window; Stop ends the wait.
+struct CommandWindowHost {
+    requests: mpsc::Sender<InputRequest>,
+    dialogs: mpsc::Sender<DialogTicket>,
+    edits: mpsc::Sender<EditRequest>,
+    answers: Receiver<String>,
+    cancel: Arc<AtomicBool>,
+    context: eframe::egui::Context,
+    output: Vec<String>,
+    clear: bool,
+    /// Latest `drawnow` snapshot; the UI takes it on its next frame.
+    frames: FrameSlot,
+    /// Interactive UI component events polled during `uiwait(fig)`.
+    ui_events: Arc<std::sync::Mutex<Receiver<matrust::engine::UiEvent>>>,
+}
+/// One-slot mailbox: a newer frame replaces an unpainted older one.
+pub type FrameSlot = Arc<std::sync::Mutex<Option<matrust::engine::GraphicsFrame>>>;
+impl CommandWindowHost {
+    fn send_edit(&self, request: EditRequest) -> bool {
+        if self.edits.send(request).is_err() {
+            return false;
+        }
+        self.context
+            .request_repaint_of(eframe::egui::ViewportId::ROOT);
+        true
+    }
+}
+impl matrust::HostIo for CommandWindowHost {
+    fn draw_frame(&mut self, frame: matrust::engine::GraphicsFrame) {
+        if let Ok(mut slot) = self.frames.lock() {
+            *slot = Some(frame);
+        }
+        self.context
+            .request_repaint_of(eframe::egui::ViewportId::ROOT);
+    }
+    fn read_line(&mut self, prompt: &str) -> Option<String> {
+        // An answer typed for an earlier, cancelled prompt is stale.
+        while self.answers.try_recv().is_ok() {}
+        let request = InputRequest {
+            output: std::mem::take(&mut self.output),
+            clear: std::mem::take(&mut self.clear),
+            prompt: prompt.to_owned(),
+        };
+        self.requests.send(request).ok()?;
+        self.context
+            .request_repaint_of(eframe::egui::ViewportId::ROOT);
+        loop {
+            if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return None;
+            }
+            match self.answers.recv_timeout(Duration::from_millis(50)) {
+                Ok(answer) => return Some(answer),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            }
+        }
+    }
+    fn dialog(&mut self, request: matrust::engine::DialogRequest) -> matrust::engine::DialogReply {
+        use matrust::engine::{DialogReply, DialogRequest};
+        let blocks = request.blocks();
+        let deadline = match &request {
+            DialogRequest::WaitClosed {
+                timeout: Some(seconds),
+                ..
+            } => Instant::now().checked_add(Duration::from_secs_f64(seconds.min(1e7))),
+            _ => None,
+        };
+        let (reply, answer) = mpsc::channel();
+        let ticket = DialogTicket {
+            request,
+            reply: blocks.then_some(reply),
+            output: if blocks {
+                std::mem::take(&mut self.output)
+            } else {
+                Vec::new()
+            },
+            clear: blocks && std::mem::take(&mut self.clear),
+        };
+        if self.dialogs.send(ticket).is_err() {
+            return DialogReply::Unsupported;
+        }
+        self.context
+            .request_repaint_of(eframe::egui::ViewportId::ROOT);
+        if !blocks {
+            return DialogReply::Done;
+        }
+        loop {
+            if self.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                return DialogReply::Cancelled;
+            }
+            if deadline.is_some_and(|d| Instant::now() >= d) {
+                return DialogReply::Done;
+            }
+            match answer.recv_timeout(Duration::from_millis(50)) {
+                Ok(reply) => return reply,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => return DialogReply::Cancelled,
+            }
+        }
+    }
+    fn show_output(&mut self, lines: &[String], clear: bool) -> bool {
+        if clear {
+            self.output.clear();
+            self.clear = true;
+        }
+        self.output.extend_from_slice(lines);
+        true
+    }
+    fn edit_file(&mut self, path: Option<&std::path::Path>, untitled_name: Option<&str>) -> bool {
+        self.send_edit(EditRequest {
+            path: path.map(|path| EditPath {
+                path: path.to_owned(),
+                source_read_only: false,
+            }),
+            untitled_name: untitled_name.map(str::to_owned),
+        })
+    }
+    fn edit_file_copy(&mut self, path: &std::path::Path) -> bool {
+        self.send_edit(EditRequest {
+            path: Some(EditPath {
+                path: path.to_owned(),
+                source_read_only: true,
+            }),
+            untitled_name: None,
+        })
+    }
+    fn open_url(&mut self, url: &str) -> Option<std::result::Result<(), String>> {
+        let (program, args) = matrust::bench::share::opener(url);
+        #[cfg(test)]
+        if let Some(result) = test_open_url(program, &args) {
+            return Some(result);
+        }
+        let result = std::process::Command::new(program)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("unable to launch {program}: {e}"));
+        Some(result)
+    }
+    fn supports_ui_wait(&self) -> bool {
+        true
+    }
+    fn poll_ui_event(&mut self, timeout: Duration) -> Option<matrust::engine::UiEvent> {
+        self.ui_events
+            .lock()
+            .ok()
+            .and_then(|rx| rx.recv_timeout(timeout).ok())
+    }
+    fn try_poll_ui_event(&mut self) -> Option<matrust::engine::UiEvent> {
+        self.ui_events.lock().ok().and_then(|rx| rx.try_recv().ok())
+    }
+}
+
+#[cfg(test)]
+type UrlOpenerHook = Box<dyn FnMut(&str, &[String]) -> std::result::Result<(), String> + Send>;
+
+#[cfg(test)]
+static TEST_URL_OPENER: std::sync::Mutex<Option<UrlOpenerHook>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+fn test_open_url(program: &str, args: &[String]) -> Option<std::result::Result<(), String>> {
+    TEST_URL_OPENER
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.as_mut().map(|hook| hook(program, args)))
+}
+
+#[cfg(test)]
+pub(super) fn set_test_url_opener(hook: Option<UrlOpenerHook>) {
+    if let Ok(mut guard) = TEST_URL_OPENER.lock() {
+        *guard = hook;
+    }
+}
+
 pub struct Worker {
     pub opening: bool,
     pub send: SyncSender<Request>,
     pub receive: Receiver<Finished>,
     pub cancel: Arc<AtomicBool>,
+    /// Prompts of a running script that waits for an answer.
+    pub input: Receiver<InputRequest>,
+    /// Answers typed in the Command Window for those prompts.
+    pub answers: mpsc::Sender<String>,
+    /// Dialogs of a running script (dialog_windows.rs shows them).
+    pub dialogs: Receiver<DialogTicket>,
+    /// Editor open requests from `edit` in a running script.
+    pub edits: Receiver<EditRequest>,
+    pub fuzzy_designer: super::apps::fuzzy_designer::OpenSlot,
+    pub app_designer: super::apps::app_designer::OpenSlot,
+    pub dicom_browser: super::apps::dicom_browser::OpenSlot,
+    pub registration_estimator: super::apps::registration_estimator::OpenSlot,
+    pub camera_calibrator: super::apps::camera_calibrator::OpenSlot,
+    pub volume_viewer: super::apps::volume_viewer::OpenSlot,
+    pub pde_modeler: super::apps::pde_modeler::OpenSlot,
+    pub mpc_designer: super::apps::mpc_designer::OpenSlot,
+    pub video_viewer: super::apps::video_viewer::OpenSlot,
+    pub comparison_paths: super::apps::comparison_tool::OpenSlot,
     thread: Option<std::thread::JoinHandle<()>>,
     request_context: eframe::egui::Context,
     /// Width of the command window in characters, refreshed every frame.
     pub console_width: usize,
+    /// Figures a running script flushed with `drawnow` or `pause`.
+    pub frames: FrameSlot,
+    /// Interactive UI component events sent from the UI thread to the engine thread.
+    pub ui_events: mpsc::Sender<matrust::engine::UiEvent>,
 }
 impl Worker {
+    /// Take the newest unpainted `drawnow` frame, if any.
+    pub fn take_frame(&self) -> Option<matrust::engine::GraphicsFrame> {
+        self.frames.lock().ok().and_then(|mut slot| slot.take())
+    }
     pub fn new(context: eframe::egui::Context) -> Self {
+        let video_viewer = super::apps::video_viewer::OpenSlot::default();
+        let open_video = video_viewer.clone();
+        let comparison_paths = super::apps::comparison_tool::OpenSlot::default();
+        let open_comparison = comparison_paths.clone();
+        let dicom_browser = super::apps::dicom_browser::OpenSlot::default();
+        let open_dicom = dicom_browser.clone();
+        let registration_estimator = super::apps::registration_estimator::OpenSlot::default();
+        let open_registration = registration_estimator.clone();
+        let camera_calibrator = super::apps::camera_calibrator::OpenSlot::default();
+        let open_camcal = camera_calibrator.clone();
+        let volume_viewer = super::apps::volume_viewer::OpenSlot::default();
+        let open_volume = volume_viewer.clone();
+        let pde_modeler = super::apps::pde_modeler::OpenSlot::default();
+        let open_pde_modeler = pde_modeler.clone();
+        let mpc_designer = super::apps::mpc_designer::OpenSlot::default();
+        let open_mpc = mpc_designer.clone();
+        let fuzzy_designer = super::apps::fuzzy_designer::OpenSlot::default();
+        let open_fuzzy = fuzzy_designer.clone();
+        let app_designer = super::apps::app_designer::OpenSlot::default();
+        let open_app_designer = app_designer.clone();
         let request_context = context.clone();
         let (send, requests) = mpsc::sync_channel::<Request>(1);
         let (responses, receive) = mpsc::sync_channel(1);
-        let mut engine = Engine::default();
+        // No step or output limit: Stop ends a long run; memory guards follow physical RAM.
+        let mut engine = Engine::with_limits(matrust::engine::Limits::local());
         let cancel = engine.cancellation();
+        let (input_requests, input) = mpsc::channel();
+        let (answers, answer_receiver) = mpsc::channel();
+        let (dialog_requests, dialogs) = mpsc::channel();
+        let (edit_requests, edits) = mpsc::channel();
+        let (ui_events, ui_events_rx) = mpsc::channel();
+        let ui_events_rx = Arc::new(std::sync::Mutex::new(ui_events_rx));
+        let worker_ui_events_rx = ui_events_rx.clone();
+        let frames = FrameSlot::default();
+        engine.set_host_io(Some(Box::new(CommandWindowHost {
+            frames: frames.clone(),
+            ui_events: ui_events_rx,
+            requests: input_requests,
+            dialogs: dialog_requests,
+            edits: edit_requests,
+            answers: answer_receiver,
+            cancel: cancel.clone(),
+            context: context.clone(),
+            output: Vec::new(),
+            clear: false,
+        })));
         let thread = std::thread::spawn(move || {
+            let mut path_warnings = engine.spath_load_saved_path();
+            use matrust::engine::app_launchers::Launch;
+            use matrust::session::ToolTab;
+            let app_launchers = matrust::engine::app_launchers::present();
+            let _video_hook = matrust::engine::implay::present(move |launch| {
+                *open_video
+                    .lock()
+                    .map_err(|_| "Video Viewer presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::VideoViewer).record();
+                Ok(())
+            });
+            let _dicom_hook = matrust::engine::present_dicom_browser(move |folder| {
+                *open_dicom
+                    .lock()
+                    .map_err(|_| "DICOM Browser presentation lock failed")? = Some(folder);
+                Launch::App(ToolTab::DicomBrowser).record();
+                Ok(())
+            });
+            let _registration_hook = matrust::engine::regest_app_hooks::present(move |launch| {
+                *open_registration
+                    .lock()
+                    .map_err(|_| "Registration Estimator presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::RegistrationEstimator).record();
+                Ok(())
+            });
+            let _camcal_hook = matrust::engine::camcal_app_hooks::present(move |launch| {
+                *open_camcal
+                    .lock()
+                    .map_err(|_| "Camera Calibrator presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::CameraCalibrator).record();
+                Ok(())
+            });
+            let _volume_hook = matrust::engine::volume_viewer_app_hooks::present(move |launch| {
+                *open_volume
+                    .lock()
+                    .map_err(|_| "Volume Viewer presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::VolumeViewer).record();
+                Ok(())
+            });
+            let _pde_hook = matrust::engine::pde_modeler_app_hooks::present(move |launch| {
+                *open_pde_modeler
+                    .lock()
+                    .map_err(|_| "PDE Modeler presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::PdeModeler).record();
+                Ok(())
+            });
+            let _mpc_hook = matrust::engine::mpc_app_hooks::present(move |source| {
+                *open_mpc
+                    .lock()
+                    .map_err(|_| "MPC Designer presentation lock failed")? = Some(source);
+                Launch::App(ToolTab::MpcDesigner).record();
+                Ok(())
+            });
+            let _econ_hook = matrust::engine::econ_app_hooks::present(move || {
+                Launch::App(ToolTab::EconometricModeler).record();
+                Ok(())
+            });
+            let _comm_hook = matrust::engine::comm_app_hooks::present(move |app| {
+                use matrust::engine::comm_app_hooks::Launch::*;
+                Launch::App(match app {
+                    Ber => ToolTab::BitErrorRateAnalysis,
+                    Waveform => ToolTab::WirelessWaveformGenerator,
+                })
+                .record();
+                Ok(())
+            });
+            let _fuzzy_hook = matrust::engine::fuzzy_app_hooks::present(move |system| {
+                *open_fuzzy
+                    .lock()
+                    .map_err(|_| "Fuzzy designer presentation lock failed")? = Some(system);
+                Launch::App(ToolTab::FuzzyLogicDesigner).record();
+                Ok(())
+            });
+            let _app_designer_hook = matrust::engine::app_designer_model::present(move |launch| {
+                *open_app_designer
+                    .lock()
+                    .map_err(|_| "App Designer presentation lock failed")? = Some(launch);
+                Launch::App(ToolTab::AppDesigner).record();
+                Ok(())
+            });
+            let _neural_hook = matrust::engine::neural_app_hooks::present(move |app| {
+                use matrust::engine::neural_app_hooks::Launch::*;
+                match app {
+                    Picker => Launch::AppsHome,
+                    Fitting => Launch::App(ToolTab::NeuralNetFitting),
+                    PatternRecognition => Launch::App(ToolTab::NeuralNetPatternRecognition),
+                    Clustering => Launch::App(ToolTab::NeuralNetClustering),
+                    TimeSeries => Launch::App(ToolTab::NeuralNetTimeSeries),
+                }
+                .record();
+                Ok(())
+            });
+            let _comparison_hook = matrust::engine::compare_builtin::present_comparisons(
+                move |left, right, comparison| {
+                    let kind = match comparison {
+                        matrust::engine::compare::Comparison::Text(_) => {
+                            matrust::engine::compare::ComparisonType::Text
+                        }
+                        matrust::engine::compare::Comparison::Binary(_) => {
+                            matrust::engine::compare::ComparisonType::Binary
+                        }
+                        _ => matrust::engine::compare::ComparisonType::Auto,
+                    };
+                    *open_comparison
+                        .lock()
+                        .map_err(|_| "Comparison presentation lock failed")? =
+                        Some((left.to_owned(), right.to_owned(), kind));
+                    Launch::App(ToolTab::ComparisonTool).record();
+                    Ok(())
+                },
+            );
             let mut documents = figure_documents::Documents::default();
             let mut variable_revision = super::variable_edit_job::Token::default();
             while let Ok(Request {
@@ -344,6 +732,10 @@ impl Worker {
                 };
                 let submitted_folder = match folder_job {
                     Job::ScriptInFolder(_, folder)
+                    | Job::UnsavedDocumentInFolder(_, folder)
+                    | Job::ExportAppScript(_, folder)
+                    | Job::ExportVolumeSettings(_, folder)
+                    | Job::ApplyDesign(_, folder)
                     | Job::DocumentInFolder(_, _, folder)
                     | Job::SelectionInFolder(_, _, folder) => Some(folder.clone()),
                     _ => None,
@@ -368,7 +760,6 @@ impl Worker {
                 let mut folder_search = None;
                 let mut search_open = None;
                 let mut model_read = None;
-                let mut fir_block = None;
                 let mut design_save = None;
                 let mut model_write = None;
                 let mut script_io = None;
@@ -469,7 +860,7 @@ impl Worker {
                 } else if let Job::PrepareOpen(request) = job {
                     engine.diagnostic = None;
                     engine.failed_output = Execution::default();
-                    let prepared = super::open_files::prepare(*request, &engine.cancellation());
+                    let prepared = request.prepare(&engine.cancellation());
                     let result = prepared
                         .as_ref()
                         .map(|_| Execution::default())
@@ -483,10 +874,7 @@ impl Worker {
                         super::workspace_edit::perform(&mut engine, *request).map(|change| {
                             let output = vec![change.message()];
                             workspace_change = Some(change);
-                            Execution {
-                                output,
-                                ..Default::default()
-                            }
+                            Execution::with_output(output, false)
                         });
                     (result, None)
                 } else if let Job::ScriptIo(request) = job {
@@ -502,25 +890,13 @@ impl Worker {
                         &engine.cancellation(),
                     ));
                     (Ok(Execution::default()), None)
-                } else if let Job::SaveFirDesign(request) = job {
+                } else if let Job::SaveDesign(request) = job {
                     engine.diagnostic = None;
                     engine.failed_output = Execution::default();
-                    design_save = Some(super::fir_designer::save(*request, &engine.cancellation()));
-                    (Ok(Execution::default()), None)
-                } else if let Job::SaveIirDesign(request) = job {
-                    engine.diagnostic = None;
-                    engine.failed_output = Execution::default();
-                    design_save = Some(super::iir_designer::save(*request, &engine.cancellation()));
-                    (Ok(Execution::default()), None)
-                } else if let Job::IirBlock(request) = job {
-                    engine.diagnostic = None;
-                    engine.failed_output = Execution::default();
-                    fir_block = Some(request.block(&engine.cancellation()));
-                    (Ok(Execution::default()), None)
-                } else if let Job::FirBlock(request) = job {
-                    engine.diagnostic = None;
-                    engine.failed_output = Execution::default();
-                    fir_block = Some(request.block(&engine.cancellation()));
+                    design_save = Some(super::designer_output::save(
+                        *request,
+                        &engine.cancellation(),
+                    ));
                     (Ok(Execution::default()), None)
                 } else if let Job::ReadModel(request) = job {
                     engine.diagnostic = None;
@@ -570,10 +946,7 @@ impl Worker {
                             format!("Opened image {}", crate::path_label::display(&preview.path));
                         image_preview = Some(preview);
                         page_preview = page;
-                        Execution {
-                            output: vec![message],
-                            clear_console: false,
-                        }
+                        Execution::with_output(vec![message], false)
                     });
                     (result, None)
                 } else if matches!(&job, Job::CopyPreview(_) | Job::CopyFigure(_)) {
@@ -596,10 +969,7 @@ impl Worker {
                     };
                     let result = prepared.map(|image| {
                         context.copy_image(image);
-                        Execution {
-                            output: vec![message.into()],
-                            clear_console: false,
-                        }
+                        Execution::with_output(vec![message.into()], false)
                     });
                     (result, None)
                 } else if let Job::SingleExport(request) = job {
@@ -638,10 +1008,10 @@ impl Worker {
                         });
                     let result = outcome.error.clone().map_or_else(
                         || {
-                            Ok(Execution {
-                                output: vec![format!("Exported {} figures", outcome.completed)],
-                                clear_console: false,
-                            })
+                            Ok(Execution::with_output(
+                                vec![format!("Exported {} figures", outcome.completed)],
+                                false,
+                            ))
                         },
                         Err,
                     );
@@ -665,13 +1035,13 @@ impl Worker {
                         files::inspect_workspace(&path, &engine.cancellation()).map(|catalog| {
                             let count = catalog.variables().len();
                             workspace_catalog = Some(catalog);
-                            Execution {
-                                output: vec![format!(
+                            Execution::with_output(
+                                vec![format!(
                                     "Inspected {count} variables in {}",
                                     crate::path_label::display(&path)
                                 )],
-                                clear_console: false,
-                            }
+                                false,
+                            )
                         });
                     (result, None)
                 } else if let Job::RestoreSession(path, manifest, workspace) = job {
@@ -711,15 +1081,14 @@ impl Worker {
                     let mut bindings = report.workspace_bindings().clone();
                     let mut warnings = report.warnings;
                     let placement_notes = report.placement_notes;
-                    let result =
-                        documents
-                            .restore(&mut engine, report.figures)
-                            .map(|_| Execution {
-                                output: vec![format!(
-                                    "Recovered {count} open figures from the last checkpoint."
-                                )],
-                                clear_console: false,
-                            });
+                    let result = documents.restore(&mut engine, report.figures).map(|_| {
+                        Execution::with_output(
+                            vec![format!(
+                                "Recovered {count} open figures from the last checkpoint."
+                            )],
+                            false,
+                        )
+                    });
                     if let Err(error) = &result {
                         bindings.detach_all();
                         windows.clear();
@@ -763,6 +1132,27 @@ impl Worker {
                         placement_notes,
                     });
                     (result, None)
+                } else if matches!(job, Job::DrainUiEvents) {
+                    engine.diagnostic = None;
+                    engine.failed_output = Execution::default();
+                    let mut out = Execution::default();
+                    let mut run_result: Result<()> = Ok(());
+                    loop {
+                        let next = worker_ui_events_rx
+                            .lock()
+                            .ok()
+                            .and_then(|rx| rx.try_recv().ok());
+                        let Some(ev) = next else {
+                            break;
+                        };
+                        if let Err(err) =
+                            matrust::engine::dispatch_ui_event_or_warn(&mut engine, ev, &mut out)
+                        {
+                            run_result = Err(err);
+                            break;
+                        }
+                    }
+                    (run_result.map(|()| out), None)
                 } else {
                     documents.perform(&mut engine, job)
                 };
@@ -775,11 +1165,26 @@ impl Worker {
                 // Every completed job invalidates earlier requests, including remove/rebind
                 // to exactly the same immutable root within one script.
                 variable_revision = super::variable_edit_job::Token::default();
+                let mut result = result;
+                let mut partial_output = std::mem::take(&mut engine.failed_output);
+                // Deliver startup warnings once, including when the first job fails.
+                if let Ok(execution) = &mut result {
+                    execution.output.splice(0..0, path_warnings.drain(..));
+                    keep_newest_output(&mut execution.output);
+                } else {
+                    partial_output.output.splice(0..0, path_warnings.drain(..));
+                }
+                keep_newest_output(&mut partial_output.output);
                 let current_folder = start_folder.and_then(|started| {
                     let current = engine.current_folder()?;
                     (current != started).then(|| current.to_owned())
                 });
                 let reply = Finished {
+                    app_launches: app_launchers.take(),
+                    mpc_catalogue: matrust::engine::mpc_app_hooks::catalogue(&engine),
+                    fuzzy_catalogue: matrust::engine::fuzzy_app_hooks::catalogue(&engine),
+                    registration_catalogue: matrust::engine::regest_app_hooks::catalogue(&engine),
+                    profiler_viewer: engine.take_profiler_viewer(),
                     current_folder,
                     display: engine.display,
                     folder_search,
@@ -789,7 +1194,6 @@ impl Worker {
                     cell_replacement,
                     detached_prepared,
                     selected_existing,
-                    fir_block,
                     design_save,
                     workspace_change,
                     script_io,
@@ -807,7 +1211,7 @@ impl Worker {
                     recovered,
                     diagnostic: engine.diagnostic.take(),
                     file_diagnostic: engine.file_diagnostic.take(),
-                    partial_output: std::mem::take(&mut engine.failed_output),
+                    partial_output,
                     result,
                     vars: engine.workspace(),
                     figure: engine.figure.clone(),
@@ -820,6 +1224,7 @@ impl Worker {
                     figure_conflict: documents.take_conflict(),
                     workspace_catalog,
                     elapsed: start.elapsed(),
+                    ui_snapshot: matrust::engine::capture_ui_snapshot(&engine),
                 };
                 if responses.send(reply).is_err() {
                     break;
@@ -832,9 +1237,25 @@ impl Worker {
             send,
             receive,
             cancel,
+            input,
+            answers,
+            dialogs,
+            edits,
+            fuzzy_designer,
+            app_designer,
+            mpc_designer,
+            video_viewer,
+            dicom_browser,
+            registration_estimator,
+            camera_calibrator,
+            volume_viewer,
+            pde_modeler,
+            comparison_paths,
             thread: Some(thread),
             request_context,
             console_width: matrust::display_format::DEFAULT_WIDTH,
+            frames,
+            ui_events,
         }
     }
     pub fn theme(&self) -> matrust::plot::BaseTheme {
@@ -889,14 +1310,34 @@ mod opening_shutdown_tests {
         let (send, _requests) = mpsc::sync_channel(1);
         let (_responses, receive) = mpsc::sync_channel(1);
         let cancel = Arc::new(AtomicBool::new(false));
+        let (_input_requests, input) = mpsc::channel();
+        let (answers, _answer_receiver) = mpsc::channel();
+        let (_dialog_requests, dialogs) = mpsc::channel();
+        let (_edit_requests, edits) = mpsc::channel();
         let mut worker = Worker {
+            fuzzy_designer: Default::default(),
+            app_designer: Default::default(),
+            mpc_designer: Default::default(),
+            video_viewer: Default::default(),
+            dicom_browser: Default::default(),
+            registration_estimator: Default::default(),
+            camera_calibrator: Default::default(),
+            volume_viewer: Default::default(),
+            pde_modeler: Default::default(),
+            comparison_paths: Default::default(),
             opening: true,
             send,
             receive,
             cancel: cancel.clone(),
+            input,
+            answers,
+            dialogs,
+            edits,
             thread: Some(thread),
             request_context: eframe::egui::Context::default(),
             console_width: matrust::display_format::DEFAULT_WIDTH,
+            frames: FrameSlot::default(),
+            ui_events: mpsc::channel().0,
         };
         worker.shutdown();
         assert!(cancel.load(std::sync::atomic::Ordering::Relaxed));
@@ -906,6 +1347,58 @@ mod opening_shutdown_tests {
         release.send(()).unwrap();
         done.recv_timeout(Duration::from_secs(2)).unwrap();
     }
+}
+/// Output entries and bytes one run hands to the Command Window.
+const SHOWN_ENTRIES: usize = 20_000;
+const SHOWN_BYTES: usize = 32 * 1024 * 1024;
+/// Runs have no output limit; keep the Command Window responsive by showing the newest
+/// output only, after one line that counts the entries left out.
+pub(super) fn keep_newest_output(output: &mut Vec<String>) {
+    let mut kept = 0;
+    let mut bytes = 0usize;
+    for entry in output.iter().rev() {
+        if kept == SHOWN_ENTRIES || bytes.saturating_add(entry.len()) > SHOWN_BYTES {
+            break;
+        }
+        bytes += entry.len();
+        kept += 1;
+    }
+    if kept == output.len() || (kept + 1 == output.len() && omitted_lines(&output[0]).is_some()) {
+        return;
+    }
+    let mut hidden_lines = 0;
+    if kept == 0 {
+        // One entry larger than the whole window: keep its last whole lines.
+        let last = output.last_mut().unwrap();
+        let cut = last.len() - SHOWN_BYTES;
+        let start = match memchr::memchr(b'\n', &last.as_bytes()[cut..]) {
+            Some(i) => cut + i + 1,
+            // One line longer than the window: keep its end from a character boundary.
+            None => (cut..last.len())
+                .find(|&i| last.is_char_boundary(i))
+                .unwrap_or(last.len()),
+        };
+        hidden_lines = last[..start].matches('\n').count();
+        last.drain(..start);
+        kept = 1;
+    }
+    let hidden = output.len() - kept;
+    hidden_lines += output[..hidden]
+        .iter()
+        .map(|entry| omitted_lines(entry).unwrap_or_else(|| entry.lines().count().max(1)))
+        .sum::<usize>();
+    output.drain(..hidden);
+    output.insert(
+        0,
+        format!("... {hidden_lines} earlier output lines not shown"),
+    );
+}
+fn omitted_lines(entry: &str) -> Option<usize> {
+    entry
+        .strip_prefix("... ")?
+        .strip_suffix(" earlier output lines not shown")?
+        .parse()
+        .ok()
 }
 fn merge(engine: &mut Engine, new: BTreeMap<String, Matrix>) -> Result<()> {
     engine.merge_workspace(new.into_iter().map(|(name, m)| (name, m.into())).collect())
@@ -920,11 +1413,10 @@ fn figure_snapshot(engine: &Engine, view: Option<[f64; 4]>) -> Result<Figure> {
     }
     Ok(figure)
 }
-fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
+pub(crate) fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
     engine.diagnostic = None;
     engine.failed_output = Execution::default();
     let message = match job {
-        Job::ApplyFilter(request) => return super::designer_apply::perform(engine, *request),
         Job::PrepareDetached(_) => {
             return Err("Display preparation requires the worker response channel".into());
         }
@@ -957,11 +1449,9 @@ fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
         | Job::ScriptIo(_)
         | Job::ModelWrite(_)
         | Job::ReadModel(_)
-        | Job::FirBlock(_)
-        | Job::IirBlock(_)
-        | Job::SaveIirDesign(_)
-        | Job::SaveFirDesign(_)
+        | Job::SaveDesign(_)
         | Job::SearchFolder(_)
+        | Job::DrainUiEvents
         | Job::OpenSearchResult(_)
         | Job::PrepareOpen(_)
         | Job::OriginalCopy(_)
@@ -1008,6 +1498,26 @@ fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
         Job::ScriptInFolder(source, folder) => {
             engine.set_current_folder(&folder)?;
             return engine.execute(&source);
+        }
+        Job::UnsavedDocumentInFolder(source, folder) => {
+            engine.set_current_folder(&folder)?;
+            return engine.execute_script(&source);
+        }
+        Job::ExportAppScript(source, folder) => {
+            engine.set_current_folder(&folder)?;
+            return super::apps::execute_export(engine, &source);
+        }
+        Job::ExportVolumeSettings(settings, folder) => {
+            engine.set_current_folder(&folder)?;
+            return settings.execute(engine);
+        }
+        Job::ApplyDesign(source, folder) => {
+            let mut candidate = engine.clone();
+            candidate.set_current_folder(&folder)?;
+            let output = candidate.execute(&source)?;
+            matrust::dsp::check_cancel(&engine.cancellation())?;
+            *engine = candidate;
+            return Ok(output);
         }
         Job::DocumentInFolder(source, path, folder) => {
             engine.set_current_folder(&folder)?;
@@ -1056,7 +1566,6 @@ fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
             files::save_array_workspace_v73(&path, &engine.workspace(), &engine.cancellation())?;
             format!("Saved v7.3 workspace {}", crate::path_label::display(&path))
         }
-        Job::ImportCsv(request) => super::csv_import::perform(engine, *request)?,
         Job::ExportVariable(path, name) => {
             files::write_array_csv(
                 &path,
@@ -1239,41 +1748,12 @@ fn perform(engine: &mut Engine, job: Job) -> Result<Execution> {
             )
         }
     };
-    Ok(Execution {
-        output: vec![message],
-        clear_console: false,
-    })
+    Ok(Execution::with_output(vec![message], false))
 }
 
 #[cfg(test)]
 mod figure_tests {
     use super::*;
-    #[test]
-    fn csv_import_passes_cancellation_before_parsing_and_preserves_workspace() {
-        use std::sync::atomic::Ordering;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("data.csv");
-        std::fs::write(&path, "not a numeric CSV").unwrap();
-        let mut engine = Engine::default();
-        let original = Matrix::scalar(42.);
-        engine.variables.insert("data".into(), original.clone());
-        engine.cancellation().store(true, Ordering::Relaxed);
-        let error = perform(
-            &mut engine,
-            Job::ImportCsv(Box::new(super::super::csv_import::Request {
-                path,
-                name: "data".into(),
-                expected: Some(original.clone().into()),
-            })),
-        )
-        .unwrap_err();
-        assert!(error.contains("cancelled"));
-        assert_eq!(engine.variables.len(), 1);
-        assert_eq!(
-            engine.variables["data"].data().as_ptr(),
-            original.data().as_ptr()
-        );
-    }
     #[test]
     fn selected_mat_import_is_transactional_and_preflights_existing_workspace() {
         use std::collections::BTreeSet;
@@ -1519,7 +1999,7 @@ mod figure_tests {
         for (id, limits) in [
             (2, Some([1., 2.])),
             (1, Some([2., 1.])),
-            (1, Some([0., f64::INFINITY])),
+            (1, Some([0., f64::NEG_INFINITY])),
         ] {
             let mut updated = original.clone();
             updated.xlim = limits;
@@ -1835,3 +2315,57 @@ mod worker_repaint_tests;
 #[cfg(test)]
 #[path = "bar_outline_worker_tests.rs"]
 mod bar_outline_worker_tests;
+
+#[cfg(test)]
+mod output_window_tests {
+    use super::{SHOWN_BYTES, SHOWN_ENTRIES, keep_newest_output};
+    #[test]
+    fn long_output_keeps_the_newest_entries_after_one_note() {
+        let mut output: Vec<String> = (0..SHOWN_ENTRIES + 5).map(|i| i.to_string()).collect();
+        keep_newest_output(&mut output);
+        assert_eq!(output.len(), SHOWN_ENTRIES + 1);
+        assert_eq!(output[0], "... 5 earlier output lines not shown");
+        assert_eq!(output[1], "5");
+        assert_eq!(output.last().unwrap(), &(SHOWN_ENTRIES + 4).to_string());
+        let mut short = vec!["a".to_string(), "b".to_string()];
+        keep_newest_output(&mut short);
+        assert_eq!(short, ["a", "b"]);
+    }
+    #[test]
+    fn existing_notices_and_multiline_entries_are_counted_when_trimming_again() {
+        let mut output = vec!["... 5000 earlier output lines not shown".into()];
+        output.extend((0..SHOWN_ENTRIES).map(|i| format!("{i}\nsecond\nthird")));
+        keep_newest_output(&mut output);
+        assert_eq!(output[0], "... 5000 earlier output lines not shown");
+        output.push("newest".into());
+        keep_newest_output(&mut output);
+        assert_eq!(output.len(), SHOWN_ENTRIES + 1);
+        assert_eq!(output[0], "... 5003 earlier output lines not shown");
+        assert_eq!(output[1], "1\nsecond\nthird");
+        assert_eq!(output.last().unwrap(), "newest");
+    }
+    #[test]
+    fn large_output_is_bounded_by_bytes() {
+        let mut output = vec!["x".repeat(SHOWN_BYTES / 2 + 1); 3];
+        keep_newest_output(&mut output);
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0], "... 2 earlier output lines not shown");
+        // One entry of 1.5 * SHOWN_BYTES: whole lines from its end, the rest counted.
+        let line = format!("{}\n", "é".repeat(1023));
+        let mut huge = vec![line.repeat(SHOWN_BYTES / 2048 * 3)];
+        keep_newest_output(&mut huge);
+        assert_eq!(huge.len(), 2);
+        assert!(huge[1].len() <= SHOWN_BYTES && huge[1].starts_with('é'));
+        let mut line = vec!["é".repeat(SHOWN_BYTES / 2 + 1)];
+        keep_newest_output(&mut line);
+        assert!(line[1].len() <= SHOWN_BYTES && line[1].starts_with('é'));
+        let shown = huge[1].matches('\n').count();
+        assert_eq!(
+            huge[0],
+            format!(
+                "... {} earlier output lines not shown",
+                SHOWN_BYTES / 2048 * 3 - shown
+            )
+        );
+    }
+}

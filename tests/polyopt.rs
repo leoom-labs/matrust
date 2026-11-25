@@ -400,7 +400,12 @@ fn spline_pchip_interp2() {
         TOL,
     );
     close(&real(&mut e, "pchip([0 1],[0 1],[0.5 2])"), &[0.5, 2.], TOL);
-    assert!(error(&mut e, "spline([0 1 2],[0 1 4]);").contains("piecewise polynomial"));
+    // spline(x, y) returns the pp structure (the parabola through three points).
+    close(
+        &real(&mut e, "ppval(spline([0 1 2],[0 1 4]), [0.5 3])"),
+        &[0.25, 9.],
+        TOL,
+    );
     close(
         &real(&mut e, "interp2([1 2 3;4 5 6;7 8 9],[1.5 2.5],[1.5 2.5])"),
         &[3., 7.],
@@ -488,9 +493,11 @@ fn fzero_finds_brackets_and_roots() {
     assert_eq!(e.variables["flag"].data(), &[1.]);
     assert!(error(&mut e, "fzero('fsinx',[1 2]);").contains("must differ in sign"));
     assert!(error(&mut e, "fzero('fcos');").contains("Not enough input arguments"));
-    let out = e.execute("fzero('fcos',0.5,'options');").unwrap();
+    let out = e
+        .execute("fzero('fcos',0.5,optimset('Display','off'));")
+        .unwrap();
     assert!(
-        out.output.iter().any(|l| l.contains("ignores options")),
+        !out.output.iter().any(|l| l.contains("Note:")),
         "{:?}",
         out.output
     );

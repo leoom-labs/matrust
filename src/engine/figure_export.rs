@@ -79,11 +79,13 @@ impl Engine {
         }
         #[cfg(feature = "plot-export")]
         {
+            // Raster saveas uses the figure Position size in pixels (1:1).
+            let size = figure.export_size_pixels();
             crate::export::export_figure_as_in_theme_with_cancel(
                 figure,
                 &path,
                 &format,
-                [1440, 840],
+                size,
                 self.graphics_theme_context(),
                 &self.cancel,
             )

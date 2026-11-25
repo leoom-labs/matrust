@@ -920,7 +920,9 @@ x =
 
 x =
 
-                    3                    3                    3
+  uint64
+
+  3  3  3
 
 @@CLASS uint64 [1 3]
 @@END
@@ -928,7 +930,9 @@ x =
 
 x =
 
-                    3
+  uint64
+
+   3
 
 @@CLASS uint64 [1 1]
 @@END
@@ -1144,7 +1148,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -1155,7 +1161,9 @@ ERR Specified key type does not match the type expected for this container.
 
 x =
 
-           3
+  int32
+
+   3
 
 @@CLASS int32 [1 1]
 @@END
@@ -1201,7 +1209,9 @@ x =
 
 x =
 
-                    0
+  uint64
+
+   0
 
 @@CLASS uint64 [1 1]
 @@END

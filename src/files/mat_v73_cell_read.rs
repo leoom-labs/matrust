@@ -1,7 +1,7 @@
 //! Character/cell reference schema; bounded metadata traversal precedes payload allocation.
 use super::{MatVariable, h, load_matrix, metadata, tiles};
 use crate::{Array, CellArray, CharacterRow, Result, dsp::check_cancel};
-use hdf5::{Dataset, File, ObjectReference, ObjectReference1, ReferencedObject};
+use hdf5::{Dataset, File, Location, ObjectReference, ObjectReference1, ReferencedObject};
 use std::{
     collections::BTreeMap,
     sync::{Arc, atomic::AtomicBool},
@@ -15,7 +15,7 @@ const MAX_VISITS: usize = 262144;
 // The locked hdf5-metno 0.15 ObjectReference1 is repr(transparent) over
 // hobj_ref_t (the legacy file-local object address), with its exact H5Type.
 // Read its scalar address only; never dereference this address as a pointer.
-fn key(file: &File, dataset: &Dataset) -> Result<u64> {
+fn key(file: &File, dataset: &Location) -> Result<u64> {
     if h(dataset.loc_info())?.fileno != h(file.loc_info())?.fileno {
         return Err("Cell reference belongs to another HDF5 file".into());
     }
@@ -70,15 +70,24 @@ fn children(
     check_cancel(cancel)?;
     Ok(references)
 }
-fn target(file: &File, reference: &ObjectReference1) -> Result<Dataset> {
+fn target(file: &File, reference: &ObjectReference1) -> Result<Location> {
     match h(file.dereference(reference))? {
         ReferencedObject::Dataset(target) => {
             if h(target.loc_info())?.fileno != h(file.loc_info())?.fileno {
                 return Err("External cell reference".into());
             }
-            Ok(target)
+            h(target.as_location())
         }
-        _ => Err("Cell reference must target a dataset".into()),
+        ReferencedObject::Group(group) => {
+            if super::class(&group).ok().as_deref() != Some("struct") {
+                return Err("Cell reference must target a dataset".into());
+            }
+            if h(group.loc_info())?.fileno != h(file.loc_info())?.fileno {
+                return Err("External cell reference".into());
+            }
+            h(group.as_location())
+        }
+        _ => Err("Cell reference must target a dataset or struct group".into()),
     }
 }
 
@@ -86,8 +95,12 @@ fn target(file: &File, reference: &ObjectReference1) -> Result<Dataset> {
 // MatRust has no null cell-slot value: import explicitly maps this exact sentinel
 // to the same immutable numeric 0x0 value used by CellArray::empty. This is an
 // importer policy, not evidence of MATLAB engine class/size behavior.
-fn node_metadata(dataset: &Dataset, depth: usize) -> Result<MatVariable> {
-    let mut info = metadata(dataset, "cell child")?;
+fn node_metadata(location: &Location, depth: usize) -> Result<MatVariable> {
+    let mut info = location_metadata(location, "cell child")?;
+    if h(location.loc_type())? != hdf5::LocationType::Dataset || info.class == "struct" {
+        return Ok(info);
+    }
+    let dataset = &h(location.as_dataset())?;
     if info.class != "canonical empty" || depth == 0 {
         return Ok(info);
     }
@@ -110,6 +123,176 @@ fn node_metadata(dataset: &Dataset, depth: usize) -> Result<MatVariable> {
     info.decoded_bytes = Some(0);
     info.unavailable = None;
     Ok(info)
+}
+
+// MATLAB_fields is a vlen sequence of fixed one-byte ASCII strings per name.
+fn struct_fields(location: &Location) -> Result<Vec<String>> {
+    use hdf5::types::{FixedAscii, TypeDescriptor, VarLenArray};
+    let attr = h(location.attr("MATLAB_fields"))?;
+    if attr.ndim() != 1
+        || attr.size() > crate::struct_array::MAX_FIELDS
+        || h(h(attr.dtype())?.to_descriptor())?
+            != TypeDescriptor::VarLenArray(Box::new(TypeDescriptor::FixedAscii(1)))
+    {
+        return Err("Invalid MATLAB_fields attribute".into());
+    }
+    let fields = h(attr.read_raw::<VarLenArray<FixedAscii<1>>>())?;
+    let mut names = Vec::with_capacity(fields.len());
+    for field in fields {
+        if field.is_empty() || field.len() > crate::struct_array::MAX_FIELD_NAME {
+            return Err("Invalid MAT struct field name length".into());
+        }
+        let bytes: Vec<_> = field
+            .iter()
+            .flat_map(|c| c.as_bytes().iter().copied())
+            .collect();
+        let name = String::from_utf8(bytes).map_err(|_| "Invalid MAT struct field name")?;
+        if !crate::files::valid_name(&name) || names.contains(&name) {
+            return Err("Invalid or duplicate MAT struct field name".into());
+        }
+        names.push(name);
+    }
+    Ok(names)
+}
+fn field_is_references(dataset: &Dataset) -> Result<bool> {
+    Ok(
+        !h(dataset.attr_names())?.iter().any(|n| n == "MATLAB_class")
+            && h(h(dataset.dtype())?.to_descriptor())?
+                == hdf5::types::TypeDescriptor::Reference(hdf5::types::Reference::Object),
+    )
+}
+fn field_location(group: &hdf5::Group, name: &str) -> Result<Location> {
+    // Inspect links before opening: soft/external links must never be followed.
+    let mut hard = false;
+    h(group.iter_visit_default(|entry, link| {
+        if entry == name {
+            hard = link.link_type == hdf5::LinkType::Hard;
+        }
+        Ok(())
+    }))?;
+    if !hard {
+        return Err("External, soft or missing struct field links are not supported".into());
+    }
+    match h(group.loc_type_by_name(name))? {
+        hdf5::LocationType::Dataset => h(h(group.dataset(name))?.as_location()),
+        hdf5::LocationType::Group => h(h(group.group(name))?.as_location()),
+        _ => Err("Unsupported struct field object".into()),
+    }
+}
+pub(super) fn location_metadata(location: &Location, name: &str) -> Result<MatVariable> {
+    if h(location.loc_type())? == hdf5::LocationType::Dataset {
+        return metadata(&h(location.as_dataset())?, name);
+    }
+    let group = h(location.as_group())?;
+    if super::class(location).ok().as_deref() != Some("struct") {
+        return Ok(MatVariable {
+            name: name.into(),
+            dimensions: vec![],
+            class: "group".into(),
+            complex: false,
+            decoded_bytes: None,
+            unavailable: Some("Structured and sparse HDF5 variables are not supported".into()),
+            compressed: false,
+        });
+    }
+    let names = struct_fields(location)?;
+    if group.len() != names.len() as u64 {
+        return Err("MAT struct members do not match MATLAB_fields".into());
+    }
+    let mut shape = None;
+    let mut direct = false;
+    for field in &names {
+        let child = field_location(&group, field)?;
+        if h(child.loc_type())? == hdf5::LocationType::Dataset
+            && field_is_references(&h(child.as_dataset())?)?
+        {
+            let ds = h(child.as_dataset())?;
+            super::storage(&ds)?;
+            let mut dims = ds.shape();
+            dims.reverse();
+            if dims.len() != 2
+                || dims.iter().any(|&d| d > MAX_SLOTS)
+                || dims[0].checked_mul(dims[1]).is_none_or(|n| n > MAX_SLOTS)
+            {
+                return Err("Struct dimensions exceed 65536 elements or two dimensions".into());
+            }
+            if shape.as_ref().is_some_and(|old| old != &dims) {
+                return Err("Struct field reference shapes differ".into());
+            }
+            shape = Some(dims);
+        } else {
+            direct = true;
+        }
+    }
+    if direct && shape.is_some() {
+        return Err("Mixed direct and reference struct fields".into());
+    }
+    let dimensions = shape.unwrap_or_else(|| vec![1, 1]);
+    crate::StructArray::slot_total(dimensions[0] * dimensions[1], names.len())?;
+    Ok(MatVariable {
+        name: name.into(),
+        dimensions,
+        class: "struct".into(),
+        complex: false,
+        decoded_bytes: None,
+        unavailable: None,
+        compressed: false,
+    })
+}
+fn container_charge(location: &Location, info: &MatVariable) -> Result<(usize, usize)> {
+    let count = info.dimensions[0] * info.dimensions[1];
+    if info.class == "struct" {
+        let names = struct_fields(location)?;
+        let slots = crate::StructArray::slot_total(count, names.len())?;
+        Ok((
+            slots * crate::containers::SLOT + names.iter().map(String::len).sum::<usize>(),
+            slots.max(count),
+        ))
+    } else {
+        Ok((count * crate::containers::SLOT, count))
+    }
+}
+fn container_children(
+    file: &File,
+    location: &Location,
+    info: &MatVariable,
+    cancel: &AtomicBool,
+) -> Result<Vec<ObjectReference1>> {
+    if info.class != "struct" {
+        return children(file, &h(location.as_dataset())?, info, cancel);
+    }
+    let names = struct_fields(location)?;
+    let count = info.dimensions[0] * info.dimensions[1];
+    let slots = crate::StructArray::slot_total(count, names.len())?;
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let group = h(location.as_group())?;
+    let mut fields = Vec::with_capacity(names.len());
+    for name in &names {
+        check_cancel(cancel)?;
+        let child = field_location(&group, name)?;
+        let refs = if h(child.loc_type())? == hdf5::LocationType::Dataset
+            && field_is_references(&h(child.as_dataset())?)?
+        {
+            let ds = h(child.as_dataset())?;
+            super::storage(&ds)?;
+            children(file, &ds, info, cancel)?
+        } else {
+            vec![h(file.reference(&child.name()))?]
+        };
+        if refs.len() != count {
+            return Err("Struct field reference count changed".into());
+        }
+        fields.push(refs);
+    }
+    let mut children = Vec::with_capacity(slots);
+    for e in 0..count {
+        for field in &fields {
+            children.push(field[e]);
+        }
+    }
+    Ok(children)
 }
 
 #[derive(Default)]
@@ -178,7 +361,7 @@ impl<'a> Inspector<'a> {
 
     pub(super) fn inspect(
         &mut self,
-        dataset: &Dataset,
+        dataset: &Location,
         cancel: &AtomicBool,
         visits: &mut usize,
     ) -> Result<usize> {
@@ -250,7 +433,7 @@ impl<'a> Inspector<'a> {
     #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
-        dataset: &Dataset,
+        dataset: &Location,
         reference: Option<u64>,
         depth: usize,
         active: &mut Vec<u64>,
@@ -272,7 +455,7 @@ impl<'a> Inspector<'a> {
         if let Some(reason) = &info.unavailable {
             return Err(reason.clone());
         }
-        let (address, height) = if info.class != "cell" {
+        let (address, height) = if !matches!(info.class.as_str(), "cell" | "struct") {
             budget.charge(
                 usize::try_from(info.storage_bytes().ok_or("Unknown cell child size")?)
                     .map_err(|_| "Cell child size overflow")?,
@@ -295,20 +478,15 @@ impl<'a> Inspector<'a> {
             if reference.is_some_and(|expected| expected != address) {
                 return Err("MAT cell reference identity changed during inspection".into());
             }
-            let count = info.dimensions[0] * info.dimensions[1];
-            budget.charge(
-                count
-                    .checked_mul(crate::containers::SLOT)
-                    .ok_or("Cell slot byte overflow")?,
-                count,
-            )?;
+            let (bytes, count) = container_charge(dataset, &info)?;
+            budget.charge(bytes, count)?;
             active.push(address);
             #[cfg(test)]
             {
                 self.probe.reference_reads += usize::from(count != 0);
             }
             let mut height = 1;
-            for reference in children(self.file, dataset, &info, cancel)? {
+            for reference in container_children(self.file, dataset, &info, cancel)? {
                 check_cancel(cancel)?;
                 let address = reference_address(&reference);
                 let summary = match self.hit(address, depth + 1, active, budget, visits, cancel)? {
@@ -378,9 +556,9 @@ impl<'a> Loader<'a> {
             memo: BTreeMap::new(),
         }
     }
-    pub(super) fn load(&mut self, dataset: &Dataset, expected: &MatVariable) -> Result<Array> {
-        let mut actual = metadata(dataset, &expected.name)?;
-        if actual.class == "cell" && actual.unavailable.is_none() {
+    pub(super) fn load(&mut self, dataset: &Location, expected: &MatVariable) -> Result<Array> {
+        let mut actual = location_metadata(dataset, &expected.name)?;
+        if matches!(actual.class.as_str(), "cell" | "struct") && actual.unavailable.is_none() {
             let mut visits = 0;
             actual.decoded_bytes =
                 Some(self.inspector.inspect(dataset, self.cancel, &mut visits)? as u64);
@@ -409,7 +587,7 @@ impl<'a> Loader<'a> {
     }
     fn node(
         &mut self,
-        dataset: &Dataset,
+        dataset: &Location,
         depth: usize,
         active: &mut Vec<u64>,
         remaining: &mut usize,
@@ -434,9 +612,13 @@ impl<'a> Loader<'a> {
             return Err(reason.clone());
         }
         let rows = info.dimensions[0];
-        let cols = info.dimensions[1];
-        let charge = if info.class == "cell" {
-            rows * cols * crate::containers::SLOT
+        let cols = if info.class == "char" {
+            crate::files::checked_dimension_product(&info.dimensions[1..])?
+        } else {
+            info.dimensions[1]
+        };
+        let charge = if matches!(info.class.as_str(), "cell" | "struct") {
+            container_charge(dataset, &info)?.0
         } else {
             usize::try_from(info.storage_bytes().ok_or("Unknown leaf size")?)
                 .map_err(|_| "Leaf size overflow")?
@@ -447,19 +629,24 @@ impl<'a> Loader<'a> {
         let value = match info.class.as_str() {
             "canonical empty" => Array::Numeric(crate::Matrix::from_column_vec(0, 0, Vec::new())?),
             "char" => {
+                let dataset = &h(dataset.as_dataset())?;
                 let mut units = vec![0u16; rows * cols];
-                tiles::<u16>(dataset, rows, cols, self.cancel, |offset, values| {
-                    units[offset..offset + values.len()].copy_from_slice(values);
-                    Ok(())
-                })?;
-                Array::Character(CharacterRow::from_column_major(
-                    rows,
-                    cols,
-                    units,
-                    self.cancel,
-                )?)
+                if info.dimensions.len() > 2 {
+                    check_cancel(self.cancel)?;
+                    units = h(dataset.read_raw::<u16>())?;
+                    check_cancel(self.cancel)?;
+                } else {
+                    tiles::<u16>(dataset, rows, cols, self.cancel, |offset, values| {
+                        units[offset..offset + values.len()].copy_from_slice(values);
+                        Ok(())
+                    })?;
+                }
+                Array::Character(
+                    CharacterRow::from_column_major(rows, cols, units, self.cancel)?
+                        .with_dims(&info.dimensions)?,
+                )
             }
-            "cell" => {
+            "cell" | "struct" => {
                 if depth >= 16 {
                     return Err("Cell nesting exceeds 16 levels".into());
                 }
@@ -468,15 +655,25 @@ impl<'a> Loader<'a> {
                 slots
                     .try_reserve_exact(rows * cols)
                     .map_err(|_| "Cannot allocate cell slots")?;
-                for reference in children(self.file, dataset, &info, self.cancel)? {
+                for reference in container_children(self.file, dataset, &info, self.cancel)? {
                     check_cancel(self.cancel)?;
                     let child = target(self.file, &reference)?;
                     slots.push(self.node(&child, depth + 1, active, remaining)?);
                 }
                 active.pop();
-                Array::Cell(CellArray::from_shared(rows, cols, slots, self.cancel)?)
+                if info.class == "struct" {
+                    Array::Struct(crate::StructArray::from_slots(
+                        rows,
+                        cols,
+                        struct_fields(dataset)?,
+                        slots,
+                        self.cancel,
+                    )?)
+                } else {
+                    Array::Cell(CellArray::from_shared(rows, cols, slots, self.cancel)?)
+                }
             }
-            _ => load_matrix(dataset, &info, self.cancel, true)?,
+            _ => load_matrix(&h(dataset.as_dataset())?, &info, self.cancel, true)?,
         };
         if self.memo.len() >= MAX_OBJECTS {
             return Err("Selected cell objects exceed 75536".into());

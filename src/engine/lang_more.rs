@@ -1,6 +1,9 @@
 //! Language/workspace utilities. Array payloads stay shared; saved
 //! frames contain only the existing immutable array handles and bounded maps.
-use super::{Engine, Execution, Value};
+use super::{
+    Engine, Execution, Value,
+    clear_variables::{clear_glob_matches, is_variable_glob, variable_glob},
+};
 use crate::{
     Array, CellArray, CharacterRow, ComplexMatrix, LogicalMatrix, Matrix, Result, StructArray,
     syntax::{self, Expr},
@@ -50,7 +53,7 @@ impl Engine {
                 .collect()
         };
     }
-    fn lng_outputs(
+    pub(super) fn lng_outputs(
         &mut self,
         name: &str,
         args: &[Value],
@@ -581,6 +584,7 @@ pub(super) struct LngWorkspace {
 }
 #[derive(Clone, Default)]
 struct LngContext {
+    frame: Option<Arc<super::user_functions::nested::Frame>>,
     globals: BTreeSet<String>,
     persistent: BTreeSet<String>,
     /// `path::name` of the running function; empty in the base workspace.
@@ -590,6 +594,9 @@ struct LngContext {
     persistent_key: Option<String>,
     input_names: Vec<String>,
     arguments: Option<(usize, usize)>,
+    /// Set while the workspace waits for a call it made: the functions its
+    /// code sees (its file, local functions and import list).
+    lookup: super::user_functions::LookupContext,
 }
 #[derive(Clone)]
 struct LngCleanup {
@@ -606,6 +613,8 @@ pub(super) struct LngState {
     context: LngContext,
     /// Argument names of the call about to enter a user function.
     pub pending_names: Vec<String>,
+    /// Index of the first `Name=Value` argument in the pending call, if any.
+    pub pending_nv_start: Option<usize>,
     /// Argument names of the builtin call being dispatched (celldisp).
     pub call_names: Vec<String>,
     pub last_error: (String, String),
@@ -617,6 +626,14 @@ pub(super) struct LngState {
 }
 
 impl LngState {
+    pub(super) fn nested_frame(&self) -> &Option<Arc<super::user_functions::nested::Frame>> {
+        &self.context.frame
+    }
+    pub(super) fn nested_frame_mut(
+        &mut self,
+    ) -> &mut Option<Arc<super::user_functions::nested::Frame>> {
+        &mut self.context.frame
+    }
     /// Stored workspaces and cleanup callbacks are roots for handle objects.
     pub(super) fn obj_roots(&self) -> impl Iterator<Item = &Array> {
         self.globals
@@ -629,8 +646,28 @@ impl LngState {
             )
             .chain(self.cleanup.values().map(|cleanup| &cleanup.task))
     }
+    /// The lookup contexts of the workspaces that wait for the running
+    /// function, innermost first.
+    pub(super) fn ctx_parked(&self) -> impl Iterator<Item = &super::user_functions::LookupContext> {
+        self.frames.iter().rev().map(|(_, context)| &context.lookup)
+    }
 }
 
+/// The persistent store entry `key` (`path::name::hash`) is the one of the
+/// function running in `context`. Before its first `persistent` statement
+/// that is any entry of the same function.
+fn lng_owns(context: &LngContext, key: &str) -> bool {
+    match &context.persistent_key {
+        Some(own) => own == key,
+        None => {
+            !context.function.is_empty()
+                && key
+                    .strip_prefix(context.function.as_str())
+                    .and_then(|rest| rest.strip_prefix("::"))
+                    .is_some_and(|hash| !hash.contains("::"))
+        }
+    }
+}
 fn lng_number(n: f64) -> Value {
     Value::Matrix(Matrix::scalar(n))
 }
@@ -651,27 +688,43 @@ fn lng_tag(s: &StructArray) -> Option<&'static str> {
         [1.] => Some("MException"),
         [2.] => Some("onCleanup"),
         [3.] => Some("inline"),
+        [5.] => Some("strel"),
+        [super::wavelet::CWT_BANK_TAG] => Some("cwtfilterbank"),
+        [super::linear_algebra2::DECOMPOSITION_TAG] => Some("decomposition"),
         _ => None,
     }
 }
 /// Field names a language object shows; the facade's tag fields stay hidden.
-fn lng_public_fields(s: &StructArray) -> Vec<String> {
+pub(super) fn lng_public_fields(s: &StructArray) -> Vec<String> {
     s.field_names()
         .iter()
         .filter(|n| {
             !matches!(
                 n.as_str(),
-                TAG | OBJECT_ID | CAUGHT | super::objects::OBJ_REPORT_HEADER
-            )
+                TAG | OBJECT_ID
+                    | CAUGHT
+                    | super::objects::OBJ_REPORT_HEADER
+                    | super::linear_algebra2::DECOMPOSITION_MATRIX
+            ) && !super::classdef::hidden_field(n)
         })
         .cloned()
         .collect()
 }
-/// class() of a value, naming the struct-backed language objects.
-pub(super) fn lng_class(a: &Array) -> &'static str {
+/// class() of a value, naming the struct-backed language objects and the
+/// objects of user classdef files.
+pub(super) fn lng_class(a: &Array) -> std::borrow::Cow<'static, str> {
+    if let Some(name) = super::control_lti::class(a) {
+        return name.into();
+    }
+    if let Some(name) = super::sysid::class(a) {
+        return name.into();
+    }
+    if let Some(name) = super::classdef::object_class(a) {
+        return name.into();
+    }
     match a {
-        Array::Struct(s) => lng_tag(s).unwrap_or("struct"),
-        a => a.class(),
+        Array::Struct(s) => lng_tag(s).unwrap_or("struct").into(),
+        a => a.class().into(),
     }
 }
 fn lng_id(s: &StructArray) -> Option<u64> {
@@ -682,6 +735,14 @@ fn lng_id(s: &StructArray) -> Option<u64> {
 }
 
 impl LngWorkspace {
+    fn lng_take(&mut self, name: &str) -> Option<Array> {
+        self.numeric
+            .remove(name)
+            .map(Array::Numeric)
+            .or_else(|| self.logical.remove(name).map(Array::Logical))
+            .or_else(|| self.complex.remove(name).map(Array::Complex))
+            .or_else(|| self.containers.remove(name))
+    }
     fn lng_put(&mut self, name: String, a: Array) {
         self.numeric.remove(&name);
         self.logical.remove(&name);
@@ -713,7 +774,7 @@ impl LngWorkspace {
 impl Engine {
     pub(super) fn lng_enter(
         &mut self,
-        caller: LngWorkspace,
+        mut caller: LngWorkspace,
         function: String,
         input_names: Vec<String>,
     ) {
@@ -725,9 +786,47 @@ impl Engine {
                 ..Default::default()
             },
         );
+        if let Some(f) = &context.frame {
+            self.nested.park(f, |name| caller.lng_take(name));
+        }
         context.arguments = self.functions.arguments;
+        // The caller's scope and import list are still the running ones here.
+        context.lookup = self.functions.ctx_snapshot();
         self.lg3_enter(&self.functions.lng.context.function.clone());
         self.functions.lng.frames.push((caller, context));
+    }
+    /// `clear all`: drop every global binding and the global store.
+    pub(super) fn lng_clear_all_globals(&mut self) {
+        self.functions.lng.globals.clear();
+        self.functions.lng.context.globals.clear();
+        for (frame, context) in &mut self.functions.lng.frames {
+            let names: Vec<String> = context.globals.iter().cloned().collect();
+            for name in &names {
+                frame.lng_remove(name);
+            }
+            context.globals.clear();
+        }
+    }
+    /// The current workspace was cleared. The global store keeps its values;
+    /// a later `global name` loads them again.
+    pub(super) fn lng_unbind_globals(&mut self) {
+        self.functions.lng.context.globals.clear();
+    }
+    /// `clear all` and `clear functions`: drop the persistent variables of
+    /// every function that is not running. A running function (the current
+    /// workspace and every workspace waiting for a call) is not cleared
+    /// (MathWorks clear page): its names, values and store entry stay.
+    pub(super) fn lng_clear_all_persistents(&mut self) {
+        let LngState {
+            persistent,
+            frames,
+            context,
+            ..
+        } = &mut self.functions.lng;
+        let running: Vec<&LngContext> = std::iter::once(&*context)
+            .chain(frames.iter().map(|(_, context)| context))
+            .collect();
+        persistent.retain(|key, _| running.iter().any(|context| lng_owns(context, key)));
     }
     /// Names held in the global store (declared anywhere), for `clearvars -global`.
     pub(super) fn lg3_global_names(&self) -> Vec<String> {
@@ -836,9 +935,11 @@ impl Engine {
         keep: &[Value],
     ) -> (LngWorkspace, Result<()>) {
         let sync = self.lng_sync();
+        drop(super::user_functions::nested::suspend(self));
         self.clear_arrays();
         let cleanup = self.lng_sweep_with(out, keep);
-        let (mut caller, context) = self.functions.lng.frames.pop().expect("function frame");
+        let (mut caller, mut context) = self.functions.lng.frames.pop().expect("function frame");
+        context.lookup = Default::default();
         self.lg3_leave();
         for name in &context.globals {
             if let Some(a) = self.functions.lng.globals.get(name) {
@@ -855,6 +956,9 @@ impl Engine {
                     caller.lng_put(name.clone(), a.clone());
                 }
             }
+        }
+        if let Some(f) = &context.frame {
+            self.nested.activate(f, |name, a| caller.lng_put(name, a));
         }
         self.functions.lng.context = context;
         (caller, sync.and(cleanup))
@@ -982,7 +1086,12 @@ impl Engine {
         self.functions.lng.thrown_stack = None;
         self.functions.lng.thrown_object = None;
     }
-    fn lng_warn(&mut self, message: &str, identifier: &str, out: &mut Execution) -> Result<()> {
+    pub(super) fn lng_warn(
+        &mut self,
+        message: &str,
+        identifier: &str,
+        out: &mut Execution,
+    ) -> Result<()> {
         self.lang_utils_call(
             "warning",
             &[Value::Text(identifier.into()), Value::Text(message.into())],
@@ -1001,6 +1110,8 @@ impl Engine {
             && e.indexed_target.is_none()
             && let Expr::Name(name) = &e.expr
             && let Some(a) = self.array(name)
+            // A user object's display may run its class's disp method.
+            && !super::classdef::is_object(&a)
         {
             if !e.quiet {
                 self.emit(out, self.display_text(name, &a)?)?;
@@ -1066,7 +1177,29 @@ impl Engine {
                     }
                     return Ok(true);
                 }
+                if let [n] = names.as_slice()
+                    && n == "import"
+                    && !self.contains_array(n)
+                {
+                    self.imp_clear_command()?;
+                    return Ok(true);
+                }
+                // `clear all`, `clear -all`, `clear functions`, `clear classes`,
+                // `clear java`, `clear mex`. A variable of that name still wins.
+                if let [n] = names.as_slice()
+                    && !self.contains_array(n)
+                    && super::clear_variables::is_clear_mode(n)
+                {
+                    self.clear_variables_command(&[Expr::String(n.clone())], out)?;
+                    return Ok(true);
+                }
+                let mut globs = Vec::new();
                 for n in &names {
+                    if is_variable_glob(n) {
+                        self.check_cancel()?;
+                        globs.push(variable_glob(n)?);
+                        continue;
+                    }
                     Self::validate_workspace_name(n)?;
                     if !self.contains_array(n)
                         && matches!(
@@ -1075,23 +1208,29 @@ impl Engine {
                         )
                     {
                         return Err(format!(
-                            "clear {n} is unsupported; select explicit variables or a function name"
+                            "clear {n} must be used alone unless {n} is a workspace variable"
                         ));
                     }
                     if !self.contains_array(n) && n == "variables" && names.len() != 1 {
                         return Err("clear variables must be used alone unless variables is a workspace variable".into());
                     }
                 }
+                let matched = clear_glob_matches(self, &globs)?;
+                self.check_cancel()?;
                 let mut variable_args = Vec::new();
                 for (arg, n) in args.iter().zip(&names) {
+                    if is_variable_glob(n) {
+                        continue;
+                    }
                     let function =
                         !self.contains_array(n) && self.functions.contains_retained_function(n);
                     if !self.contains_array(n) {
                         self.functions.lng_forget(n);
-                        self.functions
-                            .lng
-                            .persistent
-                            .retain(|key, _| key.rsplit("::").nth(1) != Some(n.as_str()));
+                        self.functions.lng.persistent.retain(|key, _| {
+                            !key.rsplit("::")
+                                .nth(1)
+                                .is_some_and(|qualified| qualified.split('/').any(|part| part == n))
+                        });
                     }
                     if !function {
                         variable_args.push(arg.clone());
@@ -1099,7 +1238,10 @@ impl Engine {
                 }
                 self.lng_sync()?;
                 if args.is_empty() || !variable_args.is_empty() {
-                    self.clear_variables_command(&variable_args)?;
+                    self.clear_variables_command(&variable_args, out)?;
+                }
+                for n in matched {
+                    self.remove_array(&n);
                 }
                 self.functions.lng.context.globals.retain(|n| {
                     self.variables.contains_key(n)
@@ -1126,11 +1268,40 @@ impl Engine {
                 }
                 Ok(true)
             }
+            "whos" if !args.is_empty() => {
+                if self.resolve_function(name)?.is_some() {
+                    return Ok(false);
+                }
+                let values = super::string_class::arguments(self, name, args, out)?;
+                if values
+                    .first()
+                    .and_then(|v| self.text_value(v.clone()).ok())
+                    .is_some_and(|s| s == "-file")
+                {
+                    super::file_commands::whos_file(self, &values, out)?;
+                } else {
+                    let patterns = values
+                        .into_iter()
+                        .map(|v| self.text_value(v))
+                        .collect::<Result<Vec<_>>>()?;
+                    if patterns.iter().any(|p| p.starts_with('-')) {
+                        return Err(
+                            "whos supports wildcard patterns and '-file'; other options are unsupported.".into(),
+                        );
+                    }
+                    let regexes = self.lng_wildcard_regexes(&patterns)?;
+                    let text = self.whos_workspace(Some(&regexes))?;
+                    if !text.is_empty() {
+                        self.emit(out, text)?;
+                    }
+                }
+                Ok(true)
+            }
             "who" | "evalin" | "lasterr" | "lastwarn" => {
                 if self.resolve_function(name)?.is_some() {
                     return Ok(false);
                 }
-                let values = self.function_arguments(args, None, out)?;
+                let values = super::string_class::arguments(self, name, args, out)?;
                 match name.as_str() {
                     "who" => {
                         let v = self.lng_who(&values)?;
@@ -1168,6 +1339,7 @@ impl Engine {
         }
     }
     fn lng_swap_frame(&mut self, index: usize) {
+        self.functions.lng.context.frame = super::user_functions::nested::suspend(self);
         let arguments = self.functions.arguments;
         let (w, c) = &mut self.functions.lng.frames[index];
         std::mem::swap(&mut self.variables, &mut w.numeric);
@@ -1177,6 +1349,14 @@ impl Engine {
         std::mem::swap(&mut self.functions.lng.context, c);
         self.functions.arguments = self.functions.lng.context.arguments;
         c.arguments = arguments;
+        // The functions that workspace's code sees come with its variables
+        // (its file, local functions, private folder and import list); the
+        // running function's wait in the frame and return the same way.
+        let lookup = std::mem::take(&mut self.functions.lng.context.lookup);
+        let lookup = self.functions.ctx_replace(lookup);
+        self.functions.lng.frames[index].1.lookup = lookup;
+        let frame = self.functions.lng.context.frame.take();
+        super::user_functions::nested::resume(self, frame);
     }
     /// Assigning `object.name = ...` to a language object is an error: its
     /// public properties are read-only and it has no others.
@@ -1224,6 +1404,20 @@ impl Engine {
         };
         Ok(Some(text.replacen(&marker, &(marker.clone() + &header), 1)))
     }
+    pub(in crate::engine) fn eval_in_base(
+        &mut self,
+        code: &str,
+        out: &mut Execution,
+    ) -> Result<()> {
+        self.lng_in_workspace(
+            &[Value::Text("base".into()), Value::Text(code.into())],
+            false,
+            false,
+            out,
+        )?;
+        Ok(())
+    }
+
     fn lng_in_workspace(
         &mut self,
         args: &[Value],
@@ -1260,16 +1454,24 @@ impl Engine {
             }
             self.lng_swap_frame(index);
         }
+        // 'base' is the Command Window even while a script runs in the base
+        // workspace; 'caller' keeps the caller's file and import list.
+        let script = (scope == "base" && index.is_some()).then(|| {
+            let base = self.functions.ctx_snapshot().ctx_base();
+            self.functions.ctx_replace(base)
+        });
         let result = if assign {
-            args[2]
-                .clone()
-                .array(&self.cancel)
+            super::user_functions::nested::check_write(self, &name)
+                .and_then(|()| args[2].clone().array(&self.cancel))
                 .and_then(|a| self.assign_workspace_array(&name, a, true, out))
                 .map(|()| Value::Void)
         } else {
-            self.langx_eval(&args[1..], requested, out)
+            super::profiler::eval_text(self, |engine| engine.langx_eval(&args[1..], requested, out))
         };
         let sync = self.lng_sync();
+        if let Some(script) = script {
+            self.functions.ctx_replace(script);
+        }
         if let Some(index) = index {
             self.lng_swap_frame(index);
         }
@@ -1513,7 +1715,7 @@ impl Engine {
         } else {
             &[]
         };
-        let args = self.function_arguments(args, None, out)?;
+        let args = super::string_class::arguments(self, name, args, out)?;
         let values = self.lng_outputs(name, &args, targets.len(), out)?;
         self.charge_function_outputs(&values)?;
         Ok(Some(values))
@@ -1525,6 +1727,9 @@ impl Engine {
         out: &mut Execution,
     ) -> Result<Option<Value>> {
         self.check_cancel()?;
+        if let Some(value) = super::arguments::call_validator(self, name, args, out)? {
+            return Ok(Some(value));
+        }
         let value = match name {
             "evalc" | "lasterr" | "lastwarn" | "sscanf" | "strread" | "textread" => self.lng_outputs(name, args, 1, out)?.remove(0),
             "evalin" => self.lng_in_workspace(args, false, true, out)?,
@@ -1620,6 +1825,12 @@ impl Engine {
             }
             "properties" => {
                 lng_arity(args, 1, 1)?;
+                if let Value::Container(Array::Graphics(handles)) = &args[0]
+                    && handles.len() == 1
+                    && handles.scalar_handle()?.kind() == crate::GraphicsKind::Root
+                {
+                    return Ok(None);
+                }
                 if self.lng_text(&args[0])? != "MException" { return Err("Only MException properties are supported.".into()); }
                 self.lng_string_cell(["identifier", "message", "cause", "stack"].map(String::from).to_vec(), true)?
             }
@@ -1713,7 +1924,17 @@ impl Engine {
                 Value::Text(result)
             }
             "who" => self.lng_who(args)?,
-            "rehash" => { lng_arity(args, 0, 0)?; self.functions.lng_rehash(); Value::Void }
+            "rehash" => {
+                lng_arity(args, 0, 1)?;
+                if let Some(option) = args.first() {
+                    let option = self.text_value(option.clone())?;
+                    if !matches!(option.as_str(), "path" | "toolbox" | "pathreset" | "toolboxreset" | "toolboxcache") {
+                        return Err(format!("rehash: unknown option '{option}'"));
+                    }
+                }
+                self.functions.lng_rehash();
+                Value::Void
+            }
             _ => return Ok(None),
         };
         Ok(Some(value))
@@ -1815,6 +2036,7 @@ impl Engine {
                     .function
                     .rsplit("::")
                     .next()
+                    .and_then(|name| name.rsplit('/').next())
                     .filter(|s| !s.is_empty())
                     .unwrap_or("submitted source");
                 slots.push(Arc::new(self.lng_char("")?));
@@ -2004,8 +2226,14 @@ impl Engine {
             return Err("Second input must be a subscript structure.".into());
         };
         let mut value = args[0].clone();
-        for i in 0..s.len() {
+        let mut i = 0;
+        while i < s.len() {
             self.check_cancel()?;
+            // A user object follows its class's property and method rules.
+            if super::classdef::is_object_value(&value) {
+                (value, i) = self.cls_subsref_step(value, s, i, out)?;
+                continue;
+            }
             let kind = self.lng_text(&Value::from(
                 s.get(s.field_index("type").ok_or("Missing type")?, i)?
                     .as_ref()
@@ -2056,6 +2284,7 @@ impl Engine {
                     return Err("Invalid subscript type.".into());
                 };
             }
+            i += 1;
         }
         Ok(value)
     }
@@ -2173,13 +2402,7 @@ impl Engine {
         } else {
             (self.workspace().into_keys().collect(), patterns.as_slice())
         };
-        let regexes = patterns
-            .iter()
-            .map(|p| {
-                let v = self.lng_translate(&Value::Text(p.clone()), "wildcard")?;
-                regex::Regex::new(&format!("^{}$", self.lng_text(&v)?)).map_err(|e| e.to_string())
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let regexes = self.lng_wildcard_regexes(patterns)?;
         self.lng_string_cell(
             names
                 .into_iter()
@@ -2187,5 +2410,64 @@ impl Engine {
                 .collect(),
             false,
         )
+    }
+
+    fn lng_wildcard_regexes(&mut self, patterns: &[String]) -> Result<Vec<regex::Regex>> {
+        patterns
+            .iter()
+            .map(|p| {
+                let v = self.lng_translate(&Value::Text(p.clone()), "wildcard")?;
+                regex::Regex::new(&format!("^{}$", self.lng_text(&v)?)).map_err(|e| e.to_string())
+            })
+            .collect()
+    }
+
+    pub(super) fn whos_workspace(&self, filter: Option<&[regex::Regex]>) -> Result<String> {
+        let mut text = String::new();
+        for (n, m) in self.workspace() {
+            self.check_cancel()?;
+            if let Some(regexes) = filter
+                && !regexes.is_empty()
+                && !regexes.iter().any(|r| r.is_match(&n))
+            {
+                continue;
+            }
+            let line = if m.is_nd() {
+                let size = m
+                    .dims()
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join("x");
+                let class = if m.is_complex() {
+                    "double (complex)".into()
+                } else {
+                    lng_class(&m)
+                };
+                format!("{n:<18} {size:>18} {:>10} bytes  {class}\n", m.bytes())
+            } else {
+                format!(
+                    "{n:<18} {:>6} x {:<6} {:>10} bytes  {}\n",
+                    m.rows(),
+                    m.cols(),
+                    m.bytes(),
+                    if m.is_complex() {
+                        "double (complex)".into()
+                    } else if let Some(class) = super::sparse_fns::whos_class(&m) {
+                        class.into()
+                    } else {
+                        lng_class(&m)
+                    }
+                )
+            };
+            if text.len() + line.len() > 2 * 1024 * 1024 {
+                return Err("Workspace display exceeds 2 MiB".into());
+            }
+            text.push_str(&line);
+        }
+        if text.ends_with('\n') {
+            text.pop();
+        }
+        Ok(text)
     }
 }

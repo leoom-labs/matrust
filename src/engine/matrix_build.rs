@@ -178,12 +178,8 @@ impl Engine {
                 if count > 2 {
                     return Err("Too many output arguments.".into());
                 }
-                let (values, indices) = self.matbuild_cumulative(name == "cummax", args)?;
-                let mut out = vec![values];
-                if count == 2 {
-                    out.push(indices);
-                }
-                Ok(out)
+                let (values, indices) = super::nd_reduce::reduce(self, name, args, count == 2)?;
+                Ok(std::iter::once(values).chain(indices).collect())
             }
             _ => Err(format!("{name} does not support {count} outputs")),
         }
@@ -224,9 +220,7 @@ impl Engine {
     /// Checks `elements` against the statement budget that
     /// `charge_function_outputs` charges after the call.
     fn matbuild_fits(&self, elements: usize) -> Result<()> {
-        if self.evaluated_elements.saturating_add(elements) > 32 * 1024 * 1024 {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-        }
+        self.preflight_elements(elements)?;
         Ok(())
     }
 
@@ -903,7 +897,13 @@ impl Engine {
             return Err("Size inputs must be integers.".into());
         }
         let n = n.max(0.);
-        if n > crate::matrix::MAX_ELEMENTS as f64 {
+        // randperm(n,k) samples in O(k) space: only randperm(n) builds n elements.
+        let n_limit = if args.len() == 2 {
+            9_007_199_254_740_992f64.min(usize::MAX as f64)
+        } else {
+            crate::matrix::MAX_ELEMENTS as f64
+        };
+        if n > n_limit {
             return Err("Matrix exceeds the element limit".into());
         }
         let n = n as usize;
@@ -1167,6 +1167,12 @@ impl Engine {
             return Ok(false);
         }
         match (a, b) {
+            (Array::Str(x), Array::Str(y)) => Ok(x
+                .data()
+                .iter()
+                .zip(y.data())
+                .all(|(a, b)| a.is_some() && a == b)),
+            (Array::Str(_), _) | (_, Array::Str(_)) => Ok(false),
             (Array::Cell(x), Array::Cell(y)) => {
                 for i in 0..x.len() {
                     if !self.matbuild_equal(x.get_linear(i)?, y.get_linear(i)?, depth + 1)? {
@@ -1217,135 +1223,16 @@ impl Engine {
         }
     }
 
-    // ----- cummax / cummin ----------------------------------------------------
-
-    fn matbuild_cumulative(&mut self, maximum: bool, args: &[Value]) -> Result<(Value, Value)> {
-        let who = if maximum { "cummax" } else { "cummin" };
-        let direction = format!(
-            "{} direction must be 'forward' or 'reverse'.",
-            who.to_ascii_uppercase()
-        );
-        arity(args, 1, 3)?;
-        let (rows, cols, re, im, logical) = match &args[0] {
-            Value::Matrix(m) => (m.rows(), m.cols(), m.data().to_vec(), None, false),
-            Value::Logical(l) => {
-                let m = l.to_numeric(&self.cancel)?;
-                (m.rows(), m.cols(), m.data().to_vec(), None, true)
-            }
-            Value::Complex(c) => {
-                let (re, im) = self.matbuild_parts(who, &args[0])?;
-                (c.rows(), c.cols(), re, im, false)
-            }
-            _ => {
-                return Err(format!(
-                    "{} supports only numerical or logical inputs.",
-                    who.to_ascii_uppercase()
-                ));
-            }
-        };
-        let mut dim = None;
-        let mut reverse = false;
-        for (position, extra) in args[1..].iter().enumerate() {
-            if let Value::Text(s) | Value::QuotedString(s) = extra {
-                match s.to_ascii_lowercase().as_str() {
-                    "reverse" => reverse = true,
-                    "forward" => reverse = false,
-                    _ => return Err(direction),
-                }
-            } else if position == 0 {
-                let d = self.matbuild_real(who, extra)?;
-                let d = d.data().first().copied().unwrap_or(f64::NAN);
-                if extra.shape(&self.cancel)? != (1, 1)
-                    || !(d >= 1. && d.fract() == 0. && d < 1.0e9)
-                {
-                    return Err("Dimension argument must be a positive integer scalar within indexing range.".into());
-                }
-                dim = Some(d as usize);
-            } else {
-                return Err(direction);
-            }
-        }
-        let dim = dim.unwrap_or(if rows != 1 { 1 } else { 2 });
-        let mut out_re = re.clone();
-        let mut out_im = im.clone();
-        let mut indices = vec![1.; re.len()];
-        let is_nan = |k: usize| re[k].is_nan() || im.as_ref().is_some_and(|i| i[k].is_nan());
-        // true when element a beats element b (complex: by magnitude, then phase)
-        let better = |a: usize, b: usize| -> bool {
-            let order = match &im {
-                None => re[a].partial_cmp(&re[b]),
-                Some(im) => {
-                    let (ma, mb) = (re[a].hypot(im[a]), re[b].hypot(im[b]));
-                    if ma == mb {
-                        im[a].atan2(re[a]).partial_cmp(&im[b].atan2(re[b]))
-                    } else {
-                        ma.partial_cmp(&mb)
-                    }
-                }
-            };
-            if maximum {
-                order == Some(std::cmp::Ordering::Greater)
-            } else {
-                order == Some(std::cmp::Ordering::Less)
-            }
-        };
-        if dim <= 2 && !re.is_empty() {
-            let (lines, length, step, line_step) = if dim == 1 {
-                (cols, rows, 1, rows)
-            } else {
-                (rows, cols, rows, 1)
-            };
-            for line in 0..lines {
-                self.check_cancel()?;
-                let mut best: Option<usize> = None;
-                let mut at = 0usize;
-                for t in 0..length {
-                    let position = if reverse { length - 1 - t } else { t };
-                    if t == 0 {
-                        at = position;
-                    }
-                    let slot = line * line_step + position * step;
-                    if !is_nan(slot) && best.is_none_or(|b| better(slot, b)) {
-                        best = Some(slot);
-                        at = position;
-                    }
-                    // Until a non-NaN element appears the output keeps the
-                    // element itself, e.g. complex(1,NaN) stays 1+NaNi.
-                    if let Some(b) = best {
-                        out_re[slot] = re[b];
-                        if let (Some(o), Some(i)) = (out_im.as_mut(), im.as_ref()) {
-                            o[slot] = i[b];
-                        }
-                    }
-                    indices[slot] = (at + 1) as f64;
-                }
-            }
-        }
-        let values = match out_im {
-            Some(imag) => self.matbuild_complex_value(
-                rows,
-                cols,
-                out_re
-                    .iter()
-                    .zip(&imag)
-                    .map(|(&a, &b)| Complex64::new(a, b))
-                    .collect(),
-            )?,
-            None if logical => Value::Logical(LogicalMatrix::from_column_vec(
-                rows,
-                cols,
-                out_re.iter().map(|&v| u8::from(v != 0.)).collect(),
-                &self.cancel,
-            )?),
-            None => matrix_value(rows, cols, out_re)?,
-        };
-        Ok((values, matrix_value(rows, cols, indices)?))
-    }
-
     // ----- colon and constants --------------------------------------------------
 
     fn matbuild_colon(&mut self, args: &[Value]) -> Result<Value> {
         arity(args, 2, 3)?;
+        let first = &args[0];
+        let last = &args[args.len() - 1];
+        let step = (args.len() == 3).then(|| &args[1]);
+        if super::indexing::typed_range_operands(first, step, last) {
+            return self.typed_range(first.clone(), step.cloned(), last.clone());
+        }
         let operands = args
             .iter()
             .map(|v| {
@@ -1359,32 +1246,47 @@ impl Engine {
             [a, s, b] => (*a, *s, *b),
             _ => unreachable!("arity checked above"),
         };
-        let (Some(start), Some(step), Some(stop)) = (start, step, stop) else {
-            return empty;
-        };
-        if start.is_nan() || step.is_nan() || stop.is_nan() {
-            return matrix_value(1, 1, vec![f64::NAN]);
-        }
-        let span = (stop - start) / step;
-        if step == 0. || span < 0. {
-            return empty;
-        }
-        if start.is_infinite() || stop.is_infinite() || step.is_infinite() {
-            return Err("Maximum variable size allowed by the program is exceeded.".into());
-        }
-        let count = (span + 4. * f64::EPSILON * span.abs().max(1.)).floor() + 1.;
-        if count > crate::matrix::MAX_ELEMENTS as f64 {
-            return Err("Range exceeds matrix element limit".into());
-        }
-        let count = count as usize;
-        self.matbuild_budget(1, count)?;
-        let range = self.range_matrix(start, step, count)?;
         let text = |v: &Value| {
             matches!(
                 v,
                 Value::Text(_) | Value::QuotedString(_) | Value::Container(Array::Character(_))
             )
         };
+        let (Some(start), Some(step), Some(stop)) = (start, step, stop) else {
+            if text(&args[0]) && text(&args[args.len() - 1]) {
+                return Ok(Value::Container(
+                    crate::CharacterRow::from_column_major(1, 0, Vec::new(), &self.cancel)?.into(),
+                ));
+            }
+            return empty;
+        };
+        if start.is_nan() || step.is_nan() || stop.is_nan() {
+            return matrix_value(1, 1, vec![f64::NAN]);
+        }
+        let span = (stop - start) / step;
+        // Zero step is empty before Inf is considered (1:0:Inf). A finite
+        // count may still use an infinite step (1:Inf:2 is [1], Inf:Inf is NaN).
+        if step == 0. || span < 0. {
+            if step == 0. && text(&args[0]) && text(&args[args.len() - 1]) {
+                return Ok(Value::Container(
+                    crate::CharacterRow::from_column_major(1, 0, Vec::new(), &self.cancel)?.into(),
+                ));
+            }
+            return empty;
+        }
+        let count = (span + 4. * f64::EPSILON * span.abs().max(1.)).floor() + 1.;
+        if count.is_nan() {
+            return matrix_value(1, 1, vec![f64::NAN]);
+        }
+        if count.is_infinite() {
+            return Err("Maximum variable size allowed by the program is exceeded.".into());
+        }
+        if count > crate::matrix::MAX_ELEMENTS as f64 {
+            return Err("Range exceeds matrix element limit".into());
+        }
+        let count = count as usize;
+        self.matbuild_budget(1, count)?;
+        let range = self.range_matrix(start, step, count)?;
         if text(&args[0]) && text(&args[args.len() - 1]) {
             // colon('a','e') is the character row 'abcde'
             let units: Vec<u16> = range.data().iter().map(|&v| v as u16).collect();

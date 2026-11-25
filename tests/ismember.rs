@@ -198,12 +198,9 @@ fn invalid_forms_cancel_and_output_count_preserve_destinations_without_rolling_b
     for call in [
         "ismember()",
         "ismember(A)",
-        "ismember(A,B,'rows')",
         "ismember(A,B,'legacy')",
         "ismember(A,B,'sorted')",
         "ismember(A,B,1)",
-        "ismember([1 2;3 4],B)",
-        "ismember(A,ones(2))",
         "ismember(complex(A,0),B)",
         "ismember(A,complex(B,0))",
         "ismember(complex(zeros(0,3)),B)",
@@ -225,7 +222,7 @@ fn invalid_forms_cancel_and_output_count_preserve_destinations_without_rolling_b
     );
     assert!(e.figure_ids().is_empty());
     assert!(
-        e.execute("L=ismember(figure(10),B,'extra');")
+        e.execute("L=ismember(figure(10),B,'rows','extra');")
             .unwrap_err()
             .contains("expects")
     );

@@ -339,6 +339,19 @@ fn workspace_recovery_cancellation_and_truncated_payloads_never_return_partial_s
     );
 }
 #[test]
+fn workspace_recovery_skips_tables_sparse_and_handles_instead_of_failing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("session.json");
+    let mut e = Engine::default();
+    e.execute("A = [1 2 3]; T = table([1;2], {'a';'b'}); S = speye(3); f = @sin; k = {1, T};")
+        .unwrap();
+    let mut store = SessionStore::new(&path);
+    store.save(state(e.workspace())).unwrap();
+    let saved = manifest(&path);
+    assert_eq!(saved.skipped, ["S", "T", "f", "k"]);
+    assert_eq!(saved.entries.keys().collect::<Vec<_>>(), ["A"]);
+}
+#[test]
 fn workspace_recovery_names_the_struct_variables_it_leaves_out() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("session.json");
@@ -353,7 +366,9 @@ fn workspace_recovery_names_the_struct_variables_it_leaves_out() {
     assert_eq!(saved.entries.keys().collect::<Vec<_>>(), ["A"]);
     assert_eq!(
         saved.skipped_note().as_deref(),
-        Some("Not recovered (structs are not supported in recovery yet): c, s, t")
+        Some(
+            "Not recovered (tables, structs, strings, sparse and some other types are not supported in recovery yet): c, s, t"
+        )
     );
     let restored = workspace::restore(&path, &saved, &cancel).unwrap();
     assert_eq!(restored.keys().collect::<Vec<_>>(), ["A"]);

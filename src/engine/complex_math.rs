@@ -8,6 +8,7 @@
 //! of `1 - z^2`. Results whose imaginary parts are all zero are real, as in
 //! MATLAB (`cos([1i 0])` is real).
 use super::{Engine, Execution, Value};
+use crate::matrix::{expanded_2d_index, expansion_shape};
 use crate::{Complex64 as C, ComplexMatrix, Matrix, Result};
 use nalgebra::DMatrix;
 
@@ -69,11 +70,11 @@ fn ln_abs(z: C) -> f64 {
         return f64::INFINITY;
     }
     let r = small / big;
-    big.ln() + 0.5 * (r * r).ln_1p()
+    libm::log(big) + 0.5 * libm::log1p(r * r)
 }
 
 fn clog(z: C) -> C {
-    C::new(ln_abs(z), z.im.atan2(z.re))
+    C::new(ln_abs(z), libm::atan2(z.im, z.re))
 }
 
 /// Principal square root, scaling before both the hypot and the positive sum.
@@ -96,7 +97,7 @@ fn csqrt(z: C) -> C {
         };
     }
     let scale = x.abs().max(y.abs());
-    let t = scale.sqrt() * ((x.abs() / scale + (x / scale).hypot(y / scale)) / 2.).sqrt();
+    let t = scale.sqrt() * ((x.abs() / scale + libm::hypot(x / scale, y / scale)) / 2.).sqrt();
     if x >= 0. {
         C::new(t, y / (2. * t))
     } else {
@@ -105,7 +106,7 @@ fn csqrt(z: C) -> C {
 }
 
 fn cexp(z: C) -> C {
-    let e = z.re.exp();
+    let e = libm::exp(z.re);
     if z.im == 0. {
         return C::new(e, z.im);
     }
@@ -141,7 +142,7 @@ fn ctan(z: C) -> C {
     let (a, b) = (z.re, z.im);
     let (s2, c2) = sin_cos(2. * a);
     if b.abs() > 20. {
-        let e = (-2. * b.abs()).exp();
+        let e = libm::exp(-2. * b.abs());
         return C::new(2. * s2 * e / (1. + 2. * c2 * e), 1_f64.copysign(b));
     }
     // cos(2a) + cosh(2b) = 2*(cos(a)^2 + sinh(b)^2).
@@ -156,14 +157,20 @@ fn ctan(z: C) -> C {
 fn cacos(z: C) -> C {
     let one = C::new(1., 0.);
     let (s1, s2) = (csqrt(one - z), csqrt(one + z));
-    C::new(2. * s1.re.atan2(s2.re), (s2.conj() * s1).im.asinh())
+    C::new(
+        2. * libm::atan2(s1.re, s2.re),
+        libm::asinh((s2.conj() * s1).im),
+    )
 }
 
 /// Kahan: asin z = atan2(Re z, Re(sqrt(1-z) sqrt(1+z))) + i asinh Im(conj(sqrt(1-z)) sqrt(1+z)).
 fn casin(z: C) -> C {
     let one = C::new(1., 0.);
     let (s1, s2) = (csqrt(one - z), csqrt(one + z));
-    C::new(z.re.atan2((s1 * s2).re), (s1.conj() * s2).im.asinh())
+    C::new(
+        libm::atan2(z.re, (s1 * s2).re),
+        libm::asinh((s1.conj() * s2).im),
+    )
 }
 
 /// atan z = (i/2) (ln(1 - iz) - ln(1 + iz)).
@@ -210,7 +217,7 @@ fn sin_cos_pi(p: f64) -> (f64, f64) {
 
 /// x^p for real x and p; complex only for a negative x with a finite
 /// non-integer p, where it is |x|^p (cos(pi p) + i sin(pi p)).
-fn real_power(x: f64, p: f64) -> C {
+pub(super) fn real_power(x: f64, p: f64) -> C {
     if x < 0. && p.is_finite() && p.fract() != 0. {
         let m = (-x).powf(p);
         let (s, c) = sin_cos_pi(p);
@@ -218,6 +225,10 @@ fn real_power(x: f64, p: f64) -> C {
     } else {
         C::new(x.powf(p), 0.)
     }
+}
+
+pub(super) fn real_power_is_complex(x: f64, p: f64) -> bool {
+    x < 0. && p.is_finite() && p.fract() != 0. && real_power(x, p).im != 0.
 }
 
 fn integer_power(z: C, n: f64) -> C {
@@ -241,7 +252,7 @@ fn integer_power(z: C, n: f64) -> C {
 }
 
 /// Principal z^w.
-fn cpow(z: C, w: C) -> C {
+pub(super) fn cpow(z: C, w: C) -> C {
     if w.im == 0. {
         if z.im == 0. {
             return real_power(z.re, w.re);
@@ -267,11 +278,11 @@ fn real_complex_value(name: &str, x: f64) -> Option<C> {
     let domain = |x: f64| x.abs() > 1.;
     Some(match name {
         "sqrt" if x < 0. => C::new(0., (-x).sqrt()),
-        "log" if x < 0. => C::new((-x).ln(), PI),
-        "acos" if domain(x) && x > 0. => C::new(0., x.acosh()),
-        "acos" if domain(x) => C::new(PI, -(-x).acosh()),
-        "asin" if domain(x) && x > 0. => C::new(FRAC_PI_2, -x.acosh()),
-        "asin" if domain(x) => C::new(-FRAC_PI_2, (-x).acosh()),
+        "log" if x < 0. => C::new(libm::log(-x), PI),
+        "acos" if domain(x) && x > 0. => C::new(0., libm::acosh(x)),
+        "acos" if domain(x) => C::new(PI, -libm::acosh(-x)),
+        "asin" if domain(x) && x > 0. => C::new(FRAC_PI_2, -libm::acosh(x)),
+        "asin" if domain(x) => C::new(-FRAC_PI_2, libm::acosh(-x)),
         _ => return None,
     })
 }
@@ -279,14 +290,14 @@ fn real_complex_value(name: &str, x: f64) -> Option<C> {
 fn real_value(name: &str, x: f64) -> f64 {
     match name {
         "sqrt" => x.sqrt(),
-        "log" => x.ln(),
-        "acos" => x.acos(),
-        "asin" => x.asin(),
-        _ => x.atan(),
+        "log" => libm::log(x),
+        "acos" => libm::acos(x),
+        "asin" => libm::asin(x),
+        _ => libm::atan(x),
     }
 }
 
-fn complex_value(name: &str, z: C) -> C {
+pub(super) fn complex_value(name: &str, z: C) -> C {
     match name {
         "sqrt" => csqrt(z),
         "log" => clog(z),
@@ -392,18 +403,23 @@ impl Engine {
             Self::arity_check(name, args, &[2])?;
             let a = self.real_arg(name, &args[0])?;
             let b = self.real_arg(name, &args[1])?;
-            if a.len() == 1 || b.len() == 1 || (a.rows(), a.cols()) == (b.rows(), b.cols()) {
-                let count = if a.len() == 1 { b.len() } else { a.len() };
-                let complex = (0..count).any(|k| {
-                    let x = a.data()[if a.len() == 1 { 0 } else { k }];
-                    let p = b.data()[if b.len() == 1 { 0 } else { k }];
-                    real_power(x, p).im != 0.
-                });
-                if complex {
+            let (left, right) = ((a.rows(), a.cols()), (b.rows(), b.cols()));
+            let shape @ (rows, cols) = expansion_shape(left, right)?;
+            let count = Matrix::checked_len(rows, cols)?;
+            self.preflight_elements(count)?;
+            for first in (0..count).step_by(4096) {
+                self.check_cancel()?;
+                if (first..count.min(first + 4096)).any(|k| {
+                    let x = a.data()[expanded_2d_index(k, shape, left)];
+                    let p = b.data()[expanded_2d_index(k, shape, right)];
+                    real_power_is_complex(x, p)
+                }) {
                     return Err("Realpow produced complex result.".into());
                 }
             }
-            return Ok(Some(Value::Matrix(a.zip(&b, f64::powf)?)));
+            return Ok(Some(Value::Matrix(
+                a.zip_checked(&b, f64::powf, || self.check_cancel())?,
+            )));
         }
         if args.len() != 1 {
             return Ok(None);
@@ -464,27 +480,42 @@ impl Engine {
             return self.cmath_matrix_power(&x, &y, out);
         }
         let (xs, ys) = (x.shape(), y.shape());
-        if x.len() != 1 && y.len() != 1 && xs != ys {
-            if complex {
-                return Err(
-                    "Array dimensions must agree (only scalar expansion is supported)".into(),
-                );
+        let shape @ (rows, cols) = expansion_shape(xs, ys)?;
+        let count = Matrix::checked_len(rows, cols)?;
+        let pair = |k| {
+            (
+                x.get(expanded_2d_index(k, shape, xs)),
+                y.get(expanded_2d_index(k, shape, ys)),
+            )
+        };
+        if !complex {
+            self.preflight_elements(count)?;
+            let mut promotes = false;
+            for first in (0..count).step_by(4096) {
+                self.check_cancel()?;
+                if (first..count.min(first + 4096)).any(|k| {
+                    let (a, b) = pair(k);
+                    real_power_is_complex(a.re, b.re)
+                }) {
+                    promotes = true;
+                    break;
+                }
             }
-            return Ok(None);
+            if !promotes {
+                return Ok(None);
+            }
         }
-        let (rows, cols) = if x.len() == 1 { ys } else { xs };
-        let count = rows * cols;
-        let at = |o: &Operand, k: usize| o.get(if o.len() == 1 { 0 } else { k });
-        if !complex && !(0..count).any(|k| real_power(at(&x, k).re, at(&y, k).re).im != 0.) {
-            return Ok(None);
-        }
+        ComplexMatrix::checked_len(rows, cols)?;
         self.preflight_elements(count.saturating_mul(2))?;
         let mut data = Vec::new();
         data.try_reserve_exact(count)
             .map_err(|_| "Cannot allocate complex result")?;
         for first in (0..count).step_by(4096) {
             self.check_cancel()?;
-            data.extend((first..count.min(first + 4096)).map(|k| cpow(at(&x, k), at(&y, k))));
+            data.extend((first..count.min(first + 4096)).map(|k| {
+                let (a, b) = pair(k);
+                cpow(a, b)
+            }));
         }
         Ok(Some(self.cmath_value(rows, cols, data)?))
     }

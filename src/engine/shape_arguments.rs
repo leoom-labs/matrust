@@ -32,7 +32,7 @@ fn inferred(value: &Value) -> bool {
 // vector shape and length before looking at individual entries. Constructor
 // callers check the output product; repetition callers first multiply by source
 // dimensions. This permits bounded empty outputs with large factor products.
-pub(super) fn shape(args: &[Value], elements: Option<usize>) -> Result<(usize, usize)> {
+pub(super) fn shape_dims(args: &[Value], elements: Option<usize>) -> Result<Vec<usize>> {
     let mut dims = [1usize; MAX_DIMENSIONS];
     let mut missing = None;
     if elements.is_none()
@@ -40,12 +40,18 @@ pub(super) fn shape(args: &[Value], elements: Option<usize>) -> Result<(usize, u
         && a.len() == 1
     {
         let n = usize::from(a.data()[0]);
-        return Ok((n, n));
+        return Ok(vec![n, n]);
     }
     let count = if let [Value::Matrix(a)] = args {
+        if elements.is_none()
+            && a.is_empty()
+            && ((a.rows() == 0 && a.cols() == 0) || (a.rows() == 1 && a.cols() == 0))
+        {
+            return Ok(vec![0, 0]);
+        }
         if a.len() == 1 && elements.is_none() {
             let n = dimension(a.data()[0], true)?;
-            return Ok((n, n));
+            return Ok(vec![n, n]);
         }
         if a.rows() != 1 || !(2..=MAX_DIMENSIONS).contains(&a.len()) {
             return Err("Size vector must be a real double row with 2..32 entries".into());
@@ -69,35 +75,48 @@ pub(super) fn shape(args: &[Value], elements: Option<usize>) -> Result<(usize, u
         }
         args.len()
     };
-    // Higher dimensions must be singleton, including any inferred dimension.
-    // Multiplying only the first two avoids irrelevant overflow before rejecting
-    // a non-2-D shape; the omitted slot currently contributes one.
-    if dims[2..count].iter().any(|&n| n != 1) {
-        return Err(
-            "Only two-dimensional arrays and trailing singleton dimensions are supported".into(),
-        );
-    }
+    let mut shape = dims[..count].to_vec();
     if let Some(elements) = elements {
-        let known = Matrix::checked_len(dims[0], dims[1])?;
+        let known = shape
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| Some(*i) != missing)
+            .try_fold(1usize, |n, (_, d)| n.checked_mul(*d))
+            .ok_or("Reshape dimensions overflow")?;
         if let Some(i) = missing {
             if known != 0 && !elements.is_multiple_of(known) {
                 return Err("reshape dimensions must divide the number of elements evenly".into());
             }
             // Empty source with a specified zero dimension infers zero. The
             // final element-count check still rejects every nonempty source.
-            dims[i] = elements.checked_div(known).unwrap_or(0);
-            if i >= 2 && dims[i] != 1 {
-                return Err(
-                    "Inferred higher dimensions must be singleton in the two-dimensional engine"
-                        .into(),
-                );
-            }
+            shape[i] = elements.checked_div(known).unwrap_or(0);
         }
-        if Matrix::checked_len(dims[0], dims[1])? != elements {
+        let product = shape
+            .iter()
+            .try_fold(1usize, |n, &d| n.checked_mul(d))
+            .ok_or("Reshape dimensions overflow")?;
+        if product != elements {
             return Err("reshape must preserve the number of elements".into());
         }
     }
-    Ok((dims[0], dims[1]))
+    while shape.len() > 2 && shape.last() == Some(&1) {
+        shape.pop();
+    }
+    Ok(shape)
+}
+
+pub(super) fn shape(args: &[Value], elements: Option<usize>) -> Result<(usize, usize)> {
+    let dims = shape_dims(args, elements)?;
+    if dims.len() > 2 {
+        return Err(
+            "Only two-dimensional arrays and trailing singleton dimensions are supported".into(),
+        );
+    }
+    let cols = dims[1..]
+        .iter()
+        .try_fold(1usize, |n, &d| n.checked_mul(d))
+        .ok_or("Array dimensions overflow")?;
+    Ok((dims[0], cols))
 }
 
 fn filled(
@@ -134,17 +153,36 @@ impl Engine {
                 .first()
                 .ok_or("reshape requires an array and dimensions")?;
             let (r, c) = input.shape(&self.cancel)?;
-            let (rows, cols) = shape(&args[1..], Some(r * c))?;
+            let dims = shape_dims(
+                &args[1..],
+                Some(r.checked_mul(c).ok_or("Array size overflow")?),
+            )?;
+            let cols = dims[1..]
+                .iter()
+                .try_fold(1usize, |n, &d| n.checked_mul(d))
+                .ok_or("Array dimensions overflow")?;
+            let (rows, cols) = (dims[0], cols);
             match input {
-                Value::Matrix(a) => Value::Matrix(a.reshape(rows, cols)?),
-                Value::Logical(a) => Value::Logical(a.reshape(rows, cols)?),
-                Value::Complex(a) => Value::Complex(a.reshape(rows, cols, &self.cancel)?),
-                Value::Container(crate::Array::Character(a)) => {
-                    Value::Container(a.reshape(rows, cols, &self.cancel)?.into())
+                Value::Matrix(a) => Value::Matrix(a.reshape(rows, cols)?.with_dims(&dims)?),
+                Value::Logical(a) => Value::Logical(a.reshape(rows, cols)?.with_dims(&dims)?),
+                Value::Complex(a) => {
+                    Value::Complex(a.reshape(rows, cols, &self.cancel)?.with_dims(&dims)?)
                 }
+                Value::Container(crate::Array::Typed(a)) => Value::Container(crate::Array::Typed(
+                    a.reshaped(rows, cols)?.with_dims(&dims)?,
+                )),
+                Value::Container(crate::Array::Categorical(a)) => {
+                    Value::Container(a.reshaped(rows, cols)?.with_dims(&dims)?.into())
+                }
+                Value::Container(crate::Array::Character(a)) => Value::Container(
+                    a.reshape(rows, cols, &self.cancel)?
+                        .with_dims(&dims)?
+                        .into(),
+                ),
                 Value::Text(s) | Value::QuotedString(s) => Value::Container(
                     crate::CharacterRow::from_text(s, &self.cancel)?
                         .reshape(rows, cols, &self.cancel)?
+                        .with_dims(&dims)?
                         .into(),
                 ),
                 _ => {
@@ -154,17 +192,20 @@ impl Engine {
                 }
             }
         } else {
-            let (rows, cols) = shape(args, None)?;
+            let dims = shape_dims(args, None)?;
+            let rows = dims[0];
+            let cols = dims[1..]
+                .iter()
+                .try_fold(1usize, |n, &d| n.checked_mul(d))
+                .ok_or("Array dimensions overflow")?;
             let count = Matrix::checked_len(rows, cols)?;
-            if self.evaluated_elements.saturating_add(count) > 32 * 1024 * 1024 {
-                return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-            }
-            Value::Matrix(filled(
-                rows,
-                cols,
-                if name == "ones" { 1. } else { 0. },
-                || self.check_cancel(),
-            )?)
+            self.preflight_elements(count)?;
+            Value::Matrix(
+                filled(rows, cols, if name == "ones" { 1. } else { 0. }, || {
+                    self.check_cancel()
+                })?
+                .with_dims(&dims)?,
+            )
         };
         self.check_cancel()?;
         Ok(Some(result))

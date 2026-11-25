@@ -61,10 +61,11 @@ fn container_worker_snapshots_typed_inspector_and_metadata_edits_preserve_payloa
         if name == "C" {
             assert!(
                 text.iter()
-                    .any(|s| s.starts_with("Open numeric or character cell contents to edit"))
+                    .any(|s| s.starts_with("Edit scalar cell contents in the grid"))
             );
             assert!(text.iter().any(|s| s == "Open {1,1}"));
-            assert!(!text.iter().any(|s| s == "Copy cell" || s == "Apply cell"));
+            assert!(text.iter().any(|s| s == "Copy cell"));
+            assert!(text.iter().any(|s| s == "Apply cell"));
         } else {
             assert!(text.iter().any(|s| s == "\\uD800"));
             assert!(text.iter().any(|s| s == "Copy cell"));

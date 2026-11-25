@@ -126,6 +126,11 @@ impl Data {
         for textbox in &figure.textboxes {
             data.add_text(&textbox.text, cancel)?;
         }
+        for ann in &figure.annotations {
+            if !ann.text.is_empty() {
+                data.add_text(&ann.text, cancel)?;
+            }
+        }
         crate::dsp::check_cancel(cancel)?;
         Ok(data)
     }

@@ -281,18 +281,20 @@ fn export_target_before_publish(
         return Err("Invalid exportgraphics format or zero resolution".into());
     }
     figure.validate()?;
-    let series = if let Some(position) = axes {
-        figure
+    let has_content = if let Some(position) = axes {
+        let ax = figure
             .all_axes()
             .find(|(p, _)| *p == position)
             .ok_or("exportgraphics target axes does not exist")?
-            .1
-            .series
-            .len()
+            .1;
+        !ax.series.is_empty() || !ax.extras.volumes.is_empty() || !ax.extras.images.is_empty()
     } else {
-        figure.series_count()
+        figure.series_count() > 0
+            || figure
+                .all_axes()
+                .any(|(_, a)| !a.extras.volumes.is_empty() || !a.extras.images.is_empty())
     };
-    if series == 0 {
+    if !has_content {
         return Err("exportgraphics requires a figure containing plot data; empty figures/axes are unsupported".into());
     }
     let mut svg = if let Some(position) = axes {
@@ -310,8 +312,9 @@ fn export_target_before_publish(
     // A fixed-size coverage pass measures visible ink, including white strokes
     // and resolved glyphs, while respecting every axes clip and the figure edge.
     // Stroke/group bounds alone include offscreen outliers and are not a crop.
+    let [fig_w, fig_h] = figure.export_size_pixels();
     let mut coverage =
-        resvg::tiny_skia::Pixmap::new(960, 560).ok_or("Could not allocate crop coverage")?;
+        resvg::tiny_skia::Pixmap::new(fig_w, fig_h).ok_or("Could not allocate crop coverage")?;
     resvg::render(
         &tree,
         resvg::tiny_skia::Transform::identity(),
@@ -319,13 +322,7 @@ fn export_target_before_publish(
     );
     check_cancel(cancel)?;
     let mut bounds = None::<[u32; 4]>;
-    for (y, row) in coverage
-        .data()
-        .as_chunks::<{ 960 * 4 }>()
-        .0
-        .iter()
-        .enumerate()
-    {
+    for (y, row) in coverage.data().chunks_exact(fig_w as usize * 4).enumerate() {
         check_cancel(cancel)?;
         for (x, pixel) in row.as_chunks::<4>().0.iter().enumerate() {
             if pixel[3] != 0 {
@@ -343,8 +340,8 @@ fn export_target_before_publish(
     let [left, top, right, bottom] = bounds.ok_or("Figure has no visible export content")?;
     let left = left.saturating_sub(2);
     let top = top.saturating_sub(2);
-    let right = (right + 2).min(960);
-    let bottom = (bottom + 2).min(560);
+    let right = (right + 2).min(fig_w);
+    let bottom = (bottom + 2).min(fig_h);
     let width = right - left;
     let height = bottom - top;
     // Coverage above deliberately excludes every background. Adding data-area

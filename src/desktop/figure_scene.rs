@@ -91,6 +91,27 @@ impl Outcome {
     }
 }
 
+/// Build a non-undoable figure edit updating the primary `sliceViewer` slice index.
+pub(crate) fn slice_number_edit(
+    id: u32,
+    figure: &Figure,
+    slice_number: usize,
+) -> Option<worker::FigureEdit> {
+    if figure.slice_viewers.is_empty() {
+        return None;
+    }
+    let mut updated = figure.clone();
+    updated.slice_viewers[0].slice_number = slice_number;
+    let sv_clone = updated.slice_viewers[0].clone();
+    sv_clone.sync_axes(&mut updated.axes);
+    Some(worker::FigureEdit {
+        view_before: None,
+        id,
+        original: figure.clone(),
+        updated,
+    })
+}
+
 /// This function neither prepares geometry nor mutates an Engine/Workspace.
 /// The caller owns busy/modal/final-pass admission and the aggregate cache budget.
 pub(crate) fn show(
@@ -171,6 +192,26 @@ pub(crate) fn show(
                 };
                 edit.preserve_manual_view(Some(shown.bounds), shown.auto);
                 outcome.interaction = Some(Interaction::Edit(Box::new(edit), true));
+            }
+            // Left drag on a 3-D axes rotates it; View follows in the model.
+            if let Some(delta) = shown.rotate {
+                let mut updated = frame.figure.clone();
+                updated.axes.view = matrust::plot::view3d::drag_view(frame.figure.axes.view, delta);
+                outcome.interaction = Some(Interaction::Edit(
+                    Box::new(worker::FigureEdit {
+                        id: frame.key.number,
+                        original: frame.figure.clone(),
+                        updated,
+                        view_before: None,
+                    }),
+                    false,
+                ));
+            }
+            // Step the primary sliceViewer when slider, wheel, or arrow keys change it.
+            if let Some(slice_num) = shown.slice_number
+                && let Some(edit) = slice_number_edit(frame.key.number, frame.figure, slice_num)
+            {
+                outcome.interaction = Some(Interaction::Edit(Box::new(edit), false));
             }
             // Preserve existing detached precedence when one frame picks a sample.
             if let Some(query) = shown.pick {

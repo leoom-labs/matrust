@@ -1,8 +1,8 @@
 //! fftn ifftn convn interp3 interpn griddata griddatan delaunay delaunayn
 //! convhull convhulln dsearchn tsearchn voronoin quad2d quadl quadv freqspace
 //! iqr: their two-dimensional (and one-dimensional) forms. The
-//! corpus is tests/fixtures/fn/sci2-expected.txt. MatRust has no N-D arrays, so
-//! three-dimensional data is rejected explicitly.
+//! corpus is tests/fixtures/fn/sci2-expected.txt. The volume module handles
+//! three-dimensional data separately.
 use super::{Engine, Execution, Fma, Value};
 use crate::{Array, Complex64, ComplexMatrix, Matrix, NumericClass, Result, TypedArray};
 use std::cmp::Ordering;
@@ -14,6 +14,11 @@ const NAMES: &[&str] = &[
     "ifftn",
     "convn",
     "interp3",
+    "flow",
+    "smooth3",
+    "reducevolume",
+    "subvolume",
+    "volumebounds",
     "interpn",
     "griddata",
     "griddatan",
@@ -23,6 +28,7 @@ const NAMES: &[&str] = &[
     "convhulln",
     "dsearchn",
     "tsearchn",
+    "voronoi",
     "voronoin",
     "quad2d",
     "quadl",
@@ -41,23 +47,29 @@ const EMPTY_DATA: &str = "Interpolation data must not be empty.";
 
 /// Functions with more than one output.
 pub(super) fn sc2_has_outputs(name: &str) -> bool {
-    matches!(
-        name,
-        "griddata"
-            | "convhull"
-            | "convhulln"
-            | "dsearchn"
-            | "tsearchn"
-            | "voronoin"
-            | "quad2d"
-            | "quadl"
-            | "quadv"
-            | "freqspace"
-    )
+    triangulation::has_multiple_outputs(name)
+        || matches!(
+            name,
+            "flow"
+                | "reducevolume"
+                | "subvolume"
+                | "griddata"
+                | "convhull"
+                | "convhulln"
+                | "dsearchn"
+                | "tsearchn"
+                | "voronoi"
+                | "voronoin"
+                | "quad2d"
+                | "quadl"
+                | "quadv"
+                | "freqspace"
+        )
 }
 
 fn sc2_max_outputs(name: &str) -> usize {
     match name {
+        "flow" | "reducevolume" | "subvolume" => 4,
         "griddata" => 3,
         n if sc2_has_outputs(n) => 2,
         _ => 1,
@@ -350,7 +362,7 @@ fn sc2_resize<T: Copy>(data: &[T], rows: usize, m: usize, n: usize, zero: T) -> 
 // One-dimensional kernels for gridded interpolation.
 
 #[derive(Clone, Copy, PartialEq)]
-enum Method {
+pub(super) enum Method {
     Linear,
     Nearest,
     Cubic,
@@ -358,7 +370,7 @@ enum Method {
     Pchip,
 }
 
-fn sc2_method(text: &str) -> Option<Method> {
+pub(super) fn sc2_method(text: &str) -> Option<Method> {
     match text.to_ascii_lowercase().as_str() {
         "linear" | "*linear" => Some(Method::Linear),
         "nearest" | "*nearest" => Some(Method::Nearest),
@@ -444,7 +456,7 @@ fn sc2_parabola_coefs(h: &[f64], del: &[f64], y: &[f64]) -> Vec<[f64; 4]> {
 /// closed by equal third derivatives across x[1] and x[n-2] (s[2] and s[n-3]
 /// eliminated through the neighbouring rows). Two points give the line,
 /// three the parabola through them.
-fn sc2_spline_coefs(engine: &Engine, x: &[f64], y: &[f64]) -> Result<Vec<[f64; 4]>> {
+pub(super) fn sc2_spline_coefs(engine: &Engine, x: &[f64], y: &[f64]) -> Result<Vec<[f64; 4]>> {
     let n = x.len();
     let (h, del) = sc2_differences(engine, x, y)?;
     let s = match n {
@@ -598,7 +610,7 @@ fn sc2_eval_piece(coefs: &[[f64; 4]], x: &[f64], t: f64) -> f64 {
 }
 
 /// Weights of the points of a 1-D grid that one coordinate `t` uses.
-fn sc2_weights(x: &[f64], t: f64, method: Method, uniform: bool) -> Vec<(usize, f64)> {
+pub(super) fn sc2_weights(x: &[f64], t: f64, method: Method, uniform: bool) -> Vec<(usize, f64)> {
     let n = x.len();
     if n == 1 {
         return vec![(0, 1.)];
@@ -636,7 +648,7 @@ fn sc2_weights(x: &[f64], t: f64, method: Method, uniform: bool) -> Vec<(usize, 
     }
 }
 
-fn sc2_uniform(x: &[f64]) -> bool {
+pub(super) fn sc2_uniform(x: &[f64]) -> bool {
     if x.len() < 3 {
         return true;
     }
@@ -721,7 +733,9 @@ impl Engine {
         let mut values = match name {
             "fftn" | "ifftn" => vec![self.sc2_fftn(name, args, out)?],
             "convn" => vec![self.sc2_convn(args, out)?],
-            "interp3" => vec![self.sc2_interp3(args)?],
+            "flow" | "smooth3" | "reducevolume" | "subvolume" | "volumebounds" | "interp3" => {
+                super::volume::data::call(self, name, args, count)?
+            }
             "interpn" => vec![self.sc2_interpn(args)?],
             "griddata" => self.sc2_griddata(args, count, out)?,
             "griddatan" => vec![self.sc2_griddatan(args)?],
@@ -731,12 +745,22 @@ impl Engine {
             "convhulln" => self.sc2_convhulln(args)?,
             "dsearchn" => self.sc2_dsearchn(args)?,
             "tsearchn" => self.sc2_tsearchn(args)?,
+            "voronoi" => triangulation::voronoi(self, args, count, out)?,
             "voronoin" => self.sc2_voronoin(args)?,
             "quad2d" => self.sc2_quad2d(args, out)?,
             "quadl" => self.sc2_quadl(args, out)?,
             "quadv" => self.sc2_quadv(args, out)?,
             "freqspace" => self.sc2_freqspace(args, count)?,
             "iqr" => vec![self.sc2_iqr(args)?],
+            _ if triangulation::has_multiple_outputs(name) => {
+                let dt = args
+                    .first()
+                    .and_then(|v| super::objects::triangulation_value(self, v))
+                    .ok_or_else(|| {
+                        format!("{name}: first argument must be a delaunayTriangulation")
+                    })?;
+                dt.call(self, name, &args[1..], count)?
+            }
             _ => unreachable!("checked by NAMES"),
         };
         values.truncate(count.max(1));
@@ -1119,16 +1143,6 @@ impl Engine {
 
     // -- interpn / interp3 ---------------------------------------------------
 
-    fn sc2_interp3(&mut self, args: &[Value]) -> Result<Value> {
-        let numeric = args.iter().take_while(|a| sc2_text(a).is_none()).count();
-        if numeric == 4 {
-            // The reference's interp3(V, Xq, Yq, Zq) with a matrix V fails inside
-            // its grid helper.
-            return Err("Output argument \"varargout{3}\" (and maybe others) not assigned during call to \"meshgridvectors\".".into());
-        }
-        Err(format!("interp3 requires three-dimensional data: {NO_ND}"))
-    }
-
     fn sc2_interpn(&mut self, args: &[Value]) -> Result<Value> {
         let numeric = args.iter().take_while(|a| sc2_text(a).is_none()).count();
         if numeric == 0 {
@@ -1412,6 +1426,7 @@ impl Engine {
 }
 
 mod geometry;
+pub(super) use geometry::triangulation;
 mod integrals;
 
 #[cfg(test)]

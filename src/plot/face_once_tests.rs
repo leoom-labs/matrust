@@ -123,7 +123,7 @@ impl Series {
             PlotKind::Stem => max_points.max(18) / 3,
             _ => max_points,
         };
-        let mut result = self.display_points_filtered(
+        let (mut result, _) = self.display_points_filtered(
             budget,
             |p| axes[0].accepts(p[0]) && axes[1].accepts(p[1]),
             check,

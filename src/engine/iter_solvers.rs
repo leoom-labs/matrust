@@ -462,7 +462,164 @@ enum Operator {
         cols: usize,
         data: Matrix,
     },
+    /// A sparse A: products use the stored entries only, in the dense loop's order.
+    Sparse(SlvSparse),
+    /// A sparse preconditioner, analysed (and factorized) once per call.
+    SparseSolve(SlvSparseSolve),
     Function(FunctionHandle),
+}
+
+#[derive(Clone)]
+struct SlvSparse {
+    s: crate::sparse::SparseMatrix,
+    values: Vec<f64>,
+}
+impl SlvSparse {
+    fn new(s: &crate::sparse::SparseMatrix) -> Self {
+        let values = (0..s.nnz()).map(|k| s.value(k)).collect();
+        Self {
+            s: s.clone(),
+            values,
+        }
+    }
+    /// `A*x` or `A'*x` with the same fma order as `slv_gemv` (zeros skipped).
+    fn apply(&self, x: &[f64], transp: bool) -> Vec<f64> {
+        let (s, v) = (&self.s, &self.values);
+        let rows = s.rowidx();
+        if transp {
+            (0..s.cols())
+                .map(|j| {
+                    let mut acc = 0f64;
+                    for k in s.column(j) {
+                        acc = v[k].fma(x[rows[k]], acc);
+                    }
+                    acc
+                })
+                .collect()
+        } else {
+            let mut y = vec![0.; s.rows()];
+            for (j, &xj) in x.iter().enumerate().take(s.cols()) {
+                for k in s.column(j) {
+                    y[rows[k]] = v[k].fma(xj, y[rows[k]]);
+                }
+            }
+            y
+        }
+    }
+}
+
+#[derive(Clone)]
+enum SlvSparseKind {
+    /// Triangular (checked as `slv_mldivide` does: upper first); `t` is M'.
+    Triangular {
+        upper: bool,
+        t: SlvSparse,
+        t_upper: bool,
+    },
+    Lu(std::sync::Arc<faer::sparse::linalg::solvers::Lu<usize, f64>>),
+    /// No pivot: every solve gives Inf, as the dense path.
+    Singular,
+    /// Stored NaN or Inf: every solve gives NaN, as the dense path.
+    NonFinite,
+}
+#[derive(Clone)]
+struct SlvSparseSolve {
+    m: SlvSparse,
+    kind: SlvSparseKind,
+}
+impl SlvSparseSolve {
+    fn new(engine: &Engine, s: &crate::sparse::SparseMatrix) -> Result<Self> {
+        let m = SlvSparse::new(s);
+        let is_upper = |a: &crate::sparse::SparseMatrix| {
+            (0..a.cols()).all(|c| a.column(c).all(|k| a.rowidx()[k] <= c))
+        };
+        let is_lower = |a: &crate::sparse::SparseMatrix| {
+            (0..a.cols()).all(|c| a.column(c).all(|k| a.rowidx()[k] >= c))
+        };
+        let kind = if is_upper(s) || is_lower(s) {
+            let t = s.transpose()?;
+            let t_upper = is_upper(&t);
+            SlvSparseKind::Triangular {
+                upper: is_upper(s),
+                t: SlvSparse::new(&t),
+                t_upper,
+            }
+        } else if !slv_finite(&m.values) {
+            SlvSparseKind::NonFinite
+        } else {
+            engine.check_cancel()?;
+            super::sparse_solve::check_lu_fill(engine, "M", s)?;
+            let a = super::sparse_solve::faer_ref(s, &m.values);
+            let kind = match a.sp_lu() {
+                Ok(lu) => SlvSparseKind::Lu(std::sync::Arc::new(lu)),
+                Err(faer::sparse::linalg::LuError::SymbolicSingular { .. }) => {
+                    SlvSparseKind::Singular
+                }
+                Err(e) => return Err(format!("M: sparse LU failed ({e:?})")),
+            };
+            engine.check_cancel()?;
+            kind
+        };
+        Ok(Self { m, kind })
+    }
+    /// `M\x` (`transp`: `M'\x`).
+    fn solve(&self, x: &[f64], transp: bool) -> Vec<f64> {
+        let n = x.len();
+        match &self.kind {
+            SlvSparseKind::Triangular { upper, t, t_upper } => {
+                let (op, up) = if transp {
+                    (t, *t_upper)
+                } else {
+                    (&self.m, *upper)
+                };
+                slv_sparse_substitute(op, up, x)
+            }
+            SlvSparseKind::NonFinite => vec![f64::NAN; n],
+            SlvSparseKind::Singular => vec![f64::INFINITY; n],
+            SlvSparseKind::Lu(lu) => {
+                use faer::linalg::solvers::Solve;
+                if !slv_finite(x) {
+                    return vec![f64::NAN; n];
+                }
+                let mut y = x.to_vec();
+                let rhs = faer::MatMut::from_column_major_slice_mut(&mut y, n, 1);
+                if transp {
+                    lu.solve_transpose_in_place(rhs);
+                } else {
+                    lu.solve_in_place(rhs);
+                }
+                if slv_finite(&y) {
+                    y
+                } else {
+                    vec![f64::INFINITY; n]
+                }
+            }
+        }
+    }
+}
+
+/// Column-oriented substitution in `slv_mldivide`'s order on a triangular sparse M.
+fn slv_sparse_substitute(m: &SlvSparse, upper: bool, x: &[f64]) -> Vec<f64> {
+    let (s, v) = (&m.s, &m.values);
+    let rows = s.rowidx();
+    let n = s.cols();
+    let diag = |j: usize| s.column(j).find(|&k| rows[k] == j).map_or(0., |k| v[k]);
+    let mut y = x.to_vec();
+    let mut step = |j: usize| {
+        y[j] /= diag(j);
+        let yj = y[j];
+        for k in s.column(j) {
+            if rows[k] != j {
+                y[rows[k]] -= yj * v[k];
+            }
+        }
+    };
+    if upper {
+        (0..n).rev().for_each(&mut step);
+    } else {
+        (0..n).for_each(&mut step);
+    }
+    y
 }
 
 struct Problem {
@@ -774,6 +931,7 @@ impl Engine {
     fn slv_operator(&self, value: &Value, what: &str) -> Result<Operator> {
         match value {
             Value::Container(Array::Handle(h)) => Ok(Operator::Function(h.clone())),
+            Value::Container(Array::Sparse(s)) => Ok(Operator::Sparse(SlvSparse::new(s))),
             Value::Text(t) => match self.named_handle(t.trim())? {
                 Value::Container(Array::Handle(h)) => Ok(Operator::Function(h)),
                 _ => Err(format!("{what} must be a matrix or a function handle.")),
@@ -797,6 +955,12 @@ impl Engine {
                 "{what} must be a numeric matrix or a function handle."
             )),
             Value::Complex(_) => Err(format!("{what}: complex systems are not supported yet.")),
+            // Sparse b, x0 and scalar options: bounded conversion to full
+            // (only A, M1 and M2 keep sparse storage).
+            Value::Container(Array::Sparse(_)) => {
+                let full = super::sparse_fns::densify(self, what, value.clone())?;
+                self.slv_real(&full, what)
+            }
             _ => Err(format!("{what} must be a double matrix.")),
         }
     }
@@ -819,8 +983,14 @@ impl Engine {
     ) -> Result<std::result::Result<Problem, (Solved, f64)>> {
         let a = self.slv_operator(&args[0], "A")?;
         let b = self.slv_real(&args[1], "B")?;
-        let (m, n) = match &a {
-            Operator::Dense { rows, cols, .. } => {
+        let shape = match &a {
+            Operator::Dense { rows, cols, .. } => Some((*rows, *cols)),
+            Operator::Sparse(s) => Some((s.s.rows(), s.s.cols())),
+            _ => None,
+        };
+        let (m, n) = match (&a, shape) {
+            (_, Some((rows, cols))) => {
+                let (rows, cols) = (&rows, &cols);
                 if name != "lsqr" && rows != cols {
                     return Err("Matrix must be square.".into());
                 }
@@ -835,7 +1005,7 @@ impl Engine {
                 }
                 (*rows, *cols)
             }
-            Operator::Function(_) => {
+            _ => {
                 if b.cols() != 1 {
                     return Err("Right hand side must be a column vector.".into());
                 }
@@ -1025,7 +1195,7 @@ impl Engine {
             problem.x0 = vec![0.; problem.n];
         }
         if !problem.extra.is_empty()
-            && matches!(problem.a, Operator::Dense { .. })
+            && matches!(problem.a, Operator::Dense { .. } | Operator::Sparse(_))
             && !matches!(problem.m1, Some(Operator::Function(_)))
             && !matches!(problem.m2, Some(Operator::Function(_)))
         {
@@ -1039,14 +1209,22 @@ impl Engine {
             return Ok(None);
         };
         let op = self.slv_operator(value, "M")?;
-        if let Operator::Dense { rows, cols, .. } = &op
-            && (*rows != n || *cols != n)
+        let shape = match &op {
+            Operator::Dense { rows, cols, .. } => Some((*rows, *cols)),
+            Operator::Sparse(s) => Some((s.s.rows(), s.s.cols())),
+            _ => None,
+        };
+        if let Some((rows, cols)) = shape
+            && (rows != n || cols != n)
         {
             return Err(format!(
                 "Preconditioner must be a square matrix of size {n} to match the problem size."
             ));
         }
-        Ok(Some(op))
+        Ok(Some(match op {
+            Operator::Sparse(s) => Operator::SparseSolve(SlvSparseSolve::new(self, &s.s)?),
+            op => op,
+        }))
     }
 
     /// `A*x` (`transp`: `A'*x`) or `afun(x, extra...[, 'notransp'|'transp'])`.
@@ -1064,6 +1242,11 @@ impl Engine {
                 slv_gemv(*rows, *cols, data.data(), x, transp),
                 if transp { *cols } else { *rows },
             ),
+            Operator::Sparse(s) => slv_checked(
+                s.apply(x, transp),
+                if transp { s.s.cols() } else { s.s.rows() },
+            ),
+            Operator::SparseSolve(_) => unreachable!("a preconditioner is never A"),
             Operator::Function(h) => {
                 // lsqr's A maps n unknowns to m equations and back.
                 let expected = match (p.name == "lsqr", transp) {
@@ -1140,6 +1323,8 @@ impl Engine {
             Operator::Dense { rows, data, .. } => {
                 slv_checked(slv_mldivide(*rows, data.data(), x, transp)?, *rows)
             }
+            Operator::SparseSolve(m) => slv_checked(m.solve(x, transp), x.len()),
+            Operator::Sparse(_) => unreachable!("sparse preconditioners are analysed in setup"),
             Operator::Function(h) => self.slv_function(p, h, x, transp, Some(x.len()), out),
         }
     }
@@ -3859,12 +4044,13 @@ mod tests {
 
     #[test]
     fn gmres_workspace_counts_reflectors_triangle_and_vectors() {
-        // 4000 reflectors of length 4000 alone fit, the triangular R does not.
-        const { assert!(4000 * 4001 <= MAX_ELEMENTS) };
-        assert!(slv_gmres_workspace(4000, 4000) > MAX_ELEMENTS);
+        // A full restart of length 8000 is above the 48 Mi element cap
+        // (8000*8001 reflectors alone). A shorter restart on a 4000-vector
+        // still fits and converges.
+        assert!(slv_gmres_workspace(8000, 8000) > MAX_ELEMENTS);
         assert!(slv_gmres_workspace(4000, 2000) <= MAX_ELEMENTS);
         let error = Engine::default()
-            .execute("[x, f] = gmres(@(v) 2*v, ones(4000, 1), [], 1e-6, 4000);")
+            .execute("[x, f] = gmres(@(v) 2*v, ones(8000, 1), [], 1e-6, 8000);")
             .unwrap_err();
         assert!(error.contains("element limit"), "{error}");
         assert_eq!(

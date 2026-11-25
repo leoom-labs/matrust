@@ -47,11 +47,18 @@ fn figure_appearance_construction_queries_and_existing_handle_updates_are_real()
         e.variables["rgb"].data(),
         &[32. / 255., 64. / 255., 96. / 255.]
     );
+    assert!(f.number_title);
+    e.execute("set(f,'NumberTitle','off');number_title=get(f,'NumberTitle');")
+        .unwrap();
+    assert_eq!(e.current_figure, 9);
+    assert_eq!(text(&e, "number_title"), "off");
+    let f = e.figures().find(|(id, _)| *id != 9).unwrap().1;
+    assert!(!f.number_title);
     let before = f.clone();
     let ids = e.figure_ids();
     for script in [
         "figure('Name','must not publish','Color',[2 0 0]);",
-        "set(f,'Name','must not publish','NumberTitle','off');",
+        "set(f,'Name','must not publish','NumberTitle','invalid');",
         "set(f,'Color',[1 0 0],'Name',1);",
     ] {
         assert!(e.execute(script).is_err());
@@ -73,8 +80,7 @@ fn literal_axes_text_box_and_stem_baseline_are_supported_without_discarding_valu
     assert!(f.title.contains("_ ^"));
     let before = f.clone();
     for script in [
-        "title(a,'lost','Interpreter','tex');",
-        "set(a,'Box','off');",
+        "title(a,'lost','Interpreter','invalid');",
         "set(h,'BaseValue',Inf);",
         "set(h,'MarkerFaceColor',[1 0 0]);",
     ] {
@@ -129,7 +135,22 @@ fn unchanged_full_matlab_export_executes_all_plot_families_and_literal_annotatio
     assert_eq!(after.textboxes, before.textboxes);
     for (a, b) in before.series.iter().zip(&after.series).take(4) {
         assert_eq!(a.kind, b.kind);
-        assert_eq!(a.color, b.color);
+        if a.kind == PlotKind::Scatter {
+            // The stored color is a fallback for automatic CData. The script
+            // fixes the resolved CData while keeping the independent marker colors.
+            let appearance = before.resolve_appearance(matrust::plot::BaseTheme::Light);
+            assert_eq!(appearance.series_color(a), b.color);
+            assert!(b.explicit_color);
+            assert_eq!(
+                a.marker_edge_color,
+                matrust::plot::MarkerColor::Rgb([0, 255, 0])
+            );
+            assert_eq!(a.marker_edge_color, b.marker_edge_color);
+            assert_eq!(a.marker_face_color, matrust::plot::MarkerColor::None);
+            assert_eq!(a.marker_face_color, b.marker_face_color);
+        } else {
+            assert_eq!(a.color, b.color);
+        }
         assert_eq!(a.label, b.label);
         assert_eq!(a.marker_is_filled(), b.marker_is_filled());
         assert_eq!(a.points.len(), b.points.len());
@@ -309,8 +330,8 @@ fn positional_scatter_size_is_one_series_and_invalid_sizes_are_atomic() {
         "scatter(a,[0 1],[2 3],Inf);",
         "scatter(a,[0 1],[2 3],f);",
         "scatter(a,[0 1],[2 3],1i);",
-        "scatter(a,[0 1],[2 3],[4 9]);",
-        "scatter(a,[0 1],[2 3],25,[1 0 0]);",
+        "scatter(a,[0 1],[2 3],[4 9 16]);",
+        "scatter(a,[0 1],[2 3],25,[1 0 2]);",
     ] {
         assert!(e.execute(script).is_err(), "{script}");
         assert!(before.same_snapshot(e.figure.as_ref().unwrap()));

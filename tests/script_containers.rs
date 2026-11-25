@@ -49,7 +49,6 @@ fn character_storage_preserves_utf16_units_aliases_and_exact_edits() {
     assert_eq!(e.variables["c"].data(), &[6.]);
     let before = e.workspace();
     for source in [
-        "s=\"unsupported string\";",
         "s=char([0 65536]);",
         "s=char(1.5);",
         "s(1)='two';",
@@ -69,6 +68,9 @@ fn character_storage_preserves_utf16_units_aliases_and_exact_edits() {
         &[101, 120, 112, 108, 105, 99, 105, 116]
     );
     assert_eq!(chars(&e, "joined").units(), &[97, 98, 99, 100]);
+    e.execute("str=\"supported string\";").unwrap();
+    assert_eq!(e.array("str").unwrap().class(), "string");
+    assert_eq!(e.array("str").unwrap().len(), 1);
 }
 
 #[test]
@@ -163,7 +165,7 @@ fn cell_construction_empty_shapes_and_storage_limits_are_explicit() {
         "C={1,2;3};",
         "C{1:2}=0;",
         "C(1)=3;",
-        "[C,kind]=C{1:3};",
+        "[C,kind]=C{1};",
     ] {
         assert!(e.execute(source).is_err(), "{source}");
         unchanged(&e, &before);
@@ -207,7 +209,7 @@ fn container_function_frames_shadowing_clear_and_failures_preserve_callers() {
     assert_eq!(e.variables["sum"].data(), &[5.]);
     let before = e.workspace();
     assert!(
-        e.execute("C=bad(C);function y=bad(x);clear;x={9};y=missing;end")
+        e.execute("C=bad(C);function y=bad(x);clear;x={9};y=nosuchfn_sentinel;end")
             .is_err()
     );
     unchanged(&e, &before);

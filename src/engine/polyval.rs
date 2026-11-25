@@ -5,8 +5,11 @@ use crate::{Result, array::evaluate_polynomial};
 impl Engine {
     pub(super) fn polyval_call(&self, args: &[Value]) -> Result<Value> {
         self.check_cancel()?;
-        let [Value::Matrix(p), Value::Matrix(x)] = args else {
-            return Err("polyval requires exactly two real double inputs p,x; logical/complex/text/cell/graphics inputs, scaling and error estimates are unsupported".into());
+        let (p, x, mu) = match args {
+            [Value::Matrix(p), Value::Matrix(x)] => (p, x, None),
+            [Value::Matrix(p), Value::Matrix(x), Value::Matrix(s), Value::Matrix(mu)]
+                if s.is_empty() => (p, x, Some(mu)),
+            _ => return Err("polyval requires real double p,x or p,x,[],mu; error estimates and other input types are unsupported".into()),
         };
         if self
             .evaluated_elements
@@ -15,6 +18,28 @@ impl Engine {
         {
             return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
         }
+        let scaled;
+        let x = if let Some(mu) = mu {
+            if mu.len() != 2
+                || (mu.rows() != 1 && mu.cols() != 1)
+                || !mu.data().iter().all(|v| v.is_finite())
+                || mu.data()[1] <= 0.
+            {
+                return Err("polyval: mu must contain a finite center and positive scale".into());
+            }
+            self.check_cancel()?;
+            let mut values = Vec::with_capacity(x.len());
+            for (i, value) in x.data().iter().enumerate() {
+                if i.is_multiple_of(8192) {
+                    self.check_cancel()?;
+                }
+                values.push((value - mu.data()[0]) / mu.data()[1]);
+            }
+            scaled = crate::Matrix::from_column_vec(x.rows(), x.cols(), values)?;
+            &scaled
+        } else {
+            x
+        };
         Ok(Value::Matrix(evaluate_polynomial(p, x, &self.cancel)?))
     }
 }

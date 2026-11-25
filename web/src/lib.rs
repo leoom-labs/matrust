@@ -53,10 +53,12 @@ impl Session {
         }
     }
 
-    /// JSON `{"output", "error", "figures": [{"id", "svg"}], "ms"}`.
+    /// JSON `{"output", "error", "figures": [{"id", "svg"}], "ms"}`. `code` is
+    /// the page editor's whole script: command syntax is lexical, as for a
+    /// script file (a workspace variable `close` does not stop `close all`).
     pub fn run(&mut self, code: &str) -> String {
         let start = performance_now();
-        let (lines, error) = match self.engine.execute(code) {
+        let (lines, error) = match self.engine.execute_script(code) {
             Ok(execution) => (execution.output, None),
             // Statements before the error ran; their output is kept.
             Err(error) => (

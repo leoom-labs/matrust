@@ -233,12 +233,11 @@ fn unsupported_forms_preserve_destinations_and_established_argument_effects() {
     let before = e.workspace();
     for call in [
         "unique()",
-        "unique(A,'rows')",
-        "unique(A,'first')",
         "unique(A,'legacy')",
         "unique(A,'sorted','stable')",
+        "unique(A,'first','last')",
         "unique(A,1)",
-        "unique(A,\"stable\")",
+        "unique(A,[\"stable\" \"rows\"])",
         "unique({1})",
     ] {
         assert!(e.execute(&format!("[C,ia,ic]={call};")).is_err(), "{call}");
@@ -252,11 +251,7 @@ fn unsupported_forms_preserve_destinations_and_established_argument_effects() {
             .contains("does not support 4")
     );
     assert!(e.figure_ids().is_empty());
-    assert!(
-        e.execute("C=unique(figure(10),'sorted','extra');")
-            .unwrap_err()
-            .contains("expects")
-    );
+    assert!(e.execute("C=unique(figure(10),'sorted','extra');").is_err());
     assert_eq!(e.figure_ids(), vec![10]);
     assert!(e.array("C").unwrap().same_snapshot(&before["C"]));
     assert!(e.execute("C=unique(disp(123));").is_err());

@@ -513,8 +513,15 @@ impl Canvas {
         let mut organized = false;
         let mut edit_action = None;
         ui.horizontal_wrapped(|ui| {
+            // Canvas toolbar buttons and menus are ghost buttons (plan
+            // section 9): no border or fill until hovered.
+            let widgets = &mut ui.visuals_mut().widgets;
+            for state in [&mut widgets.inactive, &mut widgets.noninteractive] {
+                state.bg_stroke = Stroke::NONE;
+                state.weak_bg_fill = egui::Color32::TRANSPARENT;
+            }
             if ui
-                .add_enabled(self.cursor > 0, egui::Button::new("Undo diagram"))
+                .add_enabled(self.cursor > 0, toolbar_button(ui, self.cursor > 0, "Undo diagram"))
                 .clicked()
                 && interactive
             {
@@ -524,7 +531,7 @@ impl Canvas {
             if ui
                 .add_enabled(
                     self.cursor < self.history.len(),
-                    egui::Button::new("Redo diagram"),
+                    toolbar_button(ui, self.cursor < self.history.len(), "Redo diagram"),
                 )
                 .clicked()
                 && interactive
@@ -535,7 +542,7 @@ impl Canvas {
             if ui
                 .add_enabled(
                     !model.positions.is_empty(),
-                    egui::Button::new("Auto arrange"),
+                    toolbar_button(ui, !model.positions.is_empty(), "Auto arrange"),
                 )
                 .clicked()
                 && interactive
@@ -606,7 +613,8 @@ impl Canvas {
             // Digit transitions during pointer zoom must not rewrap the toolbar.
             ui.add_sized([48., ui.spacing().interact_size.y], egui::Label::new(egui::RichText::new(zoom_label).small()).truncate());
             ui.small("Controls").on_hover_text("Ctrl+wheel zooms; middle-drag pans. Drag empty space to select; Ctrl adds, Shift extends or unsnaps.\nCtrl+A selects all; arrows/Home/End select; Delete removes; Ctrl+Z/Y undo/redo.\nCtrl+arrows move (Shift: fine); C starts wire; PgUp/PgDn choose input; Enter connects; Backspace disconnects.");
-            if ui.add_enabled(self.source.is_some() || self.moving.is_some() || self.marquee.is_some(), egui::Button::new("Cancel gesture")).clicked()
+            let gesture = self.source.is_some() || self.moving.is_some() || self.marquee.is_some();
+            if ui.add_enabled(gesture, toolbar_button(ui, gesture, "Cancel gesture")).clicked()
                 && interactive
             {
                 self.cancel_connection();
@@ -1289,3 +1297,16 @@ mod inspector_layout_tests;
 #[cfg(test)]
 #[path = "model_integrator_tests.rs"]
 mod integrator_tests;
+
+/// Canvas toolbar button: a disabled one is text 3 with no fill or border
+/// (plan section 9); enabled ones keep the normal control style.
+fn toolbar_button(ui: &egui::Ui, enabled: bool, label: &str) -> egui::Button<'static> {
+    let p = tokens::palette(ui.ctx());
+    if enabled {
+        egui::Button::new(label.to_owned())
+    } else {
+        egui::Button::new(egui::RichText::new(label.to_owned()).color(p.text_disabled))
+            .fill(egui::Color32::TRANSPARENT)
+            .stroke(Stroke::NONE)
+    }
+}

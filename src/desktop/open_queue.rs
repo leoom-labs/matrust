@@ -26,22 +26,12 @@ impl Workspace {
         self.eps_preview.pending.is_some()
             || self.named_layout.pending()
             || self.global_search.is_open()
-            || self.file_action_pending_common_excluding_conflict(true, false)
-    }
-    pub(super) fn file_action_pending_without_csv_naming(&self) -> bool {
-        self.eps_preview.pending.is_some()
-            || self.named_layout.pending()
-            || self.global_search.is_open()
-            || self.file_action_pending_common_excluding_conflict(false, true)
+            || self.file_action_pending_common_excluding_conflict(true)
     }
     fn file_action_pending_common(&self) -> bool {
-        self.file_action_pending_common_excluding_conflict(false, false)
+        self.file_action_pending_common_excluding_conflict(false)
     }
-    fn file_action_pending_common_excluding_conflict(
-        &self,
-        own_conflict: bool,
-        own_csv: bool,
-    ) -> bool {
+    fn file_action_pending_common_excluding_conflict(&self, own_conflict: bool) -> bool {
         self.focus_areas.is_open()
             || self.chrome.about
             || self.original_copy.pending()
@@ -62,7 +52,6 @@ impl Workspace {
             || self.figure_export.is_some()
             || self.plot_data.is_some()
             || self.workspace_import.is_some()
-            || (!own_csv && self.csv_import.is_some())
             || self.figure_close.is_some()
     }
 
@@ -125,8 +114,6 @@ impl Workspace {
         self.cancel_designer_save();
         self.cancel_model_toolbar();
         self.cancel_folder_browse();
-        self.cancel_csv_import_picker();
-        self.cancel_csv_naming_action();
         self.cancel_ordinary_script_conflict();
         if let Some(dialog) = &mut self.figure_export {
             dialog.cancel_action();
@@ -169,6 +156,7 @@ impl Workspace {
         let queued = self.open_queue.len();
         self.open_queue.clear();
         self.worker.cancel.store(true, Ordering::Relaxed);
+        self.answer.cancel();
         self.status = if self.busy {
             format!("Stopping after current operation; cancelled {queued} queued files")
         } else if navigating {

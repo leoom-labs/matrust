@@ -9,59 +9,12 @@ const LONG: &[usize] = &[
     110, 111, 112, 114, 115, 116, 117, 118,
 ];
 
-/// Every unsupported case is named: no implicit skips. N-D inputs cannot be
-/// constructed even when the final shiftdim/size result would be two-dimensional.
-const KNOWN: &[(usize, &str)] = &[
-    (
-        43,
-        "N-D arrays are not supported yet: reshape input [1 1 6]",
-    ),
-    (
-        44,
-        "N-D arrays are not supported yet: reshape input [1 1 6]",
-    ),
-    (
-        45,
-        "N-D arrays are not supported yet: shiftdim result [1 1 3]",
-    ),
-    (
-        46,
-        "N-D arrays are not supported yet: shiftdim intermediate [1 2 2]",
-    ),
-    (
-        49,
-        "N-D arrays are not supported yet: reshape input [2 3 4]",
-    ),
-    (
-        53,
-        "N-D arrays are not supported yet: permute input/result [2 2 2]",
-    ),
-    (
-        58,
-        "N-D arrays are not supported yet: ipermute input/result [2 2 2]",
-    ),
-    (
-        111,
-        "N-D arrays are not supported yet: hsv2rgb result [1 1 3]",
-    ),
-    (112, "N-D arrays are not supported yet: rand input [2 2 3]"),
-    (
-        128,
-        "sparse input construction is not implemented; outside full conversion",
-    ),
-    (
-        130,
-        "sparse input construction is not implemented; outside full conversion",
-    ),
-    (
-        131,
-        "sparse logical input construction is not implemented; outside full conversion",
-    ),
-    (
-        133,
-        "sparse input construction is not implemented; outside full conversion",
-    ),
-];
+/// Every unsupported case is named: no implicit skips. Unsupported functions
+/// receive the central N-D guard after an N-D value has been constructed.
+const KNOWN: &[(usize, &str)] = &[(
+    111,
+    "N-D arrays are not supported yet: hsv2rgb result [1 1 3]",
+)];
 
 /// Cases with harness adjustments. Console/class/size/error comparisons remain
 /// exact unless the table explicitly specifies a comparison rule.
@@ -89,7 +42,6 @@ const HARNESS: &[(usize, &str)] = &[
     (86, ERROR_MESSAGE),
     (93, ERROR_MESSAGE),
     (113, ERROR_MESSAGE),
-    (118, ERROR_MESSAGE),
     (119, ERROR_MESSAGE),
     (127, ERROR_MESSAGE),
     (134, ERROR_MESSAGE),
@@ -220,10 +172,7 @@ fn misc_matches_reference() {
         if let Some((_, reason)) = KNOWN.iter().find(|&&(id, _)| id == case.id) {
             // Actually execute KNOWN cases too. Success would make this entry stale.
             let expected = match case.id {
-                45 | 46 | 111 => "N-D arrays are not supported yet",
-                128 | 130 | 131 | 133 => {
-                    "'sparse' is a MATLAB function that MatRust does not support yet."
-                }
+                111 => "N-D arrays are not supported yet",
                 _ => "Only two-dimensional arrays and trailing singleton dimensions are supported",
             };
             let error = result.err().map(|e| error_message(&engine, e));
@@ -252,9 +201,17 @@ fn misc_matches_reference() {
                 format!("ERR {}\n", error_message(&engine, error))
             }
         };
-        let actual_class = engine
-            .array("x")
-            .map(|a| format!("{} [{} {}]", a.class(), a.rows(), a.cols()));
+        let actual_class = engine.array("x").map(|a| {
+            format!(
+                "{} [{}]",
+                a.class(),
+                a.dims()
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
+        });
         let console_matches = if HARNESS.contains(&(case.id, FFT_ROUNDING)) {
             fft_console_matches(&actual, case.output)
         } else {
@@ -291,7 +248,14 @@ fn numeric(engine: &mut Engine, source: &str) -> Vec<f64> {
 
 #[test]
 fn user_functions_shadow_misc_builtins_for_single_and_multiple_outputs() {
-    for name in ["shiftdim", "inpolygon", "peaks", "hsv2rgb", "rgb2hsv"] {
+    for name in [
+        "shiftdim",
+        "inpolygon",
+        "peaks",
+        "hsv2rgb",
+        "rgb2hsv",
+        "bucky",
+    ] {
         let mut e = Engine::default();
         e.execute(&format!(
             "[x,y] = {name}(10); z = {name}(20);\nfunction [a,b] = {name}(n)\na=n; b=n+1;\nend\n"
@@ -490,15 +454,25 @@ fn shape_operations_preserve_class_and_shared_identity() {
         panic!("char")
     };
     assert_eq!(a.units(), &[99, 98, 97]);
-    for source in [
-        "shiftdim([1 2], -1)",
-        "permute([1 2; 3 4], [1 3 2])",
-        "ipermute([1 2; 3 4], [1 3 2])",
-        "hsv2rgb(1,1,1)",
+    // N-D part 2: these 2-D inputs now give N-D results (MATLAB shiftdim/permute pages).
+    for (source, dims, data) in [
+        ("x = shiftdim([1 2], -1);", &[1, 1, 2][..], &[1., 2.][..]),
+        (
+            "x = permute([1 2; 3 4], [1 3 2]);",
+            &[2, 1, 2],
+            &[1., 3., 2., 4.],
+        ),
+        (
+            "x = ipermute([1 2; 3 4], [1 3 2]);",
+            &[2, 1, 2],
+            &[1., 3., 2., 4.],
+        ),
     ] {
-        let error = e.execute(source).unwrap_err();
-        assert_eq!(error_message(&e, error), "N-D arrays are not supported yet");
+        assert_eq!(numeric(&mut e, source), data, "{source}");
+        assert_eq!(e.array("x").unwrap().dims().as_ref(), dims, "{source}");
     }
+    let error = e.execute("hsv2rgb(1,1,1)").unwrap_err();
+    assert_eq!(error_message(&e, error), "N-D arrays are not supported yet");
 }
 
 #[test]
@@ -559,6 +533,130 @@ fn interpolation_of_periodic_complex_data_and_dimension_two() {
             .to_lowercase()
             .contains("cancel")
     );
+}
+
+/// `[b, n] = bucky; [i, j] = find(b)` as in matGeom createSoccerBall.m. The
+/// expected structure is the public truncated icosahedron (60 vertices, 90
+/// equal edges, three per vertex, all on one sphere); no vertex numbering,
+/// orientation or coordinate value is assumed. Distances are computed here,
+/// not by the engine, and compared with tolerances.
+#[test]
+fn bucky_two_outputs_are_one_soccer_ball_graph_on_its_own_vertices() {
+    let mut e = Engine::default();
+    e.execute("[b, n] = bucky; [i, j] = find(b); e = unique(sort([i j], 2), 'rows');")
+        .unwrap();
+    assert_eq!(
+        numeric(
+            &mut e,
+            "x = [issparse(b) isa(b, 'double') islogical(b) size(b) size(n) size([i j]) size(e)];"
+        ),
+        vec![1., 1., 0., 60., 60., 60., 3., 180., 2., 90., 2.]
+    );
+    let adjacency = numeric(&mut e, "x = full(b);");
+    let at = |r: usize, c: usize| adjacency[r + 60 * c];
+    for r in 0..60 {
+        assert_eq!(at(r, r), 0., "self-loop at {r}");
+        for c in 0..60 {
+            assert!(at(r, c) == 0. || at(r, c) == 1., "({r},{c}) = {}", at(r, c));
+            assert_eq!(at(r, c), at(c, r), "asymmetric at ({r},{c})");
+        }
+        assert_eq!((0..60).filter(|&c| at(r, c) == 1.).count(), 3, "row {r}");
+    }
+    // find: 180 directed pairs, each an adjacency entry; 90 undirected edges.
+    let pairs = numeric(&mut e, "x = [i j];");
+    let mut undirected = std::collections::BTreeSet::new();
+    for k in 0..180 {
+        let (r, c) = (pairs[k] as usize - 1, pairs[180 + k] as usize - 1);
+        assert_eq!(at(r, c), 1., "find pair {k}");
+        undirected.insert((r.min(c), r.max(c)));
+    }
+    assert_eq!(undirected.len(), 90);
+    let edges = numeric(&mut e, "x = e;");
+    let edges: std::collections::BTreeSet<_> = (0..90)
+        .map(|k| (edges[k] as usize - 1, edges[90 + k] as usize - 1))
+        .collect();
+    assert_eq!(edges, undirected);
+
+    // Coordinates: second output, 60 finite distinct points on one sphere.
+    let n = numeric(&mut e, "x = n;");
+    assert!(n.iter().all(|v| v.is_finite()));
+    let centroid: [f64; 3] =
+        std::array::from_fn(|k| n[60 * k..60 * (k + 1)].iter().sum::<f64>() / 60.);
+    let point = |r: usize| -> [f64; 3] { std::array::from_fn(|k| n[r + 60 * k] - centroid[k]) };
+    let distance =
+        |p: [f64; 3], q: [f64; 3]| (0..3).map(|k| (p[k] - q[k]).powi(2)).sum::<f64>().sqrt();
+    let radii: Vec<f64> = (0..60).map(|r| distance(point(r), [0.; 3])).collect();
+    let radius = radii[0];
+    assert!(radius > 0.1);
+    for (r, &v) in radii.iter().enumerate() {
+        assert!(
+            (v - radius).abs() <= 1e-12 * radius,
+            "radius {r}: {v} vs {radius}"
+        );
+    }
+    // Each vertex: three equally nearest neighbours, clearly nearer than the
+    // fourth (next distances are the pentagon diagonal φ·edge and the hexagon
+    // short diagonal √3·edge), and they are exactly its adjacent vertices.
+    let mut edge = None;
+    for r in 0..60 {
+        let mut near: Vec<(f64, usize)> = (0..60)
+            .filter(|&c| c != r)
+            .map(|c| (distance(point(r), point(c)), c))
+            .collect();
+        near.sort_by(|a, b| a.0.total_cmp(&b.0));
+        assert!(near[0].0 > 1e-6 * radius, "duplicate vertex {r}");
+        let length = *edge.get_or_insert(near[0].0);
+        for &(d, _) in &near[..3] {
+            assert!(
+                (d - length).abs() <= 1e-12 * radius,
+                "vertex {r}: {d} vs {length}"
+            );
+        }
+        assert!(
+            near[3].0 > 1.5 * length,
+            "vertex {r}: fourth at {}",
+            near[3].0
+        );
+        let mut nearest: Vec<usize> = near[..3].iter().map(|&(_, c)| c).collect();
+        nearest.sort_unstable();
+        let adjacent: Vec<usize> = (0..60).filter(|&c| at(r, c) == 1.).collect();
+        assert_eq!(nearest, adjacent, "vertex {r}");
+    }
+    // Published truncated-icosahedron circumradius R = a √(58 + 18√5) / 4 for
+    // edge a; the help page documents the unit sphere about the origin.
+    let length = edge.unwrap();
+    assert!((radius / length - (58. + 18. * 5f64.sqrt()).sqrt() / 4.).abs() <= 1e-12);
+    assert!((radius - 1.).abs() <= 1e-12 && centroid.iter().all(|c| c.abs() <= 1e-12));
+
+    // One-output forms give the same adjacency; outputs are deterministic.
+    assert_eq!(
+        numeric(
+            &mut e,
+            "b1 = bucky; b2 = bucky(); [b3] = bucky; [~, n2] = bucky; \
+             x = [issparse(b1) isequal(b1, b) isequal(b2, b) isequal(b3, b) isequal(n2, n)];"
+        ),
+        vec![1.; 5]
+    );
+    let mut fresh = Engine::default();
+    fresh.execute("[b, n] = bucky;").unwrap();
+    assert_eq!(numeric(&mut fresh, "x = full(b);"), adjacency);
+    assert_eq!(
+        numeric(&mut fresh, "x = n;")
+            .iter()
+            .map(|v| v.to_bits())
+            .collect::<Vec<_>>(),
+        n.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+    );
+    for (source, message) in [
+        ("bucky(1)", "Too many input arguments."),
+        ("[p, q, r] = bucky;", "Too many output arguments."),
+    ] {
+        let error = e.execute(source).unwrap_err();
+        assert!(error.ends_with(message), "{source}: {error}");
+    }
+    let mut shadowed = Engine::default();
+    shadowed.execute("bucky = 7; x = bucky;").unwrap();
+    assert_eq!(shadowed.variables["x"].data(), &[7.]);
 }
 
 /// A release-only timing probe, invoked explicitly; no speed assertion.

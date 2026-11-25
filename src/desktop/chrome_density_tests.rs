@@ -87,7 +87,7 @@ fn toolstrip_tabs_keep_body_size_in_compact_windows() {
         for _ in 0..3 {
             output = frame_at(&mut app, &ctx, size, vec![]);
         }
-        for label in ["Home", "Plots", "Apps"] {
+        for label in ["Command", "Figures", "Apps"] {
             assert_eq!(
                 painted_font(&output, label).size,
                 expected,
@@ -161,7 +161,7 @@ fn compact_four_up_tiles_use_dense_rows_and_keep_every_axes_title() {
         };
         settle(&mut app);
         app.show_plot_pane();
-        app.layout.mode = layout::PaneMode::Figure;
+        app.set_mode(modes::Mode::Figures);
         app.layout.figure_tiling = Some(crate::session::FigureTiling::Four);
         let mut output = frame_at(&mut app, &ctx, size, vec![]);
         for _ in 0..16 {

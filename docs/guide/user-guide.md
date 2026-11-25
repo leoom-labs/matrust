@@ -39,7 +39,10 @@ There are over 750 functions in total. Type `help name` for a page, or see `asse
 Limits to know about:
 
 - Arrays are 2-D only. N-D arrays (`zeros(2,2,2)`, `cat(3,...)`) are rejected.
-- Per-run limits: 1,000,000 execution steps; output is cut at 2,000 entries or 2 MiB, so end lines with a semicolon; at most 16 open figures and 64 series per figure.
+- Desktop app and command line: a run has no step or per-run output-size limit. Stop (desktop) or Ctrl+C (command line) ends it. The per-statement evaluation guard and for-loop input guard scale with RAM.
+  Many individual functions still refuse arrays above 32 Mi elements (256 MiB) for now. One displayed value may be up to 32 MiB on desktop/CLI and 2 MiB in the browser; larger values fail with an error, so use semicolons to suppress output.
+- Browser console: a run stops after 1,000,000 execution steps, and output is cut at 2,000 entries or 2 MiB, so end lines with a semicolon.
+- Everywhere: at most 16 open figures and 64 series per figure.
 - Function calls can nest up to 32 levels deep.
 - Not available: toolboxes, Simulink, `classdef`, sparse matrices, string arrays (`"text"` cannot be stored in a variable; use single quotes), `parfor`, `table`, `datetime`, 3-D plots and images (`surf`, `plot3`, `image`), `histogram`, `text`. These report "not supported yet".
 - Complex linear solves (`A\b` with complex `A`) are not supported.
@@ -68,11 +71,13 @@ matrust script.mr                run a script file
 matrust --eval "disp(2+2)"       run one expression
 matrust script.mr --threads 4    limit the worker threads
 matrust script.mr --svg out.svg  save the current plot as SVG
+matrust script.mr --max-steps N  stop the run after N execution steps
 matrust --help
 ```
 
 - `matrust script.m` also works.
 - `--threads N` takes a value from 1 to 64. The default is the number of CPU cores, capped at 8.
+- Runs have no step limit. Ctrl+C stops the running calculation (a script then exits with an error; the console returns to its prompt). A second Ctrl+C within 2 seconds quits. `--max-steps N` puts a step limit back for automated runs.
 - A script file larger than 1 MB is rejected.
 - Function files are looked up in the script's folder, or in the current folder for `--eval` and the console.
 - A failing script prints its output so far, then `Error: ...`, and exits with a non-zero code.
@@ -88,7 +93,7 @@ The toolstrip sits at the top. Three tabs hold grouped actions: Home, Plots and 
 | Group | Actions |
 | --- | --- |
 | Scripts | New script, Open script, Save script, Save script as, Reload script |
-| Execution | Run script (Ctrl+Enter), Run selection (F9) |
+| Execution | Run script (F5 or Ctrl+Enter), Run selection (F9) |
 | Workspace | Load workspace, Save workspace, Import CSV, Inspect variable |
 | Desktop | Command Window main, Editor and figure, Editor only, Figure only, Reset layout |
 
@@ -114,13 +119,13 @@ Filter Designer and Block Simulation open as tabs in the main work area.
 
 ### Command Window
 
-Type an expression and press Enter. Results print below. Use a semicolon to hide output. `clc` clears the window, `whos` lists variables, `clear` removes them. Output is capped per run (section 1). A long calculation shows a Stop button in the toolstrip. Stopping is cooperative, so it takes effect at the next check point.
+Type an expression and press Enter. Results print below. Use a semicolon to hide output. `clc` clears the window, `whos` lists variables, `clear` removes them. A run that prints more than 20,000 entries or 32 MiB shows only the newest output, after a line saying how many earlier lines are not shown. A long calculation shows a Stop button in the toolstrip. Stopping is cooperative, so it takes effect at the next check point.
 
 ### Editor
 
 The Editor holds script tabs.
 
-- Ctrl+Enter runs the active script. F9 runs the selected text.
+- F5 or Ctrl+Enter runs the active script. F9 runs the selected text.
 - Ctrl+S saves, Ctrl+Shift+S saves as. "Save all scripts" is Ctrl+Alt+S.
 - Ctrl+Tab and Ctrl+Shift+Tab move between script tabs.
 - Opening a script never runs it. Reopening a file that is already open selects its tab and keeps your unsaved edits.
@@ -139,7 +144,7 @@ The Workspace panel lists variables with name, size and class. Double-click a va
 The left rail switches between Files, History and Examples.
 
 - Files shows the Current Folder. Scripts, `.mat`, CSV, figure and image files open from here.
-- The Current Folder bar has Back, Forward and Up buttons, an address field and Browse. The Files list has a filename filter. F5 refreshes. Alt+Left, Alt+Right and Alt+Up navigate. Ctrl+L moves to the address field.
+- The Current Folder bar has Back, Forward and Up buttons, an address field and Browse. The Files list has a filename filter. The Refresh button rereads the folder. Alt+Left, Alt+Right and Alt+Up navigate. Ctrl+L moves to the address field.
 - Relative paths in scripts and the commands `load`, `save`, `readmatrix` and so on resolve from the Current Folder.
 - A folder with more than 100,000 matching entries shows a limit notice; narrow the filter.
 
@@ -163,7 +168,7 @@ Layout > Appearance selects Light, Dark or "Use system setting". Reset layout re
 
 ### Running
 
-- In the Editor, Run script (Ctrl+Enter) runs the whole text as it is in the editor, including unsaved changes. Run selection (F9) runs only the selected lines.
+- In the Editor, Run script (F5 or Ctrl+Enter) runs the whole text as it is in the editor, including unsaved changes. Run selection (F9) runs only the selected lines.
 - From the command line, `matrust myscript.mr`.
 - Typing a script's name in the Command Window runs it.
 - `mfilename`, `fileparts` and `fullfile` work for path handling. Running does not change the Current Folder.

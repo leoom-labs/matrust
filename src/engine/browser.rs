@@ -1,7 +1,7 @@
 //! Browser build (wasm32): file queries see an empty file system; other file
 //! commands fail before a handler reaches std's unsupported I/O.
 use super::{Engine, Value};
-use crate::{Array, LogicalMatrix, Matrix, Result};
+use crate::{Array, Matrix, Result};
 
 pub(super) const NO_FILES: &str = "Files are not available in the browser version.";
 
@@ -11,6 +11,7 @@ const FILE_COMMANDS: &[&str] = &[
     "fopen",
     "fgetl",
     "fgets",
+    "ferror",
     "feof",
     "ftell",
     "fseek",
@@ -25,6 +26,13 @@ const FILE_COMMANDS: &[&str] = &[
     "readmatrix",
     "writematrix",
     "fileread",
+    "readlines",
+    "writelines",
+    "visdiff",
+    "implay",
+    "registrationEstimator",
+    "cameraCalibrator",
+    "volumeViewer",
     "importdata",
     "textread",
     "zip",
@@ -34,6 +42,11 @@ const FILE_COMMANDS: &[&str] = &[
     "tar",
     "untar",
     "imfinfo",
+    "dicominfo",
+    "dicomBrowser",
+    "dicomCollection",
+    "dicomread",
+    "dicomwrite",
     "audioinfo",
     "isdir",
     "which",
@@ -52,6 +65,8 @@ const FILE_COMMANDS: &[&str] = &[
     "tempname",
     "diary",
     "run",
+    "addpath",
+    "rmpath",
     "savefig",
     "openfig",
     "saveas",
@@ -61,6 +76,18 @@ const FILE_COMMANDS: &[&str] = &[
     "imwrite",
     "audioread",
     "audiowrite",
+    "readcell",
+    "writecell",
+    "detectImportOptions",
+    "preview",
+    "readtimetable",
+    "xlsread",
+    "xlswrite",
+    "websave",
+    "h5read",
+    "h5create",
+    "h5write",
+    "ncread",
 ];
 
 /// True when calling `name` would use files. With evaluated arguments,
@@ -78,7 +105,10 @@ pub(super) fn file_command(name: &str, args: Option<&[Value]>) -> bool {
 
 /// Queries handled here must bypass native metadata lookups entirely.
 pub(super) fn query(name: &str) -> bool {
-    matches!(name, "exist" | "isfile" | "isfolder")
+    matches!(
+        name,
+        "exist" | "isfile" | "isfolder" | "prefdir" | "userpath"
+    )
 }
 
 impl Engine {
@@ -86,18 +116,31 @@ impl Engine {
         if !query(name) {
             return Ok(None);
         }
+        // savepath stays in the path handler: it warns and returns status 1.
+        if matches!(name, "prefdir" | "userpath") {
+            if args.len() > usize::from(name == "userpath") {
+                return Err("Too many input arguments.".into());
+            }
+            if let Some(value) = args.first() {
+                self.text_value(value.clone())?;
+            }
+            return Ok(Some(Value::Text(String::new())));
+        }
         if args.is_empty() {
             return Err("Not enough input arguments.".into());
         }
         if args.len() > if name == "exist" { 2 } else { 1 } {
             return Err("Too many input arguments.".into());
         }
+        if name != "exist" {
+            // The browser build has no file store: every name is absent.
+            let (texts, dims) = super::env_files::envx_query_names(self, name, args)?;
+            let answers = vec![false; texts.len()];
+            return super::env_files::envx_query_result(self, answers, &dims).map(Some);
+        }
         let target = self
             .text_value(args[0].clone())
             .map_err(|_| format!("{name}: name must be a character row"))?;
-        if name != "exist" {
-            return Ok(Some(Value::Logical(LogicalMatrix::scalar(false))));
-        }
         let kind = args.get(1).map(|value| self.text_value(value.clone()));
         let kind = match kind {
             None => String::new(),
@@ -106,17 +149,19 @@ impl Engine {
         };
         let is_var = self.contains_array(&target);
         let builtin = crate::session::FUNCTIONS.contains(&target.as_str());
+        let program_file = super::file_io::is_program_file(&target);
         let code = match kind.as_str() {
             "var" => f64::from(u8::from(is_var)),
             "file" | "dir" => 0.,
             "builtin" => {
-                if builtin {
+                if builtin && !program_file {
                     5.
                 } else {
                     0.
                 }
             }
             _ if is_var => 1.,
+            _ if program_file => 2.,
             _ if builtin => 5.,
             _ => 0.,
         };

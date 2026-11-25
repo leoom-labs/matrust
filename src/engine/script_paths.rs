@@ -81,13 +81,14 @@ impl Engine {
     /// Execute a named document's current text, retaining ordinary parser and
     /// execution limits. The path identifies mfilename; no process directory is
     /// changed and no source is reread. Identity is restored even after failure.
+    /// Command syntax is lexical, as for `run('name')`.
     pub fn execute_document(&mut self, source: &str, path: &Path) -> Result<Execution> {
         self.check_cancel()?;
         bounded_path(path.to_str().ok_or("Document path is not valid Unicode")?)?;
         let path = std::path::absolute(path).map_err(|e| e.to_string())?;
         path_text(&path)?;
         let previous = self.document_path.replace(path);
-        let result = self.execute(source);
+        let result = self.execute_script(source);
         self.document_path = previous;
         result
     }
@@ -130,14 +131,30 @@ impl Engine {
                 )
             }
         };
-        let lookup = folder
-            .as_deref()
-            .or(self.function_directory())
-            .ok_or_else(missing)?;
         let file = path.file_name().ok_or_else(missing)?;
         let extension = path.extension().map(|e| e.to_str().unwrap_or_default());
-        // An explicit extension must name an existing file; .mr still wins by name.
-        if extension.is_some() && !lookup.join(file).is_file() {
+        // An explicit extension must name an existing file (in the given
+        // folder, else in the current folder or on the search path); .mr
+        // still wins by name.
+        let exists = match folder.as_deref() {
+            Some(lookup) => lookup.join(file).is_file(),
+            None => {
+                self.function_directory()
+                    .is_some_and(|d| d.join(file).is_file())
+                    || path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .is_some_and(|stem| {
+                            self.spath_files(stem, true)
+                                .iter()
+                                .any(|p| p.file_name() == Some(file))
+                        })
+            }
+        };
+        if folder.is_none() && self.function_directory().is_none() && self.spath_list().is_empty() {
+            return Err(missing());
+        }
+        if extension.is_some() && !exists {
             return Err(missing());
         }
         if !matches!(extension, None | Some("m" | "mr")) {
@@ -204,6 +221,9 @@ impl Engine {
     }
 
     pub(super) fn script_path_call(&self, name: &str, args: &[Value]) -> Result<Option<Value>> {
+        if name == "load" {
+            return super::file_commands::load_output(self, args).map(Some);
+        }
         if !matches!(name, "mfilename" | "fileparts" | "fullfile") {
             return Ok(None);
         }

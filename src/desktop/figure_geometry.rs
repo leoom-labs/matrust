@@ -7,7 +7,7 @@ use matrust::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// One admitted model contains <=1,030,000 expanded vertices across <=64 series. Full
+// One admitted model contains <=1,030,000 expanded vertices within the plot storage budget. Full
 // bars/patches plus bounded line/stair/stem geometry fit in this allowance.
 // Retained caches share a two-maximum-cache byte budget; smaller caches can
 // coexist within it. Inactive geometry may be evicted without changing models.
@@ -16,6 +16,7 @@ pub(super) const ONE_CACHE_BYTES: usize =
 pub(super) const CACHE_BYTES: usize = 2 * ONE_CACHE_BYTES;
 pub struct Ordinary {
     pub points: Vec<Vec<PlotPoint>>,
+    pub point_indices: Vec<Option<Vec<usize>>>,
     pub transforms: [AxisTransform; 2],
     pub bounds: ([f64; 2], [f64; 2]),
     pub legend: Option<Box<matrust::plot::LegendBestPrepared>>,
@@ -40,25 +41,33 @@ impl Geometry {
         // The worker validates/owns the admitted snapshot. Do not scan it again
         // through Figure::validate here; each preparation scan is cancellable.
         figure.geometry_ledger()?;
+        // A yyaxis figure draws right-side series in left-axis coordinates.
+        let display = figure.yy_display_figure();
+        let figure = display.as_ref().unwrap_or(figure);
         let result = if figure.layout.is_some() {
             Self::Subplots(subplot_view::Canvas::prepare(id, figure, cancel)?)
         } else {
+            // A 3-D axes is drawn from its projected display copy (box, grid
+            // and tick lines are extra series); a 2-D axes is borrowed as is.
+            let projected = matrust::plot::view3d::display_figure(figure);
+            let figure = projected.as_ref();
             let (transforms, bounds) = figure.display_axes_cancellable(cancel)?;
             let mut points = Vec::with_capacity(figure.series.len());
+            let mut point_indices = Vec::with_capacity(figure.series.len());
             for index in 0..figure.series.len() {
                 check(cancel)?;
-                points.push(convert(
-                    figure.axes.display_series_points_cancellable(
-                        index,
-                        8192 / figure.series.len().max(1),
-                        transforms,
-                        cancel,
-                    )?,
+                let (pts, indices) = figure.axes.display_series_points_indexed_cancellable(
+                    index,
+                    8192 / figure.series.len().max(1),
+                    transforms,
                     cancel,
-                )?);
+                )?;
+                points.push(convert(pts, cancel)?);
+                point_indices.push(indices);
             }
             Self::Ordinary(Ordinary {
                 points,
+                point_indices,
                 transforms,
                 bounds,
                 legend: prepare_legend(&figure.axes, cancel)?.map(Box::new),
@@ -73,11 +82,17 @@ impl Geometry {
     }
     pub fn retained_bytes(&self) -> usize {
         match self {
-            Self::Ordinary(p) => p
-                .points
-                .iter()
-                .map(|v| v.capacity() * std::mem::size_of::<PlotPoint>())
-                .sum(),
+            Self::Ordinary(p) => {
+                p.points
+                    .iter()
+                    .map(|v| v.capacity() * std::mem::size_of::<PlotPoint>())
+                    .sum::<usize>()
+                    + p.point_indices
+                        .iter()
+                        .flatten()
+                        .map(|v| v.capacity() * std::mem::size_of::<usize>())
+                        .sum::<usize>()
+            }
             Self::Subplots(p) => p.retained_point_bytes(),
         }
     }
@@ -90,6 +105,7 @@ impl Ordinary {
     pub fn view(&self) -> figure_view::PreparedView<'_> {
         figure_view::PreparedView {
             points: &self.points,
+            point_indices: Some(&self.point_indices),
             axes: self.transforms,
             bounds: self.bounds,
             legend: self.legend.as_deref(),

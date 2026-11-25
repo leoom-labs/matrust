@@ -625,7 +625,7 @@ pub fn solve(
                     let (z, _) = eval.delayed(&tail, s, y)?;
                     eval.model.events(s, y, &z)
                 },
-                t0,
+                Some(t0),
                 &event_values,
                 t,
                 end,

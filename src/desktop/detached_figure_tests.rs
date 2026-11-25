@@ -81,18 +81,50 @@ fn position(shape: &egui::epaint::Shape, text: &str) -> Option<egui::Pos2> {
         _ => None,
     }
 }
+fn child_click_ready(app: &Workspace, id: u32) -> bool {
+    // The press frame runs the root before the pointer event. A focus select
+    // or display prepare started there disables this toolbar, and egui drops
+    // the release on a disabled button. Accept the painted target only once
+    // that request is consumed and this frame's widgets can take the click.
+    if app.busy || app.current_figure != id || app.detached.pending.is_some() {
+        return false;
+    }
+    let Some(child) = app
+        .detached
+        .windows
+        .get(&id)
+        .and_then(|child| child.lock().ok())
+    else {
+        return false;
+    };
+    !child.presentation.busy
+        && !child.presentation.modal
+        && child.mailbox.command.is_none()
+        && child.mailbox.focus.is_none()
+        && (child.geometry.is_some() || !child.prepare_requested)
+}
 fn click(app: &mut Workspace, ctx: &egui::Context, id: Option<u32>, text: &str) {
     // New egui Areas have an invisible sizing frame. Wait only for the real
     // painted target, with a fixed bound and no fallback coordinates.
     let pos = (0..8)
         .find_map(|_| {
-            let out = if let Some(id) = id {
-                child_frame(app, ctx, id, false, true, vec![])
+            let (out, ready) = if let Some(id) = id {
+                let out = child_frame(app, ctx, id, false, true, vec![]);
+                let ready = child_click_ready(app, id);
+                if app.busy {
+                    // The in-flight select/prepare is what disables the button.
+                    // finish() is the existing bounded wait until that result
+                    // is received; the next search frame then paints the target.
+                    finish(app);
+                }
+                (out, ready)
             } else {
-                frame(app, ctx, vec![])
+                (frame(app, ctx, vec![]), true)
             };
             let found = |s: &egui::epaint::ClippedShape| position(&s.shape, text);
-            if id.is_some() {
+            if !ready {
+                None
+            } else if id.is_some() {
                 out.shapes.iter().find_map(found)
             } else {
                 // Root dialogs are modal layers above the chrome, whose
@@ -650,11 +682,8 @@ fn detached_prepared_subplot_selection_avoids_ui_validation_and_worker_rejects_i
     })));
     finish(&mut app);
     assert!(app.all_figures[&1].same_snapshot(&selected));
-    assert!(
-        app.console
-            .iter()
-            .any(|line| line == "Error: Axis limits must be finite and increasing")
-    );
+    assert!(app.console.iter().any(|line| line
+        == "Error: Axis limits must be increasing (with -inf/inf allowed for auto ends)"));
     for (name, value) in variables {
         assert!(value.same_snapshot(&app.variables[&name]));
     }

@@ -275,3 +275,22 @@ fn large_typed_inspector_is_virtualized_and_modal_guards_block_navigation() {
     assert!(app.variables["C"].same_snapshot(&original));
     assert!(app.variables["Alias"].same_snapshot(&original));
 }
+
+#[test]
+fn table_disp_text_splits_into_a_caption_grid_with_numeric_columns() {
+    let text = "  2x3 table\n\n    name       height    group\n    _______    ______    _____\n\n    {'Ana'}     1.62     {'A'}\n    {'Ben'}       64     {'B'}\n";
+    let grid = typed_inspector::text_grid(text).expect("rule line found");
+    assert_eq!(grid.header, ["name", "height", "group"]);
+    assert_eq!(
+        grid.rows,
+        [["{'Ana'}", "1.62", "{'A'}"], ["{'Ben'}", "64", "{'B'}"]]
+    );
+    assert_eq!(grid.numeric, [false, true, false]);
+    // Row names left of the first rule become their own column.
+    let named = "         x\n         _\n\n    r1   1\n    r2   2\n";
+    let grid = typed_inspector::text_grid(named).unwrap();
+    assert_eq!(grid.header, ["", "x"]);
+    assert_eq!(grid.rows, [["r1", "1"], ["r2", "2"]]);
+    // Plain values have no rule line.
+    assert!(typed_inspector::text_grid("  1x1 struct\n    a: 1\n").is_none());
+}

@@ -621,6 +621,11 @@ pub(super) fn numbers(values: impl ExactSizeIterator<Item = f64>) -> Encoded<'st
     let n = values.len();
     Encoded::new("", 1, n, Body::Numbers(values.collect()), tagged_len(n * 8))
 }
+pub(super) fn matrix(rows: usize, cols: usize, values: Vec<f64>) -> Encoded<'static> {
+    assert_eq!(rows * cols, values.len());
+    let n = values.len();
+    Encoded::new("", rows, cols, Body::Numbers(values), tagged_len(n * 8))
+}
 pub(super) fn coordinate(points: &[[f64; 2]], axis: usize) -> Encoded<'_> {
     assert!(axis < 2);
     Encoded::new(
@@ -638,18 +643,23 @@ pub(super) fn text(value: &str) -> Encoded<'static> {
 }
 /// Bounded literal label cells, derived from the preserved declarative probe.
 pub(super) fn legend_text_cells(values: &[&str]) -> Result<Encoded<'static>> {
-    if values.is_empty()
-        || values.len() > crate::plot::MAX_SERIES
-        || values.iter().any(|s| s.len() > 4096)
-    {
+    if values.is_empty() || values.len() > crate::plot::MAX_SERIES {
         return Err("FIG legend requires 1..64 labels of at most 4096 UTF-8 bytes".into());
     }
-    // At most 64 bounded strings; UTF-16 storage is bounded by twice UTF-8 bytes.
+    text_cells(
+        values,
+        "FIG legend requires 1..64 labels of at most 4096 UTF-8 bytes",
+    )
+}
+pub(super) fn text_cells(values: &[&str], err: &str) -> Result<Encoded<'static>> {
+    if values.iter().any(|s| s.len() > 4096) {
+        return Err(err.into());
+    }
     let items: Vec<_> = values.iter().map(|s| text(s)).collect();
     let bytes = items
         .iter()
         .try_fold(0usize, |n, item| n.checked_add(item.len()))
-        .ok_or("Legend cell encoding size overflow")?;
+        .ok_or("Cell encoding size overflow")?;
     Ok(Encoded::new("", 1, items.len(), Body::Cell(items), bytes))
 }
 pub(super) fn structure<'a>(name: &str, fields: Vec<(&str, Encoded<'a>)>) -> Encoded<'a> {

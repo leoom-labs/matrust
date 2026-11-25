@@ -231,6 +231,36 @@ fn append_and_update_modes() {
     assert_eq!(s.file("t.txt"), b"abcXY");
 }
 
+/// Linux `fopen(...,'a+')` starts at byte 0. The test runs on every host;
+/// Windows and macOS start at EOF in the cfg-gated test below. Mode `a` stays
+/// at EOF, and a following write still appends.
+#[test]
+fn fopen_aplus_starts_at_zero_review_e1112() {
+    let mut s = Sandbox::new("aplus-e1112");
+    s.put("t.txt", b"abcd");
+    s.run(
+        "fa = fopen('t.txt','a'); pa = ftell(fa); fclose(fa);
+         f = fopen('t.txt','a+'); p = ftell(f); n = fprintf(f,'Z'); fclose(f);",
+    );
+    assert_eq!(s.nums("pa"), [4.]);
+    assert_eq!(s.nums("n"), [1.]);
+    assert_eq!(s.file("t.txt"), b"abcdZ");
+    #[cfg(not(any(windows, target_os = "macos")))]
+    assert_eq!(s.nums("p"), [0.]);
+}
+
+/// Windows and macOS `fopen(...,'a+')` starts at the end of the file.
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn fopen_aplus_starts_at_eof_review_e1112() {
+    let mut s = Sandbox::new("aplus-eof-e1112");
+    s.put("t.txt", b"abcd");
+    s.run("f = fopen('t.txt','a+'); p = ftell(f); n = fprintf(f,'Z'); fclose(f);");
+    assert_eq!(s.nums("p"), [4.]);
+    assert_eq!(s.nums("n"), [1.]);
+    assert_eq!(s.file("t.txt"), b"abcdZ");
+}
+
 #[test]
 fn fscanf_numbers_and_sizes() {
     let mut s = Sandbox::new("fscanf");

@@ -1,15 +1,36 @@
 //! lu, qr, chol, pinv, null, orth, expm, logm, sqrtm, mldivide, mrdivide, cond and norm. Real double inputs only (logical accepted); complex inputs are rejected explicitly.
 //! Dense kernels: nalgebra LU/SVD/Schur; Householder QR and Cholesky follow the LAPACK
 //! conventions (dlarfg signs, dlaqp2 column-norm pivoting) so Q/R signs agree with MATLAB.
+//! Also the `decomposition(A, 'banded')` value object and its `D\B` solve (end of file).
 use super::{Engine, Execution, Value};
-use crate::{Array, ComplexMatrix, Matrix, Result};
+use crate::{
+    Array, CharacterRow, ComplexMatrix, LogicalMatrix, Matrix, NumericClass, Result, StructArray,
+    TypedArray, syntax::Token, typed_array::TypedData,
+};
 use nalgebra::{Complex, DMatrix, linalg::SVD};
+use std::sync::Arc;
 
 type C64 = Complex<f64>;
 
 const NAMES: &[&str] = &[
-    "lu", "qr", "chol", "pinv", "null", "orth", "expm", "logm", "sqrtm", "mldivide", "mrdivide",
-    "cond", "norm",
+    "lu",
+    "qr",
+    "chol",
+    "pinv",
+    "null",
+    "orth",
+    "expm",
+    "logm",
+    "sqrtm",
+    "mldivide",
+    "mrdivide",
+    "cond",
+    "norm",
+    "vecnorm",
+    "lsqminnorm",
+    "givens",
+    "eps",
+    "decomposition",
 ];
 /// Bound on m*n*min(m,n): about a 1600-square factorization.
 const MAX_WORK: f64 = 4.3e9;
@@ -19,10 +40,6 @@ pub(super) fn handles(name: &str) -> bool {
     NAMES.contains(&name)
 }
 
-fn eps_of(x: f64) -> f64 {
-    let x = x.abs();
-    f64::from_bits(x.to_bits() + 1) - x
-}
 fn dm(m: &Matrix) -> DMatrix<f64> {
     DMatrix::from_column_slice(m.rows(), m.cols(), m.data())
 }
@@ -73,6 +90,15 @@ impl Engine {
             }
             .into());
         }
+        // mldivide(D, B) is `D\B`; the object dispatches on its stored type.
+        if args.iter().any(is_decomposition) {
+            let op = if name == "mldivide" {
+                Token::Backslash
+            } else {
+                Token::Slash
+            };
+            return decomposition_binary(self, &op, &args[0], &args[1], out).map(|x| Some(vec![x]));
+        }
         let a = self.linalg2_real(name, &args[0])?;
         let b = self.linalg2_real(name, &args[1])?;
         self.linalg2_reserve(&[(a.rows(), a.cols()), (b.rows(), b.cols())])?;
@@ -95,9 +121,23 @@ impl Engine {
             return Ok(None);
         }
         self.check_cancel()?;
+        // Double `eps(X)` lives here so rank/pinv and the builtin share one gap.
+        // Other call forms (no input, a class name, single) stay on their paths.
+        if name == "eps" {
+            if outputs > 1 {
+                return Err("Too many output arguments.".into());
+            }
+            return self.linalg2_eps(args);
+        }
+        if name == "decomposition" {
+            if outputs > 1 {
+                return Err("Too many output arguments.".into());
+            }
+            return decomposition_new(self, args).map(|d| Some(vec![d]));
+        }
         let max_outputs = match name {
             "lu" | "qr" => 3,
-            "chol" => 2,
+            "chol" | "givens" => 2,
             _ => 1,
         };
         if outputs > max_outputs {
@@ -105,7 +145,9 @@ impl Engine {
         }
         let (min_args, max_args) = match name {
             "lu" | "pinv" | "cond" | "norm" | "chol" | "qr" => (1, 2),
+            "vecnorm" => (1, 3),
             "null" | "orth" | "expm" | "logm" | "sqrtm" => (1, 1),
+            "lsqminnorm" => (2, 4),
             _ => (2, 2),
         };
         if args.len() < min_args {
@@ -124,6 +166,15 @@ impl Engine {
             && matches!(args[0], Value::Complex(_))
         {
             return Ok(Some(vec![self.cxl_linalg2_call(name, args)?]));
+        }
+        if name == "vecnorm" {
+            return Ok(Some(vec![self.linalg2_vecnorm(args)?]));
+        }
+        if name == "givens" {
+            return self.linalg2_givens(args, outputs).map(Some);
+        }
+        if name == "lsqminnorm" {
+            return self.linalg2_lsqminnorm(args).map(Some);
         }
         let first = self.linalg2_real(name, &args[0])?;
         let mut inputs = vec![first];
@@ -230,6 +281,23 @@ impl Engine {
                 one(Value::Matrix(Matrix::scalar(self.linalg2_norm(a, p)?)))
             }
         }
+    }
+
+    /// Elementwise double `eps(X)`. One numeric or logical argument only;
+    /// every other form returns None so the existing error stays.
+    fn linalg2_eps(&self, args: &[Value]) -> Result<Option<Vec<Value>>> {
+        let [v] = args else {
+            return Ok(None);
+        };
+        let m = match v {
+            Value::Matrix(m) => m.clone(),
+            Value::Logical(m) => m.to_numeric(&self.cancel)?,
+            _ => return Ok(None),
+        };
+        self.preflight_elements(m.len())?;
+        Ok(Some(vec![Value::Matrix(
+            m.map(super::linear_algebra::eps_of),
+        )]))
     }
 
     fn linalg2_real(&self, name: &str, v: &Value) -> Result<Matrix> {
@@ -490,6 +558,73 @@ impl Engine {
         self.check_cancel()?;
         Ok(svd)
     }
+    /// Plane rotation G = [c s; -s c] with G * [x; y] = [r; 0], c >= 0
+    /// (the sign of x moves into r), as GNU Octave's givens returns it.
+    fn linalg2_givens(&self, args: &[Value], outputs: usize) -> Result<Vec<Value>> {
+        let mut xy = [0.; 2];
+        for (slot, v) in xy.iter_mut().zip(args) {
+            let m = self.linalg2_real("givens", v)?;
+            if m.len() != 1 {
+                return Err("givens: x and y must be scalars".into());
+            }
+            *slot = m.data()[0];
+        }
+        let [x, y] = xy;
+        let r = x.hypot(y);
+        let (c, s) = if r == 0. {
+            (1., 0.)
+        } else {
+            let sign = if x < 0. { -1. } else { 1. };
+            (x.abs() / r, sign * y / r)
+        };
+        Ok(if outputs > 1 {
+            vec![
+                Value::Matrix(Matrix::scalar(c)),
+                Value::Matrix(Matrix::scalar(s)),
+            ]
+        } else {
+            vec![Value::Matrix(Matrix::from_column_vec(
+                2,
+                2,
+                vec![c, -s, s, c],
+            )?)]
+        })
+    }
+    /// Minimum-norm least-squares solution pinv(A, tol) * B; rank-deficient
+    /// systems keep only singular values above tol (default max(m, n) * eps(norm(A))).
+    fn linalg2_lsqminnorm(&self, args: &[Value]) -> Result<Vec<Value>> {
+        let a = self.linalg2_real("lsqminnorm", &args[0])?;
+        let b = self.linalg2_real("lsqminnorm", &args[1])?;
+        if a.rows() != b.rows() {
+            return Err("lsqminnorm: A and B must have the same number of rows".into());
+        }
+        let mut tol = None;
+        for (i, v) in args[2..].iter().enumerate() {
+            if v.is_character() || matches!(v, Value::QuotedString(_)) {
+                let flag = self.linalg2_text("lsqminnorm", v)?.to_ascii_lowercase();
+                if flag != "warn" && flag != "nowarn" {
+                    return Err("lsqminnorm: the option must be 'warn' or 'nowarn'".into());
+                }
+            } else if i == 0 {
+                let t = self.linalg2_real("lsqminnorm", v)?;
+                if t.len() > 1 || t.data().first().is_some_and(|t| t.is_nan() || *t < 0.) {
+                    return Err("lsqminnorm: tol must be a nonnegative scalar".into());
+                }
+                tol = t.data().first().copied();
+            } else {
+                return Err("lsqminnorm: expected lsqminnorm(A, B, tol, 'warn' | 'nowarn')".into());
+            }
+        }
+        if !finite(&a) || !finite(&b) {
+            return Err("lsqminnorm: A and B must be finite".into());
+        }
+        let p = self.linalg2_pinv(&a, tol)?;
+        if p.cols() == 0 || b.cols() == 0 {
+            return Ok(vec![Value::Matrix(Matrix::filled(a.cols(), b.cols(), 0.)?)]);
+        }
+        self.linalg2_reserve(&[(a.cols(), b.cols())])?;
+        Ok(vec![val(&self.linalg2_gemm(&dm(&p), &dm(&b))?)?])
+    }
     fn linalg2_pinv(&self, a: &Matrix, tol: Option<f64>) -> Result<Matrix> {
         let (m, n) = (a.rows(), a.cols());
         if m == 0 || n == 0 {
@@ -499,7 +634,7 @@ impl Engine {
         let svd = self.linalg2_svd(&dm(a), true)?;
         let s = &svd.singular_values;
         let smax = s.iter().copied().fold(0.0, f64::max);
-        let tol = tol.unwrap_or(m.max(n) as f64 * eps_of(smax));
+        let tol = tol.unwrap_or(m.max(n) as f64 * super::linear_algebra::eps_of(smax));
         let (u, vt) = (svd.u.as_ref().unwrap(), svd.v_t.as_ref().unwrap());
         let r = s.iter().filter(|&&x| x > tol).count();
         if r == 0 {
@@ -599,6 +734,137 @@ impl Engine {
             return Err("Unknown norm option: p must be a scalar.".into());
         }
         Ok(NormKind::P(p.data()[0]))
+    }
+
+    // ---- vecnorm --------------------------------------------------------
+    fn linalg2_vecnorm(&self, args: &[Value]) -> Result<Value> {
+        let input = &args[0];
+        let single = match input {
+            Value::Matrix(_) | Value::Complex(_) | Value::Logical(_) => false,
+            Value::Container(Array::Typed(t)) => t.class() == NumericClass::Single,
+            _ => return Err("vecnorm: input must be numeric or logical.".into()),
+        };
+        let magnitude = |i: usize| match input {
+            Value::Matrix(m) => m.data()[i].abs(),
+            Value::Complex(m) => {
+                let z = m.data()[i];
+                if z.re.is_nan() || z.im.is_nan() {
+                    f64::NAN
+                } else {
+                    z.re.hypot(z.im)
+                }
+            }
+            Value::Logical(m) => f64::from(u8::from(m.data()[i] != 0)),
+            Value::Container(Array::Typed(t)) => t.real(i).abs(),
+            _ => unreachable!(),
+        };
+        let scalar = |value: &Value, error: &str| -> Result<Option<f64>> {
+            match value {
+                Value::Matrix(m) if m.len() <= 1 => Ok(m.data().first().copied()),
+                Value::Logical(m) if m.len() <= 1 => {
+                    Ok(m.data().first().map(|&b| f64::from(u8::from(b != 0))))
+                }
+                Value::Container(Array::Typed(t)) if t.len() <= 1 => {
+                    Ok((!t.is_empty()).then(|| t.real(0)))
+                }
+                _ => Err(error.into()),
+            }
+        };
+        const P_ERROR: &str = "vecnorm: p must be a positive scalar or Inf.";
+        const DIM_ERROR: &str = "vecnorm: dim must be a positive integer scalar.";
+        let p = match args.get(1) {
+            None => 2.0,
+            Some(v) => scalar(v, P_ERROR)?.unwrap_or(2.0),
+        };
+        if p.is_nan() || p <= 0.0 {
+            return Err(P_ERROR.into());
+        }
+        let mut dims = input.dims().into_owned();
+        let axis = match args.get(2) {
+            None => dims.iter().position(|&d| d != 1).unwrap_or(0),
+            Some(v) => {
+                let d = scalar(v, DIM_ERROR)?.ok_or(DIM_ERROR)?;
+                if !d.is_finite() || d < 1.0 || d.fract() != 0.0 || d > usize::MAX as f64 {
+                    return Err(DIM_ERROR.into());
+                }
+                d as usize - 1
+            }
+        };
+        let extent = dims.get_mut(axis).map_or(1, |d| std::mem::replace(d, 1));
+        let rows = dims[0];
+        let cols = super::nd::shape_product(&dims[1..])?;
+        let out_len = rows
+            .checked_mul(cols)
+            .ok_or("vecnorm: output size overflow")?;
+        let out_units = if single { out_len.div_ceil(2) } else { out_len };
+        let scratch = if out_len == 0 || extent == 1 {
+            0
+        } else {
+            extent
+        };
+        self.preflight_elements(out_units.saturating_add(scratch))?;
+        Matrix::checked_len(rows, cols)?;
+
+        let (inner, outer) = if out_len == 0 {
+            (0, 0)
+        } else {
+            let inner = super::nd::shape_product(&dims[..axis.min(dims.len())])?;
+            (inner, out_len / inner)
+        };
+        let mut out_data = Vec::with_capacity(if single { 0 } else { out_len });
+        let mut single_data = Vec::with_capacity(if single { out_len } else { 0 });
+        let mut fiber = vec![0.0; scratch];
+        for o in 0..outer {
+            let base = o * inner * extent;
+            for i in 0..inner {
+                if (o * inner + i).is_multiple_of(1024) {
+                    self.check_cancel()?;
+                }
+                for (chunk_index, chunk) in fiber.chunks_mut(8192).enumerate() {
+                    if chunk_index != 0 {
+                        self.check_cancel()?;
+                    }
+                    for (offset, value) in chunk.iter_mut().enumerate() {
+                        let s = chunk_index * 8192 + offset;
+                        *value = magnitude(base + i + s * inner);
+                    }
+                }
+                let val = if extent == 0 {
+                    0.0
+                } else if extent == 1 {
+                    magnitude(base + i)
+                } else if p == 2.0 {
+                    nrm2(&fiber)
+                } else if p == 1.0 {
+                    fiber.iter().sum()
+                } else if p == f64::INFINITY {
+                    if fiber.iter().any(|v| v.is_nan()) {
+                        f64::NAN
+                    } else {
+                        fiber.iter().copied().fold(0.0, f64::max)
+                    }
+                } else {
+                    scaled_p_norm(&fiber, p)
+                };
+                if single {
+                    single_data.push(val as f32);
+                } else {
+                    out_data.push(val);
+                }
+            }
+        }
+        if single {
+            let data = TypedData::Single(single_data.into());
+            Ok(Value::Container(
+                TypedArray::checked(rows, cols, data)?
+                    .with_dims(&dims)?
+                    .into(),
+            ))
+        } else {
+            Ok(Value::Matrix(
+                Matrix::from_column_vec(rows, cols, out_data)?.with_dims(&dims)?,
+            ))
+        }
     }
     fn linalg2_norm(&self, a: &Matrix, p: NormKind) -> Result<f64> {
         if a.is_empty() {
@@ -932,11 +1198,13 @@ fn scaled_p_norm(d: &[f64], p: f64) -> f64 {
     if scale == 0.0 || scale.is_infinite() {
         return scale;
     }
-    scale
-        * d.iter()
-            .map(|v| (v.abs() / scale).powf(p))
-            .sum::<f64>()
-            .powf(1.0 / p)
+    let sum = d.iter().map(|v| (v.abs() / scale).powf(p)).sum::<f64>();
+    let factor = sum.powf(1.0 / p);
+    if factor.is_finite() && factor > 0.0 {
+        scale * factor
+    } else {
+        (scale.ln() + sum.ln() / p).exp()
+    }
 }
 
 /// LAPACK dlarfg on x = [alpha, rest]: stores beta in x[0], v (v0 = 1 implied) in rest; returns tau.
@@ -995,4 +1263,242 @@ fn apply_reflector(h: &mut [f64], m: usize, i: usize, tau: f64, j: usize) {
     for (c, a) in col[1..].iter_mut().zip(v) {
         *c -= w * a;
     }
+}
+
+// ---- decomposition ----------------------------------------------------
+// `decomposition(A, 'banded')` is a value object: a language-object struct
+// (lang_more's tag field) that keeps the matrix it was built from, sharing its
+// storage, together with the declared type. class, isa, disp and the read-only
+// properties come from that facade; the matrix slot is private. A later change
+// of the caller's variable does not reach the object.
+//
+// `D\B` dispatches on the stored type. The banded type runs the checked square
+// solve of `A\B` on the stored matrix: LU with partial pivoting (substitution
+// when the matrix is triangular) and the same singular and RCOND warnings.
+// That is the pivoting of a band LU carried out on dense storage, so the cost
+// is the dense one; no band-limited operation count is implemented or claimed,
+// and the factors are not kept between solves.
+
+/// Value of the language-object tag field (named by lang_more::lng_tag).
+pub(super) const DECOMPOSITION_TAG: f64 = 68.;
+/// Private slot of the stored matrix: hidden from fieldnames, disp and dot reads.
+pub(super) const DECOMPOSITION_MATRIX: &str = "MatRustDecompositionMatrix";
+/// Types of the reference that are recognized here but not implemented.
+const DECOMPOSITION_OTHER_TYPES: &[&str] = &[
+    "auto",
+    "qr",
+    "cod",
+    "lu",
+    "ldl",
+    "chol",
+    "triangular",
+    "permutedtriangular",
+    "hessenberg",
+    "diagonal",
+];
+const DECOMPOSITION_INVALID: &str = "decomposition: invalid decomposition object";
+
+/// The implemented types. The solve matches on this, so a new type cannot
+/// reach another type's solver unnoticed.
+#[derive(Clone, Copy)]
+enum DecompositionType {
+    Banded,
+}
+impl DecompositionType {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Banded => "banded",
+        }
+    }
+    /// The type a stored (already lowercase) name stands for.
+    fn stored(name: &str) -> Option<Self> {
+        (name == "banded").then_some(Self::Banded)
+    }
+}
+struct Decomposition {
+    kind: DecompositionType,
+    matrix: Matrix,
+}
+
+pub(super) fn is_decomposition_array(a: &Array) -> bool {
+    let Array::Struct(s) = a else { return false };
+    s.len() == 1
+        && s.field_index(super::lang_more::TAG)
+            .and_then(|f| s.get(f, 0).ok())
+            .is_some_and(
+                |v| matches!(v.as_ref(), Array::Numeric(m) if m.data() == [DECOMPOSITION_TAG]),
+            )
+}
+pub(super) fn is_decomposition(v: &Value) -> bool {
+    matches!(v, Value::Container(a) if is_decomposition_array(a))
+}
+/// True for the slots of a decomposition object that dot indexing must not read.
+pub(super) fn decomposition_private_field(a: &Array, name: &str) -> bool {
+    matches!(name, DECOMPOSITION_MATRIX | super::lang_more::TAG) && is_decomposition_array(a)
+}
+
+fn decomposition_type(v: &Value) -> Result<DecompositionType> {
+    let text = match v {
+        Value::Text(s) | Value::QuotedString(s) => s.clone(),
+        Value::Container(Array::Character(c)) if c.rows() <= 1 => {
+            String::from_utf16_lossy(c.units())
+        }
+        Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+            .as_deref()
+            .map(str::to_owned)
+            .ok_or("decomposition: the type must be a character vector or string scalar")?,
+        _ => {
+            return Err(
+                "decomposition: the type must be a character vector or string scalar".into(),
+            );
+        }
+    };
+    let lower = text.to_ascii_lowercase();
+    if let Some(kind) = DecompositionType::stored(&lower) {
+        return Ok(kind);
+    }
+    Err(if DECOMPOSITION_OTHER_TYPES.contains(&lower.as_str()) {
+        format!("decomposition: the '{text}' type is not supported yet; only 'banded' is")
+    } else {
+        format!("decomposition: unknown type '{text}'; only 'banded' is supported")
+    })
+}
+
+/// `decomposition(A, 'banded')` for a real double square A.
+fn decomposition_new(e: &Engine, args: &[Value]) -> Result<Value> {
+    let kind = match args {
+        [] => return Err("Not enough input arguments.".into()),
+        [_] => {
+            return Err(
+                "decomposition: automatic type selection is not supported yet; use decomposition(A, 'banded')"
+                    .into(),
+            );
+        }
+        [_, kind] => decomposition_type(kind)?,
+        _ => return Err("decomposition: options after the type are not supported yet".into()),
+    };
+    let a = match &args[0] {
+        Value::Matrix(m) if !m.is_nd() => m,
+        Value::Complex(_) => {
+            return Err("decomposition: complex matrices are not supported yet".into());
+        }
+        Value::Container(Array::Sparse(_)) => {
+            return Err("decomposition: sparse matrices are not supported yet".into());
+        }
+        Value::Container(Array::Typed(_)) => {
+            return Err("decomposition: single and integer matrices are not supported yet".into());
+        }
+        _ => return Err("decomposition: the matrix must be a real double 2-D matrix".into()),
+    };
+    let n = a.rows();
+    if a.cols() != n {
+        return Err(format!(
+            "decomposition: the '{}' type needs a square matrix, not {n}-by-{}",
+            kind.name(),
+            a.cols()
+        ));
+    }
+    let chars = |s: &str| -> Result<Arc<Array>> {
+        Ok(Arc::new(CharacterRow::from_text(s, &e.cancel)?.into()))
+    };
+    let number = |m: Matrix| Arc::new(Array::Numeric(m));
+    let flag = |b: bool| Arc::new(Array::Logical(LogicalMatrix::scalar(b)));
+    let fields = [
+        (
+            "MatrixSize",
+            number(Matrix::from_column_slice(1, 2, &[n as f64, n as f64])?),
+        ),
+        ("Type", chars(kind.name())?),
+        ("CheckCondition", flag(true)),
+        ("Datatype", chars("double")?),
+        ("IsConjugateTransposed", flag(false)),
+        ("IsReal", flag(true)),
+        ("IsSparse", flag(false)),
+        ("ScaleFactor", number(Matrix::scalar(1.))),
+        // Shares the caller's column-major storage: no copy of the matrix.
+        (DECOMPOSITION_MATRIX, number(a.clone())),
+        (
+            super::lang_more::TAG,
+            number(Matrix::scalar(DECOMPOSITION_TAG)),
+        ),
+    ];
+    let (names, slots) = fields.into_iter().map(|(n, a)| (n.to_string(), a)).unzip();
+    Ok(Value::Container(Array::Struct(StructArray::from_slots(
+        1, 1, names, slots, &e.cancel,
+    )?)))
+}
+
+/// The stored type and matrix, checked again on every use.
+fn decomposition_decode(v: &Value) -> Result<Decomposition> {
+    let Value::Container(a @ Array::Struct(s)) = v else {
+        return Err(DECOMPOSITION_INVALID.into());
+    };
+    if !is_decomposition_array(a) {
+        return Err(DECOMPOSITION_INVALID.into());
+    }
+    let slot = |name: &str| s.field_index(name).and_then(|f| s.get(f, 0).ok());
+    let kind = match slot("Type").map(AsRef::as_ref) {
+        Some(Array::Character(c)) => {
+            DecompositionType::stored(&String::from_utf16_lossy(c.units()))
+        }
+        _ => None,
+    };
+    let matrix = match slot(DECOMPOSITION_MATRIX).map(AsRef::as_ref) {
+        Some(Array::Numeric(m)) if !m.is_nd() && m.rows() == m.cols() => Some(m.clone()),
+        _ => None,
+    };
+    match (kind, matrix) {
+        (Some(kind), Some(matrix)) => Ok(Decomposition { kind, matrix }),
+        _ => Err(DECOMPOSITION_INVALID.into()),
+    }
+}
+
+/// A binary operator with a decomposition operand. Only `D\B` is defined;
+/// every other form is rejected by name.
+pub(super) fn decomposition_binary(
+    e: &mut Engine,
+    op: &Token,
+    a: &Value,
+    b: &Value,
+    out: &mut Execution,
+) -> Result<Value> {
+    match op {
+        Token::Backslash if is_decomposition(a) && !is_decomposition(b) => {
+            decomposition_solve(e, a, b, out)
+        }
+        Token::Slash if is_decomposition(b) && !is_decomposition(a) => {
+            Err("decomposition: B/D is not supported yet; only D\\B is".into())
+        }
+        _ => Err("decomposition: only D\\B is supported for a decomposition object".into()),
+    }
+}
+
+/// `D\B` by the solver of the stored type.
+fn decomposition_solve(e: &mut Engine, d: &Value, b: &Value, out: &mut Execution) -> Result<Value> {
+    let d = decomposition_decode(d)?;
+    let n = d.matrix.rows();
+    let rhs = match b {
+        Value::Matrix(m) if !m.is_nd() => m.clone(),
+        Value::Logical(m) if !m.is_nd() => m.to_numeric(&e.cancel)?,
+        Value::Complex(_) => {
+            return Err("decomposition: complex right-hand sides are not supported yet".into());
+        }
+        _ => {
+            return Err(
+                "decomposition: the right-hand side must be a real double 2-D matrix".into(),
+            );
+        }
+    };
+    // No scalar expansion: B needs one row per row of the stored matrix.
+    if rhs.rows() != n {
+        return Err(format!(
+            "decomposition: size(B, 1) is {} but the stored matrix is {n}-by-{n}",
+            rhs.rows()
+        ));
+    }
+    e.linalg2_reserve(&[(n, n), (rhs.rows(), rhs.cols())])?;
+    let x = match d.kind {
+        DecompositionType::Banded => e.real_divide(true, &d.matrix, &rhs, out)?,
+    };
+    Ok(Value::Matrix(x))
 }

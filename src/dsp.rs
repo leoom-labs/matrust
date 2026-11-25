@@ -9,30 +9,47 @@ use std::{
 };
 
 mod fft;
+pub mod spectral;
 pub use fft::{FftOptions, MAX_FFT_LENGTH, TransformDirection, fourier, fourier_shape};
 mod analysis;
 mod butter_bands;
 mod chebyshev1;
 pub use chebyshev1::{Chebyshev1, MAX_CHEBY1_ORDER, cheby1};
 mod chirp;
+mod filter_compat;
+mod filter_extras;
 mod filtfilt;
 mod filtic;
 mod fir_design;
+pub mod iir;
 mod kaiser;
+mod param_windows;
 mod rate_conversion;
 mod small_filter;
 mod sos_filtfilt;
 mod sos_pipeline;
 mod state;
+pub mod timedomain;
 mod waveforms;
 mod windows;
-pub use analysis::{Analysis, analyze, analyze_sos, group_delay, phase_response, sos_group_delay};
+pub use analysis::{
+    Analysis, analyze, analyze_sos, group_delay, group_delay_at, phase_response, sos_group_delay,
+    sos_group_delay_at,
+};
 pub use butter_bands::butter_sos_with_cutoffs;
 pub use chirp::{ChirpMethod, ChirpOptions, ChirpShape, chirp};
+pub use filter_compat::{
+    IMPULSE_LENGTH_TOLERANCE, MAX_IMPULSE_LENGTH, bilinear_scale, bilinear_tf, bilinear_zpk,
+    impulse_length, sos_impulse_length, sos_to_tf,
+};
+pub use filter_extras::{
+    FirlsKind, firls, firpmord, kaiserord, notch_peak, phasedelay, phasedelay_sos,
+};
 pub use filtfilt::filtfilt;
 pub use filtic::filtic;
 pub use fir_design::{FirOptions, fir1, fir1_with_options};
 pub use kaiser::kaiser;
+pub use param_windows::{ParamWindow, param_window};
 pub use rate_conversion::{downsample, rate_output_shape, upfirdn, upfirdn_output_shape, upsample};
 pub use sos_filtfilt::filtfilt_sos;
 pub use state::{FilterOptions, filter_with_options, filter_with_state};
@@ -40,6 +57,8 @@ pub use waveforms::{sawtooth, sinc, square};
 pub use windows::{WindowKind, window, window_length};
 
 pub const MAX_ORDER: usize = 4096;
+/// SOS cascades: a band design at the top prototype order has this many sections.
+pub const MAX_SOS_SECTIONS: usize = iir::MAX_DESIGN_ORDER;
 const MAX_WORK: usize = 256_000_000;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -250,8 +269,10 @@ pub fn filter(b: &[f64], a: &[f64], x: &Matrix, cancel: &AtomicBool) -> Result<M
     filter_with_options(b, a, x, FilterOptions::default(), cancel).map(|(y, _)| y)
 }
 pub fn sos_sections(sos: &Matrix) -> Result<Vec<Filter>> {
-    if sos.cols() != 6 || sos.rows() == 0 || sos.rows() > 64 {
-        return Err("SOS must have 1..64 rows and six columns [b0 b1 b2 a0 a1 a2]".into());
+    if sos.cols() != 6 || sos.rows() == 0 || sos.rows() > MAX_SOS_SECTIONS {
+        return Err(format!(
+            "SOS must have 1..{MAX_SOS_SECTIONS} rows and six columns [b0 b1 b2 a0 a1 a2]"
+        ));
     }
     (0..sos.rows())
         .map(|r| {
@@ -272,13 +293,29 @@ pub fn sos_response(
     frequencies: &[f64],
     cancel: &AtomicBool,
 ) -> Result<Vec<[f64; 2]>> {
+    sos_response_checked(sos, frequencies, true, cancel)
+}
+/// As [`sos_response`], at any finite normalized frequency (e.g. 0..2 for the whole circle).
+pub fn sos_response_at(
+    sos: &Matrix,
+    frequencies: &[f64],
+    cancel: &AtomicBool,
+) -> Result<Vec<[f64; 2]>> {
+    sos_response_checked(sos, frequencies, false, cancel)
+}
+fn sos_response_checked(
+    sos: &Matrix,
+    frequencies: &[f64],
+    nyquist_range: bool,
+    cancel: &AtomicBool,
+) -> Result<Vec<[f64; 2]>> {
     let sections = sos_sections(sos)?;
     if frequencies.len().saturating_mul(sections.len() * 3) > MAX_WORK {
         return Err("Frequency response exceeds work limit".into());
     }
     let mut result = vec![[1., 0.]; frequencies.len()];
     for section in sections {
-        let h = response(&section.b, &section.a, frequencies, cancel)?;
+        let h = response_checked(&section.b, &section.a, frequencies, nyquist_range, cancel)?;
         for (product, v) in result.iter_mut().zip(h) {
             *product = [
                 product[0] * v[0] - product[1] * v[1],
@@ -296,15 +333,38 @@ pub fn response(
     frequencies: &[f64],
     cancel: &AtomicBool,
 ) -> Result<Vec<[f64; 2]>> {
+    response_checked(b, a, frequencies, true, cancel)
+}
+/// As [`response`], at any finite normalized frequency (e.g. 0..2 for the whole circle).
+pub fn response_at(
+    b: &[f64],
+    a: &[f64],
+    frequencies: &[f64],
+    cancel: &AtomicBool,
+) -> Result<Vec<[f64; 2]>> {
+    response_checked(b, a, frequencies, false, cancel)
+}
+fn response_checked(
+    b: &[f64],
+    a: &[f64],
+    frequencies: &[f64],
+    nyquist_range: bool,
+    cancel: &AtomicBool,
+) -> Result<Vec<[f64; 2]>> {
     Filter::new(b, a)?;
     if frequencies.len().saturating_mul(b.len().max(a.len())) > MAX_WORK {
         return Err("Frequency response exceeds work limit".into());
     }
     if frequencies
         .iter()
-        .any(|f| !f.is_finite() || *f < 0. || *f > 1.)
+        .any(|f| !f.is_finite() || (nyquist_range && (*f < 0. || *f > 1.)))
     {
-        return Err("Response frequencies must be between 0 and 1 (Nyquist)".into());
+        return Err(if nyquist_range {
+            "Response frequencies must be between 0 and 1 (Nyquist)"
+        } else {
+            "Response frequencies must be finite"
+        }
+        .into());
     }
     let mut out = Vec::with_capacity(frequencies.len());
     for (index, &f) in frequencies.iter().enumerate() {

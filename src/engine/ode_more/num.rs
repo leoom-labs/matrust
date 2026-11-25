@@ -206,12 +206,47 @@ pub fn numjac(
     Ok((jac, calls))
 }
 
-/// One located event: time, state and 1-based event index.
+/// Located events, in integration order, with 1-based event indices.
+#[derive(Default)]
 pub struct Located {
     pub t: Vec<f64>,
     pub y: Vec<Vec<f64>>,
     pub i: Vec<usize>,
     pub stop: bool,
+}
+
+impl Located {
+    pub fn append(&mut self, found: Self, neq: usize) -> R<()> {
+        check_event_size(self.t.len().saturating_add(found.t.len()), neq)?;
+        self.t.extend(found.t);
+        self.y.extend(found.y);
+        self.i.extend(found.i);
+        self.stop |= found.stop;
+        Ok(())
+    }
+
+    /// Retain only events at or before `t_last` in integration `direction`.
+    pub fn retain_through(&mut self, t_last: f64, direction: f64) {
+        let keep = self
+            .t
+            .iter()
+            .take_while(|&&te| direction * (te - t_last) <= 0.)
+            .count();
+        if keep < self.t.len() {
+            self.t.truncate(keep);
+            self.y.truncate(keep);
+            self.i.truncate(keep);
+            self.stop = false;
+        }
+    }
+}
+
+fn check_event_size(events: usize, neq: usize) -> R<()> {
+    let limit = 32 * 1024 * 1024;
+    if events.saturating_mul(neq.saturating_add(2)) > limit {
+        return Err(format!("Event output exceeds the {limit}-element limit."));
+    }
+    Ok(())
 }
 
 pub fn validate_events(v: &[f64], term: &[f64], dir: &[f64], n: usize) -> R<()> {
@@ -315,7 +350,7 @@ fn event_root(
 pub fn odezero(
     ntrp: &mut dyn FnMut(f64) -> Vec<f64>,
     events: &mut Events,
-    t0: f64,
+    record_initial_at: Option<f64>,
     v: &[f64],
     t: f64,
     tnew: f64,
@@ -323,12 +358,7 @@ pub fn odezero(
 ) -> R<(Located, Vec<f64>)> {
     let (right, terminal, direction) = events(tnew, ynew)?;
     validate_events(&right, &terminal, &direction, v.len())?;
-    let mut found = Located {
-        t: Vec::new(),
-        y: Vec::new(),
-        i: Vec::new(),
-        stop: false,
-    };
+    let mut found = Located::default();
     let forward = sign(tnew - t);
     let mut roots = Vec::new();
     for j in 0..v.len() {
@@ -340,9 +370,9 @@ pub fn odezero(
             continue;
         }
         if v[j] == 0. {
-            // Record an initial zero once without stopping. A later left-endpoint
-            // zero was already reported by the preceding accepted step.
-            if t == t0 {
+            // ODE solvers ignore initial zeros. Delay solvers can record them
+            // without stopping. Other left zeros were handled on the prior step.
+            if record_initial_at == Some(t) {
                 roots.push((t, j, false));
             }
             continue;
@@ -359,7 +389,15 @@ pub fn odezero(
             tnew,
             right[j],
         )?;
-        roots.push((root, j, terminal[j] != 0.));
+        let is_terminal = if root == tnew {
+            terminal[j] != 0.
+        } else {
+            let state = ntrp(root);
+            let (values, terms, dirs) = events(root, &state)?;
+            validate_events(&values, &terms, &dirs, v.len())?;
+            terms[j] != 0.
+        };
+        roots.push((root, j, is_terminal));
     }
     roots.sort_by(|a, b| {
         (forward * a.0)
@@ -376,12 +414,14 @@ pub fn odezero(
             terminal_time.is_none_or(|limit| forward * (root.0 - limit) <= 8. * eps_of(limit))
         })
         .count();
-    if retained.saturating_mul(ynew.len().saturating_add(2)) > 32 * 1024 * 1024 {
-        return Err("Event output exceeds the 33554432-element limit.".into());
-    }
-    for (time, j, stop) in roots {
-        if terminal_time.is_some_and(|limit| forward * (time - limit) > 8. * eps_of(limit)) {
-            break;
+    check_event_size(retained, ynew.len())?;
+    for (mut time, j, stop) in roots.into_iter().take(retained) {
+        // Roundoff can place simultaneous roots on opposite sides of the
+        // terminal time. Retain their indices at the actual end of the step.
+        if let Some(limit) = terminal_time
+            && forward * (time - limit) > 0.
+        {
+            time = limit;
         }
         found.t.push(time);
         found.y.push(if time == tnew {
@@ -565,7 +605,7 @@ mod tests {
                     let (found, _) = odezero(
                         &mut interpolation,
                         &mut events,
-                        0.,
+                        Some(0.),
                         &[-0.5 * slope],
                         0.,
                         1.,
@@ -599,7 +639,7 @@ mod tests {
         let (found, right) = odezero(
             &mut interpolation,
             &mut events,
-            0.,
+            Some(0.),
             &[-0.8, -0.3, -0.3, -0.1],
             0.,
             1.,
@@ -614,7 +654,7 @@ mod tests {
         let (found, _) = odezero(
             &mut interpolation,
             &mut events,
-            1.,
+            Some(1.),
             &[0.8, 0.3],
             1.,
             0.,
@@ -629,14 +669,30 @@ mod tests {
     fn initial_zero_is_recorded_once_without_stopping() {
         let mut interpolation = |t| vec![t];
         let mut events = |t: f64, _: &[f64]| Ok((vec![t], vec![1.], vec![0.]));
-        let (found, _) =
-            odezero(&mut interpolation, &mut events, 0., &[0.], 0., 1., &[1.]).unwrap();
+        let (found, _) = odezero(
+            &mut interpolation,
+            &mut events,
+            Some(0.),
+            &[0.],
+            0.,
+            1.,
+            &[1.],
+        )
+        .unwrap();
         assert_eq!(found.t, [0.]);
         assert_eq!(found.y, [vec![0.]]);
         assert_eq!(found.i, [1]);
         assert!(!found.stop);
-        let (found, _) =
-            odezero(&mut interpolation, &mut events, -1., &[0.], 0., 1., &[1.]).unwrap();
+        let (found, _) = odezero(
+            &mut interpolation,
+            &mut events,
+            Some(-1.),
+            &[0.],
+            0.,
+            1.,
+            &[1.],
+        )
+        .unwrap();
         assert!(found.t.is_empty());
     }
 
@@ -651,7 +707,7 @@ mod tests {
         let error = odezero(
             &mut interpolation,
             &mut events,
-            0.,
+            Some(0.),
             &vec![-1.; 8192],
             0.,
             1.,

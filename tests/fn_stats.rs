@@ -432,8 +432,8 @@ fn character_variables_work_for_all_text_options() {
 #[test]
 fn covariance_and_correlation_reject_oversized_results() {
     for name in ["cov", "corrcoef"] {
-        let error = run(&format!("x = {name}(zeros(2,5000));")).unwrap_err();
-        assert!(error.contains("16777216-element limit"), "{name}: {error}");
+        let error = run(&format!("x = {name}(zeros(2,7200));")).unwrap_err();
+        assert!(error.contains("50331648-element limit"), "{name}: {error}");
     }
 }
 

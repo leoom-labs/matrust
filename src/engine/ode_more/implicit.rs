@@ -8,11 +8,18 @@
 //! (2013), section 5.5, minimum-norm least squares. No vendor implementation
 //! is used. Step selection and work counts belong to this implementation.
 use super::ivp::{OutAt, format_e};
-use super::num::{Lu, R, eps_of, norm_inf, norm2, numjac};
+use super::num::{Located, Lu, R, eps_of, norm_inf, norm2, numjac, odezero, validate_events};
 use crate::engine::Fma;
 
 pub trait Implicit {
     fn f(&mut self, t: f64, y: &[f64], yp: &[f64]) -> R<Vec<f64>>;
+    fn events(&mut self, t: f64, y: &[f64], yp: &[f64]) -> R<(Vec<f64>, Vec<f64>, Vec<f64>)>;
+    fn has_output(&self) -> bool {
+        false
+    }
+    fn output(&mut self, _t: &[f64], _y: &[Vec<f64>]) -> R<bool> {
+        Ok(false)
+    }
     fn check_cancel(&self) -> R<()>;
 }
 
@@ -24,6 +31,7 @@ pub struct IOut {
     pub stats: [usize; 6],
     pub warnings: Vec<String>,
     pub ypfinal: Vec<f64>,
+    pub events: Located,
 }
 
 pub struct IOpts {
@@ -34,6 +42,7 @@ pub struct IOpts {
     pub htry: Option<f64>,
     pub htspan: f64,
     pub maxorder: usize,
+    pub events: bool,
 }
 
 pub fn lagrange(ts: &[f64], ys: &[&[f64]], x: f64) -> Vec<f64> {
@@ -42,14 +51,23 @@ pub fn lagrange(ts: &[f64], ys: &[&[f64]], x: f64) -> Vec<f64> {
     if let Some(i) = ts.iter().position(|&t| t == x) {
         return ys[i].to_vec();
     }
+    lagrange_eval::<false>(ts, ys, x).0
+}
+
+fn lagrange_eval<const SLOPE: bool>(ts: &[f64], ys: &[&[f64]], x: f64) -> (Vec<f64>, Vec<f64>) {
     if ts.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     let n = ts.len();
     let scale = (ts[n - 1] - ts[0]).abs().max(f64::MIN_POSITIVE);
     let nodes: Vec<f64> = ts.iter().map(|t| (t - ts[0]) / scale).collect();
     let z = (x - ts[0]) / scale;
     let mut result = vec![0.; ys[0].len()];
+    let mut slopes = if SLOPE {
+        vec![0.; result.len()]
+    } else {
+        Vec::new()
+    };
     let mut differences = vec![0.; n];
     for (i, value) in result.iter_mut().enumerate() {
         for (d, y) in differences.iter_mut().zip(ys) {
@@ -62,11 +80,18 @@ pub fn lagrange(ts: &[f64], ys: &[&[f64]], x: f64) -> Vec<f64> {
             }
         }
         *value = differences[n - 1];
+        let mut slope = 0.;
         for j in (0..n - 1).rev() {
+            if SLOPE {
+                slope = (z - nodes[j]).fma(slope, *value);
+            }
             *value = (z - nodes[j]).fma(*value, differences[j]);
         }
+        if SLOPE {
+            slopes[i] = slope / scale;
+        }
     }
-    result
+    (result, slopes)
 }
 
 fn derivative_weights(ts: &[f64]) -> Vec<f64> {
@@ -327,6 +352,14 @@ pub fn ode15i(
         stats: [0; 6],
         warnings: Vec::new(),
         ypfinal: yp0.to_vec(),
+        events: Located::default(),
+    };
+    let mut event_values = if o.events {
+        let (v, terminal, direction) = m.events(tspan[0], y0, yp0)?;
+        validate_events(&v, &terminal, &direction, v.len())?;
+        Some(v)
+    } else {
+        None
     };
     let mut times = vec![tspan[0]];
     let mut values = vec![y0.to_vec()];
@@ -454,40 +487,114 @@ pub fn ode15i(
         output_nodes.extend_from_slice(&times[..order]);
         let mut output_values: Vec<&[f64]> = vec![&ynew];
         output_values.extend(values[..order].iter().map(Vec::as_slice));
+        let mut interpolate = |time| lagrange(&output_nodes, &output_values, time);
+        let slope = |time| lagrange_eval::<true>(&output_nodes, &output_values, time).1;
+        let mut end = tnew;
+        let mut end_state = ynew.as_slice();
+        let mut located = None;
+        if let Some(values) = &event_values {
+            let (found, right) = odezero(
+                &mut interpolate,
+                &mut |time, state| {
+                    if time == tnew {
+                        m.events(time, state, &ypnew)
+                    } else {
+                        m.events(time, state, &slope(time))
+                    }
+                },
+                None,
+                values,
+                t,
+                tnew,
+                &ynew,
+            )?;
+            event_values = Some(right);
+            located = Some(found);
+        }
+        let stop = located.as_ref().is_some_and(|found| found.stop);
+        if let Some(found) = located.as_ref().filter(|found| found.stop) {
+            end = *found.t.last().unwrap();
+            end_state = found.y.last().unwrap();
+        }
+        let step_start = out.t.len();
+        let mut sol_out_t = Vec::new();
+        let mut sol_out_y = Vec::new();
         match at {
-            OutAt::Sol | OutAt::Steps => push_output(&mut out, tnew, ynew.clone(), order)?,
+            OutAt::Sol => {
+                push_output(&mut out, end, end_state.to_vec(), order)?;
+                if m.has_output() && tspan.len() > 2 {
+                    while next_output < tspan.len() && direction * (end - tspan[next_output]) >= 0.
+                    {
+                        m.check_cancel()?;
+                        let tout = tspan[next_output];
+                        let state = if tout == end {
+                            end_state.to_vec()
+                        } else {
+                            interpolate(tout)
+                        };
+                        sol_out_t.push(tout);
+                        sol_out_y.push(state);
+                        next_output += 1;
+                    }
+                    if stop && sol_out_t.last() != Some(&end) {
+                        sol_out_t.push(end);
+                        sol_out_y.push(end_state.to_vec());
+                    }
+                }
+            }
+            OutAt::Steps => push_output(&mut out, end, end_state.to_vec(), order)?,
             OutAt::Requested => {
-                while next_output < tspan.len() && direction * (tnew - tspan[next_output]) >= 0. {
+                while next_output < tspan.len() && direction * (end - tspan[next_output]) >= 0. {
                     m.check_cancel()?;
                     let tout = tspan[next_output];
-                    push_output(
-                        &mut out,
-                        tout,
-                        lagrange(&output_nodes, &output_values, tout),
-                        order,
-                    )?;
+                    let state = if tout == end {
+                        end_state.to_vec()
+                    } else {
+                        interpolate(tout)
+                    };
+                    push_output(&mut out, tout, state, order)?;
                     next_output += 1;
+                }
+                if stop && out.t.last() != Some(&end) {
+                    push_output(&mut out, end, end_state.to_vec(), order)?;
                 }
             }
             OutAt::Refined(refine) => {
                 check_output_size(out.t.len().saturating_add(refine), n)?;
-                for index in 1..=refine {
+                let interval = if stop { end - t } else { h };
+                for index in 1..refine {
                     m.check_cancel()?;
-                    let tout = if index == refine {
-                        tnew
-                    } else {
-                        (index as f64 / refine as f64).fma(h, t)
-                    };
-                    push_output(
-                        &mut out,
-                        tout,
-                        lagrange(&output_nodes, &output_values, tout),
-                        order,
-                    )?;
+                    let tout = (index as f64 / refine as f64).fma(interval, t);
+                    if !stop || (tout != end && Some(&tout) != out.t.last()) {
+                        push_output(&mut out, tout, interpolate(tout), order)?;
+                    }
                 }
+                m.check_cancel()?;
+                push_output(&mut out, end, end_state.to_vec(), order)?;
             }
         }
         out.stats[0] += 1;
+        let stop_out = if at == OutAt::Sol && tspan.len() > 2 {
+            if sol_out_t.is_empty() {
+                false
+            } else {
+                m.output(&sol_out_t, &sol_out_y)?
+            }
+        } else if out.t.len() > step_start {
+            m.output(&out.t[step_start..], &out.y[step_start..])?
+        } else {
+            false
+        };
+        if let Some(mut found) = located {
+            if stop_out && let Some(&t_last) = out.t.last() {
+                found.retain_through(t_last, direction);
+            }
+            out.events.append(found, n)?;
+        }
+        if stop || stop_out {
+            out.ypfinal = if end == tnew { ypnew } else { slope(end) };
+            return Ok(out);
+        }
         out.ypfinal = ypnew;
         order_age += 1;
         let mut next_order = order;
@@ -714,6 +821,9 @@ mod tests {
             self.calls += 1;
             Ok((self.residual)(t, y, yp))
         }
+        fn events(&mut self, _: f64, _: &[f64], _: &[f64]) -> R<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+            unreachable!("Events were not configured")
+        }
         fn check_cancel(&self) -> R<()> {
             self.checks.set(self.checks.get() + 1);
             if self.checks.get() > self.cancel_after {
@@ -742,6 +852,7 @@ mod tests {
             htry: None,
             htspan: 1.,
             maxorder: 5,
+            events: false,
         }
     }
 

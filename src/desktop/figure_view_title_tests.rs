@@ -18,7 +18,7 @@ fn prepared(title: &str) -> (Figure, Ordinary) {
     (figure, geometry)
 }
 
-fn paint(
+pub(crate) fn paint(
     ctx: &egui::Context,
     figure: &Figure,
     geometry: &Ordinary,
@@ -65,14 +65,31 @@ fn paint(
     (output, canvas)
 }
 
-fn title_shapes(
+pub(crate) fn visit_shapes(
+    shape: &egui::Shape,
+    clip: egui::Rect,
+    visit: &mut impl FnMut(&egui::Shape, egui::Rect),
+) {
+    if let egui::Shape::Vec(shapes) = shape {
+        for shape in shapes {
+            visit_shapes(shape, clip, visit);
+        }
+    } else {
+        visit(shape, clip);
+    }
+}
+
+pub(crate) fn title_shapes(
     shape: &egui::Shape,
     clip: egui::Rect,
     title: &str,
     out: &mut Vec<(egui::Rect, Color32, bool, usize)>,
 ) {
-    match shape {
-        egui::Shape::Text(text) if text.galley.text() == title => {
+    visit_shapes(shape, clip, &mut |shape, clip| {
+        if let egui::Shape::Text(text) = shape
+            && text.galley.text() == title
+            && text.fallback_color != Color32::TRANSPARENT
+        {
             let ink = text.visual_bounding_rect();
             assert!(
                 clip.contains_rect(ink),
@@ -85,13 +102,7 @@ fn title_shapes(
                 text.galley.rows.len(),
             ));
         }
-        egui::Shape::Vec(shapes) => {
-            for shape in shapes {
-                title_shapes(shape, clip, title, out);
-            }
-        }
-        _ => {}
-    }
+    });
 }
 
 fn contains_background(shape: &egui::Shape, ink: egui::Rect, wanted: Color32) -> bool {
@@ -424,4 +435,72 @@ fn fixed_and_imported_inner_panels_keep_frame_and_separate_north_legend_from_tit
                 .same_storage(&original.series[0].points)
         );
     }
+}
+
+#[test]
+fn styled_leaf_tick_uses_shared_script_runs() {
+    let (mut figure, geometry) = prepared("");
+    figure.axes.extras.leaf_ticks = Some(std::sync::Arc::new(vec!["x_1".into()]));
+    let ctx = egui::Context::default();
+    let (output, _) = paint(
+        &ctx,
+        &figure,
+        &geometry,
+        false,
+        egui::vec2(900., 600.),
+        vec![],
+    );
+    fn has_styled_tick(shape: &egui::Shape) -> bool {
+        match shape {
+            egui::Shape::Text(text) if text.galley.text() == "x1" => {
+                let sections = &text.galley.job.sections;
+                sections.len() >= 2
+                    && sections[1].format.font_id.size < sections[0].format.font_id.size
+                    && sections[0].format.color != Color32::TRANSPARENT
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().any(has_styled_tick),
+            _ => false,
+        }
+    }
+    assert!(
+        output
+            .shapes
+            .iter()
+            .any(|shape| has_styled_tick(&shape.shape))
+    );
+}
+
+#[test]
+fn multiline_title_centers_each_explicit_row() {
+    let title = "Short\nA longer second row";
+    let (figure, geometry) = prepared(title);
+    let ctx = egui::Context::default();
+    let (output, _) = paint(
+        &ctx,
+        &figure,
+        &geometry,
+        false,
+        egui::vec2(900., 600.),
+        vec![],
+    );
+    fn centered(shape: &egui::Shape, title: &str) -> bool {
+        match shape {
+            egui::Shape::Text(text) if text.galley.text() == title => {
+                text.galley.rows.len() == 2
+                    && text
+                        .galley
+                        .rows
+                        .iter()
+                        .all(|row| row.rect().center().x.abs() < 1.5)
+            }
+            egui::Shape::Vec(shapes) => shapes.iter().any(|shape| centered(shape, title)),
+            _ => false,
+        }
+    }
+    assert!(
+        output
+            .shapes
+            .iter()
+            .any(|shape| centered(&shape.shape, title))
+    );
 }

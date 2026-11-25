@@ -274,7 +274,7 @@ impl Workspace {
                     ui.weak(
                         "Matrices create multiple series. X and Y must have compatible dimensions.",
                     );
-                    ui.weak("Up to 64 series and 1,000,000 points; bar plots up to 10,000 bars.");
+                    ui.weak("Up to 1,000,000 plot points; bar plots up to 10,000 bars.");
                 });
             let validation = dialog.request(&self.variables).err();
             if let Some(error) = dialog.error.as_ref().or(validation.as_ref()) {

@@ -31,6 +31,18 @@ fn run_shortcut_uses_text_paste_and_ime_commit_processed_in_the_same_frame() {
 }
 
 #[test]
+fn f5_runs_the_active_script_like_ctrl_enter() {
+    let ctx = egui::Context::default();
+    let mut app = legacy_sample_desktop(ctx.clone(), true);
+    app.documents[app.active].text = "first=1;\nsecond=2;".into();
+    run_edit_focus(&mut app, &ctx, 0..0);
+    frame(&mut app, &ctx, vec![run_edit_key(egui::Key::F5, egui::Modifiers::NONE)]);
+    finish(&mut app);
+    assert_eq!(app.variables["first"].as_numeric().unwrap().data(), &[1.]);
+    assert_eq!(app.variables["second"].as_numeric().unwrap().data(), &[2.]);
+}
+
+#[test]
 fn run_selection_uses_same_frame_keyboard_selection_instead_of_prior_range() {
     let ctx = egui::Context::default();
     let mut app = legacy_sample_desktop(ctx.clone(), true);
@@ -192,7 +204,7 @@ fn startup_placeholder_run_controls_and_shortcuts_do_not_reveal_or_submit() {
             click_label_at(&mut app,&ctx,size,"Run");
             // The toolstrip hides Run script while there is nothing to run.
             assert!(frame_at(&mut app,&ctx,size,vec![]).shapes.iter().all(|s|text_position(&s.shape,"Run section").is_none()));
-            for (key,modifiers) in [(egui::Key::Enter,egui::Modifiers::CTRL),(egui::Key::F9,egui::Modifiers::NONE)] {
+            for (key,modifiers) in [(egui::Key::Enter,egui::Modifiers::CTRL),(egui::Key::F5,egui::Modifiers::NONE),(egui::Key::F9,egui::Modifiers::NONE)] {
                 command_first_key(&mut app,&ctx,size,key,modifiers);
             }
             for _ in 0..3 {frame_at(&mut app,&ctx,size,vec![]);}
@@ -244,4 +256,26 @@ fn final_run_admission_rechecks_placeholder_without_retaining_source_text() {
     assert!(app.has_startup_placeholder() && app.central_command());
     assert!(!app.busy && app.running_origin.is_none());
     assert_eq!(app.documents[app.active].id,document);
+}
+
+#[test]
+fn script_run_echoes_a_command_line_for_untitled_saved_and_selection_runs() {
+    let ctx = egui::Context::default();
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = Workspace::with_context(ctx, true);
+    app.folder = dir.path().into();
+    app.documents[app.active].text = "echo_a=1;".into();
+    app.run_document(None);
+    finish(&mut app);
+    assert!(app.console.iter().any(|l| l == ">> % Run Untitled.mr"), "{:?}", app.console);
+    let path = dir.path().join("it's.m");
+    std::fs::write(&path, "echo_b=2;").unwrap();
+    app.documents[app.active] = Document::open(&path).unwrap();
+    app.folder = app.documents[app.active].path.as_ref().unwrap().parent().unwrap().into();
+    app.run_document(None);
+    finish(&mut app);
+    assert!(app.console.iter().any(|l| l == ">> run('it''s.m')"), "{:?}", app.console);
+    app.run_document(Some(0..4));
+    finish(&mut app);
+    assert!(app.console.iter().any(|l| l == ">> % Run selection of it's.m"), "{:?}", app.console);
 }

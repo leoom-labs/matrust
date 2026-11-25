@@ -421,12 +421,18 @@ fn relative_bar_properties_are_public_bounded_atomic_and_keep_legacy_constructio
         "bar([1 2],[3 4],'GroupWidth',NaN);",
         "bar([1 2],[3 4],'BarWidth',2);",
         "bar([1 2],[3 4],'GroupWidth',0);",
-        "bar([1 2],[3 4],'BarWidth',.5);",
         "set(h(1),'GroupWidth',.5);",
     ] {
         assert!(explicit.execute(command).is_err(), "{command}");
         assert!(explicit.figure.as_ref().unwrap().same_snapshot(&before));
     }
+    explicit.execute("bar([1 2],[3 4],'BarWidth',.5);").unwrap();
+    assert_eq!(
+        explicit.figure.as_ref().unwrap().series[0]
+            .bar_width
+            .to_bits(),
+        0.5f64.to_bits()
+    );
     explicit
         .execute("bar([1 3],[2 3;4 5],'GroupWidth',.5,'BarWidth',.5);")
         .unwrap();

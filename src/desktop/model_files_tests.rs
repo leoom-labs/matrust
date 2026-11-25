@@ -162,12 +162,12 @@ mod model_toolbar_tests {
 
     fn button(app: &mut Workspace, ctx: &egui::Context, size: egui::Vec2, kind: ToolbarKind) -> egui::Pos2 {
         let output = frame_at(app, ctx, size, vec![]);
-        let (window, layer) = app.toolkits.model_document_region().unwrap();
+        // The model's file commands sit in the Apps action row above the canvas.
+        assert!(app.toolkits.model_document_region().is_some());
         let rect = output.shapes.iter().rev().find_map(|shape| {
             ink(&shape.shape, label(kind)).filter(|rect| {
-                shape.clip_rect.contains_rect(*rect) && window.contains_rect(*rect)
+                shape.clip_rect.contains_rect(*rect)
                     && ctx.content_rect().contains_rect(*rect)
-                    && ctx.layer_id_at(rect.center()) == Some(layer)
             })
         }).unwrap_or_else(|| panic!("Visible model toolbar {} at {size:?}", label(kind)));
         rect.center()

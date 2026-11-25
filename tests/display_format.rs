@@ -33,14 +33,6 @@ const SKIPPED: &[(&str, &str)] = &[
     ("P115", PROBE_BUG),
     ("P118", PROBE_BUG),
     ("PL184", PROBE_BUG),
-    (
-        "P83",
-        "the evaluator keeps the zero imaginary part of `3.5+0i` (MATLAB drops it); not a display rule",
-    ),
-    (
-        "Q23",
-        "the reference shortens long text in a too-wide cell row to 18 characters and a mark `evalc` saved as \\x1a; rule not derived",
-    ),
 ];
 
 /// MatRust has no `magic`, root graphics properties or `repmat` of a cell yet;
@@ -113,7 +105,8 @@ fn cases(reference: &str) -> Vec<Case> {
         cases.push(Case {
             id,
             statement: statement.into(),
-            expected: strip_links(expected),
+            // `evalc` saved the cell-text ellipsis (U+2026) as the substitute byte 0x1A (Q23).
+            expected: strip_links(expected).replace('\u{1a}', "\u{2026}"),
         });
         rest = after;
     }
@@ -232,7 +225,7 @@ fn matches_reference_byte_for_byte() {
 
 #[test]
 fn matches_reference_probes_byte_for_byte() {
-    assert_eq!(replay(PROBE), 201);
+    assert_eq!(replay(PROBE), 202);
 }
 
 #[test]
@@ -240,7 +233,7 @@ fn matches_reference_second_probes_byte_for_byte() {
     let probe2 = cases(PROBE2);
     assert_eq!(probe2.len(), 56);
     assert!(probe2.iter().all(|c| !c.expected.starts_with("ERR ")));
-    assert_eq!(replay(PROBE2), 55);
+    assert_eq!(replay(PROBE2), 56);
 }
 
 /// Not reference-checked: `format compact` and a bare `format` were never run on the reference.
@@ -353,4 +346,280 @@ fn disp_of_character_variables_and_empty_values() {
     assert_eq!(console(&mut e, "disp(zeros(0, 3))"), "");
     assert_eq!(console(&mut e, "disp({})"), "");
     assert_eq!(console(&mut e, "disp(cell(0, 3))"), "");
+}
+
+/// MathWorks empty-array and string captions (review F1, 2026-11-12).
+#[test]
+fn empty_and_string_assignment_captions_review_f1112() {
+    let mut e = Engine::default();
+    let cases = [
+        ("B = zeros(0,5)", "0\u{00d7}5 empty double matrix"),
+        ("C = ones(3,0,5)", "3\u{00d7}0\u{00d7}5 empty double array"),
+        ("A = zeros(0,0,'uint8')", "0\u{00d7}0 empty uint8 matrix"),
+        ("S = strings(0,5)", "0\u{00d7}5 empty string array"),
+        ("chr = ''", "0\u{00d7}0 empty char array"),
+        ("G = zeros(0,3,'single')", "0\u{00d7}3 empty single matrix"),
+        ("L = logical(zeros(0,2))", "0\u{00d7}2 empty logical array"),
+        (
+            "Z = complex(zeros(0,5), zeros(0,5))",
+            "0\u{00d7}5 empty double matrix",
+        ),
+        ("M = []", "[]"),
+        ("Z0 = complex(zeros(0,0), zeros(0,0))", "[]"),
+        ("str = strings(2,3)", "2\u{00d7}3 string"),
+    ];
+    for (code, caption) in cases {
+        let text = console(&mut e, code);
+        assert!(
+            text.contains(caption),
+            "{code} -> {text:?} missing {caption}"
+        );
+        assert!(
+            !text.contains("Empty matrix:") && !text.contains("Empty array:"),
+            "{code} -> {text:?}"
+        );
+    }
+    let scalar = console(&mut e, "s = \"only\"");
+    assert!(scalar.contains("\"only\""), "{scalar:?}");
+    assert!(!scalar.contains("string"), "{scalar:?}");
+    let wide = console(&mut e, "str = strings(2,3)");
+    assert!(!wide.contains("string array"), "{wide:?}");
+    assert_eq!(console(&mut e, "disp(zeros(0,5))"), "");
+    assert_eq!(console(&mut e, "disp('')"), "");
+    assert_eq!(console(&mut e, "disp(strings(0,5))"), "");
+    assert_eq!(console(&mut e, "disp(ones(3,0,5))"), "");
+    let cell = console(&mut e, "c = cell(0,3)");
+    assert!(
+        cell.contains("Empty cell array: 0-by-3"),
+        "cell header changed: {cell:?}"
+    );
+    let zero = console(&mut e, "z = complex(zeros(0,5), zeros(0,5))");
+    assert!(!zero.contains("complex"), "{zero:?}");
+}
+
+/// Integer display: scalar echo/disp follows the public MathWorks int32/uint64
+/// pages (class label line `  int32` and 3 leading spaces for scalars); array,
+/// matrix, and N-D page widths follow GNU Octave 10.3.0 (`tool/ref-octave.sh`).
+#[test]
+fn int_display_scalars_echo_and_all_classes() {
+    let mut e = Engine::default();
+    assert_eq!(console(&mut e, "disp(int32(3))"), "   3\n\n");
+    assert_eq!(console(&mut e, "disp(uint64(2))"), "   2\n\n");
+
+    let echo = console(&mut e, "x = int32(3)");
+    assert_eq!(echo, "\nx =\n\n  int32\n\n   3\n\n");
+
+    for cls in [
+        "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64",
+    ] {
+        let out = console(&mut e, &format!("v = {cls}(7)"));
+        assert_eq!(
+            out,
+            format!("\nv =\n\n  {cls}\n\n   7\n\n"),
+            "{cls}: {out:?}"
+        );
+    }
+
+    e.execute("format compact").unwrap();
+    assert_eq!(console(&mut e, "disp(int32(3))"), "   3\n");
+    assert_eq!(console(&mut e, "x = int32(3)"), "x =\n  int32\n   3\n");
+    e.execute("format loose").unwrap();
+}
+
+#[test]
+fn int_display_arrays_matrices_nd_empty_and_map_count() {
+    let mut e = Engine::default();
+    // Octave 10.3.0: disp(int32([3 40])) -> '   3  40'
+    assert_eq!(console(&mut e, "disp(int32([3 40]))"), "   3  40\n\n");
+    // Octave 10.3.0: disp(int8([-5 100; 7 0])) -> '    -5   100\n     7     0'
+    assert_eq!(
+        console(&mut e, "disp(int8([-5 100; 7 0]))"),
+        "    -5   100\n     7     0\n\n"
+    );
+    // Empty uint8
+    assert_eq!(console(&mut e, "disp(uint8([]))"), "");
+    assert_eq!(
+        console(&mut e, "u = uint8([])"),
+        "\nu =\n\n  0\u{00d7}0 empty uint8 matrix\n\n"
+    );
+    // N-D int16 page (Octave 10.3.0: '  1  3\n  2  4')
+    let nd_disp = console(&mut e, "disp(reshape(int16(1:8), 2, 2, 2))");
+    assert_eq!(
+        nd_disp,
+        "(:,:,1) =\n\n  1  3\n  2  4\n\n\n(:,:,2) =\n\n  5  7\n  6  8\n"
+    );
+    let nd_echo = console(&mut e, "a = reshape(int16(1:8), 2, 2, 2)");
+    assert!(
+        nd_echo.contains("a(:,:,1) =\n\n  int16\n\n  1  3\n  2  4"),
+        "{nd_echo:?}"
+    );
+    assert!(
+        nd_echo.contains("a(:,:,2) =\n\n  int16\n\n  5  7\n  6  8"),
+        "{nd_echo:?}"
+    );
+    // containers.Map Count is uint64
+    e.execute("m = containers.Map({'a','b'}, {1, 2});").unwrap();
+    assert_eq!(console(&mut e, "disp(m.Count)"), "   2\n\n");
+    assert_eq!(
+        console(&mut e, "m.Count"),
+        "\nans =\n\n  uint64\n\n   2\n\n"
+    );
+}
+
+#[test]
+fn int_display_signed_min_widths_match_octave() {
+    let mut e = Engine::default();
+    // GNU Octave 10.3.0: 6 spaces before 0, 2 spaces before 32512.
+    assert_eq!(
+        console(&mut e, "disp(int16([-32768;0;32512]))"),
+        "  -32768\n      0\n  32512\n\n"
+    );
+    // GNU Octave 10.3.0: 4 spaces before 0, 2 spaces before 127.
+    assert_eq!(
+        console(&mut e, "disp(int8([-128;0;127]))"),
+        "  -128\n    0\n  127\n\n"
+    );
+}
+
+#[test]
+fn int_display_large_array_obeys_budget() {
+    let mut small = Engine::with_limits(matrust::engine::Limits {
+        display_bytes: 2 * 1024 * 1024,
+        ..Default::default()
+    });
+    small.execute("x = zeros(8000000, 1, 'uint8');").unwrap();
+    let err = small.execute("disp(x)").unwrap_err();
+    assert!(
+        err.contains("output") || err.contains("large") || err.contains("MiB"),
+        "{err}"
+    );
+
+    let mut e = Engine::default();
+    e.execute("y = zeros(9000000, 1, 'uint8');").unwrap();
+    let err = e.execute("disp(y)").unwrap_err();
+    assert!(
+        err.contains("output") || err.contains("large") || err.contains("MiB"),
+        "{err}"
+    );
+}
+
+fn visible(engine: &mut Engine, source: &str) -> String {
+    console(engine, source).trim().to_owned()
+}
+
+/// Engineering notation is not `shortE`/`longE` with a new name: the exponent
+/// is a multiple of 3 and the text is `mantissa` + `e` + sign + three exponent digits.
+#[test]
+fn engineering_notation_prints_powers_of_one_thousand() {
+    let mut e = Engine::default();
+    console(&mut e, "format shortEng");
+    assert_eq!(visible(&mut e, "disp(12345)"), "12.3450e+003");
+    assert_eq!(visible(&mut e, "disp(0.01234567890123456)"), "12.3457e-003");
+    assert_eq!(visible(&mut e, "disp(-12345)"), "-12.3450e+003");
+    assert_eq!(visible(&mut e, "disp(0)"), "0");
+    assert_eq!(visible(&mut e, "disp(NaN)"), "NaN");
+    assert_eq!(visible(&mut e, "disp(Inf)"), "Inf");
+    assert_eq!(visible(&mut e, "disp(-Inf)"), "-Inf");
+    assert_eq!(visible(&mut e, "disp([NaN 12345])"), "NaN  12.3450e+003");
+    // 999.99995 rounds to 1000.0000 at 4 decimals, then to the next power of 1000.
+    assert_eq!(visible(&mut e, "disp(999.99995)"), "1.0000e+003");
+    assert_eq!(visible(&mut e, "disp(-999.99995)"), "-1.0000e+003");
+    assert_eq!(visible(&mut e, "disp(999.94999)"), "999.9500e+000");
+    assert_eq!(
+        visible(&mut e, "disp([12345 0.01234567890123456])"),
+        "12.3450e+003  12.3457e-003"
+    );
+    assert_eq!(
+        visible(&mut e, "disp([12345; 0.01234567890123456])"),
+        "12.3450e+003\n  12.3457e-003"
+    );
+    assert_eq!(visible(&mut e, "disp(3+4i)"), "3.0000e+000 + 4.0000e+000i");
+    assert_eq!(
+        visible(&mut e, "disp(12345-0.01234567890123456i)"),
+        "12.3450e+003 - 12.3457e-003i"
+    );
+    assert!(visible(&mut e, "disp({12345})").contains("12.3450e+003"));
+    console(&mut e, "s.a = 12345;");
+    assert!(visible(&mut e, "disp(s)").contains("12.3450e+003"));
+
+    console(
+        &mut e,
+        "x = [12345 0.01234567890123456]; z = 12345-0.01234567890123456i;",
+    );
+    let x_before = e.variables["x"].data().to_vec();
+    let z_before = e.complex_variables["z"].data().to_vec();
+    console(&mut e, "disp(x); disp(z);");
+    assert_eq!(e.variables["x"].data(), x_before.as_slice());
+    assert_eq!(e.complex_variables["z"].data(), z_before.as_slice());
+
+    // Stored bits, so the text cannot depend on dividing by an overflowing power of ten.
+    e.variables
+        .insert("tiny".into(), matrust::Matrix::scalar(f64::from_bits(1)));
+    e.variables
+        .insert("huge".into(), matrust::Matrix::scalar(f64::MAX));
+    e.variables
+        .insert("negzero".into(), matrust::Matrix::scalar(-0.0));
+    assert_eq!(visible(&mut e, "disp(tiny)"), "4.9407e-324");
+    assert_eq!(e.variables["tiny"].data()[0].to_bits(), 1);
+    assert_eq!(visible(&mut e, "disp(huge)"), "179.7693e+306");
+    assert_eq!(e.variables["huge"].data()[0].to_bits(), f64::MAX.to_bits());
+    assert_eq!(visible(&mut e, "disp(negzero)"), "0");
+    assert!(e.variables["negzero"].data()[0].is_sign_negative());
+
+    console(&mut e, "a = 1e-320; b = 1e308;");
+    assert!(e.variables["a"].data()[0].is_finite() && e.variables["a"].data()[0] != 0.);
+    assert!(e.variables["b"].data()[0].is_finite());
+    let a_bits = e.variables["a"].data()[0].to_bits();
+    let b_bits = e.variables["b"].data()[0].to_bits();
+    assert_eq!(visible(&mut e, "disp(a)"), "9.9999e-321");
+    assert_eq!(visible(&mut e, "disp(b)"), "100.0000e+306");
+    assert_eq!(e.variables["a"].data()[0].to_bits(), a_bits);
+    assert_eq!(e.variables["b"].data()[0].to_bits(), b_bits);
+    assert_eq!(visible(&mut e, "disp(realmin)"), "22.2507e-309");
+
+    let logical = visible(&mut e, "disp([true false])");
+    assert!(!logical.contains('e'), "{logical}");
+
+    // GNU Octave 10.3 `format short eng` anchors.
+    assert_eq!(visible(&mut e, "disp(1)"), "1.0000e+000");
+    assert_eq!(visible(&mut e, "disp(999999)"), "999.9990e+003");
+    assert_eq!(visible(&mut e, "disp(1e-310)"), "100.0000e-312");
+    assert_eq!(visible(&mut e, "disp(single(12345))"), "12.3450e+003");
+    assert_eq!(visible(&mut e, "x = 0"), "x =\n\n  0");
+
+    console(&mut e, "format longEng");
+    assert_eq!(
+        visible(&mut e, "disp(0.01234567890123456)"),
+        "12.345678901234560e-003"
+    );
+    // Octave prints 12.345000000000001e+003 (binary 12345/1000); the mantissa here
+    // comes from exact decimal digits, so the last digit stays 0.
+    assert_eq!(visible(&mut e, "disp(12345)"), "12.345000000000000e+003");
+    assert_eq!(
+        visible(&mut e, "disp(single(0.0123456789))"),
+        // Octave: 12.3456793e-003 (single arithmetic); stored value 0.012345679104...
+        "12.3456791e-003"
+    );
+    assert_eq!(visible(&mut e, "disp(single(pi))"), "3.1415927e+000");
+    assert_eq!(visible(&mut e, "disp(single(12345))"), "12.3450000e+003");
+    assert_eq!(visible(&mut e, "disp(tiny)"), "4.940656458412465e-324");
+    assert_eq!(e.variables["tiny"].data()[0].to_bits(), 1);
+
+    // Published scientific, general and default text is unchanged.
+    console(&mut e, "format short e");
+    assert_eq!(visible(&mut e, "disp(12345)"), "12345");
+    assert_eq!(visible(&mut e, "disp(0.01234567890123456)"), "1.2346e-02");
+    assert_eq!(visible(&mut e, "disp(pi)"), "3.1416e+00");
+    console(&mut e, "format long e");
+    assert_eq!(
+        visible(&mut e, "disp(0.01234567890123456)"),
+        "1.234567890123456e-02"
+    );
+    console(&mut e, "format short g");
+    assert_eq!(visible(&mut e, "disp(pi)"), "3.1416");
+    console(&mut e, "format long g");
+    assert_eq!(visible(&mut e, "disp(pi)"), "3.14159265358979");
+    console(&mut e, "format");
+    assert_eq!(visible(&mut e, "disp(pi)"), "3.1416");
+    assert_eq!(e.display, matrust::display_format::DisplayFormat::default());
 }

@@ -127,6 +127,55 @@ pub(super) fn typed_key(a: &crate::TypedArray, i: usize) -> Key {
         Key::Real(a.real(i))
     }
 }
+fn compare_int_real(i: i128, r: f64, order: SortOrder, missing: MissingPlacement) -> Ordering {
+    if r.is_nan() {
+        let first = missing == MissingPlacement::First
+            || (missing == MissingPlacement::Auto && order == SortOrder::Descend);
+        return if first {
+            Ordering::Greater
+        } else {
+            Ordering::Less
+        };
+    }
+    const MIN_F64: f64 = -170141183460469231731687303715884105728.0; // -2^127 (exact)
+    const MAX_F64: f64 = 170141183460469231731687303715884105728.0; // 2^127 (exact)
+    let cmp = if r < MIN_F64 {
+        Ordering::Greater
+    } else if r >= MAX_F64 {
+        Ordering::Less
+    } else {
+        let trunc = r.trunc() as i128;
+        match i.cmp(&trunc) {
+            Ordering::Equal => {
+                let frac = r.fract();
+                if frac > 0.0 {
+                    Ordering::Less
+                } else if frac < 0.0 {
+                    Ordering::Greater
+                } else {
+                    Ordering::Equal
+                }
+            }
+            other => other,
+        }
+    };
+    if order == SortOrder::Descend {
+        cmp.reverse()
+    } else {
+        cmp
+    }
+}
+pub(super) fn keys_equal(a: Key, b: Key) -> bool {
+    match (a, b) {
+        (Key::Integer(x), Key::Integer(y)) => x == y,
+        (Key::Real(x), Key::Real(y)) => x == y,
+        (Key::Integer(x), Key::Real(y)) | (Key::Real(y), Key::Integer(x)) => {
+            !y.is_nan()
+                && compare_int_real(x, y, SortOrder::Ascend, MissingPlacement::Last)
+                    == Ordering::Equal
+        }
+    }
+}
 pub(super) fn compare_keys(
     a: Key,
     b: Key,
@@ -143,7 +192,8 @@ pub(super) fn compare_keys(
             }
         }
         (Key::Real(a), Key::Real(b)) => compare(a, b, order, missing),
-        _ => unreachable!("sort keys belong to the same array class"),
+        (Key::Integer(a), Key::Real(b)) => compare_int_real(a, b, order, missing),
+        (Key::Real(a), Key::Integer(b)) => compare_int_real(b, a, order, missing).reverse(),
     }
 }
 

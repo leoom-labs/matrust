@@ -3,7 +3,9 @@
 
 x =
 
-    5
+  int8
+
+   5
 
 @@CLASS int8 [1 1]
 @@END
@@ -11,13 +13,17 @@ x =
 
 x =
 
-    3
+  int8
+
+   3
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 3|x = int8(-2.5)
 
 x =
+
+  int8
 
    -3
 
@@ -27,7 +33,9 @@ x =
 
 x =
 
-    3
+  int8
+
+   3
 
 @@CLASS int8 [1 1]
 @@END
@@ -35,7 +43,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -43,7 +53,9 @@ x =
 
 x =
 
- -128
+  int8
+
+   -128
 
 @@CLASS int8 [1 1]
 @@END
@@ -51,7 +63,9 @@ x =
 
 x =
 
-    0
+  int8
+
+   0
 
 @@CLASS int8 [1 1]
 @@END
@@ -59,7 +73,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -67,7 +83,9 @@ x =
 
 x =
 
- -128
+  int8
+
+   -128
 
 @@CLASS int8 [1 1]
 @@END
@@ -75,7 +93,9 @@ x =
 
 x =
 
-    0
+  uint8
+
+   0
 
 @@CLASS uint8 [1 1]
 @@END
@@ -83,7 +103,9 @@ x =
 
 x =
 
-  255
+  uint8
+
+   255
 
 @@CLASS uint8 [1 1]
 @@END
@@ -91,7 +113,9 @@ x =
 
 x =
 
-  32767
+  int16
+
+   32767
 
 @@CLASS int16 [1 1]
 @@END
@@ -99,7 +123,9 @@ x =
 
 x =
 
-  65535
+  uint16
+
+   65535
 
 @@CLASS uint16 [1 1]
 @@END
@@ -107,7 +133,9 @@ x =
 
 x =
 
-  2147483647
+  int32
+
+   2147483647
 
 @@CLASS int32 [1 1]
 @@END
@@ -115,7 +143,9 @@ x =
 
 x =
 
-           0
+  uint32
+
+   0
 
 @@CLASS uint32 [1 1]
 @@END
@@ -123,7 +153,9 @@ x =
 
 x =
 
-  9223372036854775807
+  int64
+
+   9223372036854775807
 
 @@CLASS int64 [1 1]
 @@END
@@ -131,7 +163,9 @@ x =
 
 x =
 
- -9223372036854775808
+  int64
+
+   -9223372036854775808
 
 @@CLASS int64 [1 1]
 @@END
@@ -139,7 +173,9 @@ x =
 
 x =
 
- 18446744073709551615
+  uint64
+
+   18446744073709551615
 
 @@CLASS uint64 [1 1]
 @@END
@@ -147,7 +183,9 @@ x =
 
 x =
 
-     9007199254740993
+  int64
+
+   9007199254740993
 
 @@CLASS int64 [1 1]
 @@END
@@ -155,7 +193,9 @@ x =
 
 x =
 
- 18446744073709551615
+  uint64
+
+   18446744073709551615
 
 @@CLASS uint64 [1 1]
 @@END
@@ -163,7 +203,9 @@ x =
 
 x =
 
-  9223372036854775807
+  int64
+
+   9223372036854775807
 
 @@CLASS int64 [1 1]
 @@END
@@ -171,7 +213,9 @@ x =
 
 x =
 
- -9223372036854775808
+  int64
+
+   -9223372036854775808
 
 @@CLASS int64 [1 1]
 @@END
@@ -179,7 +223,9 @@ x =
 
 x =
 
- 18446744073709551615
+  uint64
+
+   18446744073709551615
 
 @@CLASS uint64 [1 1]
 @@END
@@ -187,7 +233,9 @@ x =
 
 x =
 
-  2147483647
+  int32
+
+   2147483647
 
 @@CLASS int32 [1 1]
 @@END
@@ -195,7 +243,9 @@ x =
 
 x =
 
- -2147483648
+  int32
+
+   -2147483648
 
 @@CLASS int32 [1 1]
 @@END
@@ -203,7 +253,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -211,7 +263,9 @@ x =
 
 x =
 
- -32768
+  int16
+
+   -32768
 
 @@CLASS int16 [1 1]
 @@END
@@ -219,7 +273,9 @@ x =
 
 x =
 
-  4294967295
+  uint32
+
+   4294967295
 
 @@CLASS uint32 [1 1]
 @@END
@@ -227,7 +283,9 @@ x =
 
 x =
 
-    1    3   -4  127
+  int8
+
+     1     3    -4   127
 
 @@CLASS int8 [1 4]
 @@END
@@ -235,8 +293,10 @@ x =
 
 x =
 
-    1    2
-    3    4
+  uint8
+
+  1  2
+  3  4
 
 @@CLASS uint8 [2 2]
 @@END
@@ -244,8 +304,10 @@ x =
 
 x =
 
-  -1000      2
-      3  32767
+  int16
+
+   -1000       2
+       3   32767
 
 @@CLASS int16 [2 2]
 @@END
@@ -253,7 +315,7 @@ x =
 
 x =
 
-     []
+  0×0 empty int8 matrix
 
 @@CLASS int8 [0 0]
 @@END
@@ -261,8 +323,10 @@ x =
 
 x =
 
-    0    0    0
-    0    0    0
+  int8
+
+  0  0  0
+  0  0  0
 
 @@CLASS int8 [2 3]
 @@END
@@ -270,8 +334,10 @@ x =
 
 x =
 
-      1      1
-      1      1
+  uint16
+
+  1  1
+  1  1
 
 @@CLASS uint16 [2 2]
 @@END
@@ -279,8 +345,10 @@ x =
 
 x =
 
-           1           0
-           0           1
+  int32
+
+  1  0
+  0  1
 
 @@CLASS int32 [2 2]
 @@END
@@ -296,13 +364,17 @@ x =
 
 x =
 
-    1
+  int8
+
+   1
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 38|x = int8('a')
 
 x =
+
+  int8
 
    97
 
@@ -311,6 +383,8 @@ x =
 @@CASE 39|x = uint8('hello')
 
 x =
+
+  uint8
 
   104  101  108  108  111
 
@@ -408,7 +482,9 @@ x =
 
 x =
 
-      4
+  int16
+
+   4
 
 @@CLASS int16 [1 1]
 @@END
@@ -424,7 +500,9 @@ x =
 
 x =
 
-  255
+  uint8
+
+   255
 
 @@CLASS uint8 [1 1]
 @@END
@@ -456,7 +534,9 @@ uint64
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -464,7 +544,9 @@ x =
 
 x =
 
- -128
+  int8
+
+   -128
 
 @@CLASS int8 [1 1]
 @@END
@@ -472,7 +554,9 @@ x =
 
 x =
 
-    0
+  uint8
+
+   0
 
 @@CLASS uint8 [1 1]
 @@END
@@ -480,13 +564,17 @@ x =
 
 x =
 
-    4
+  int8
+
+   4
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 61|x = int8(-7) / int8(2)
 
 x =
+
+  int8
 
    -4
 
@@ -496,7 +584,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -504,7 +594,9 @@ x =
 
 x =
 
- -128
+  int8
+
+   -128
 
 @@CLASS int8 [1 1]
 @@END
@@ -512,7 +604,9 @@ x =
 
 x =
 
-    0
+  int8
+
+   0
 
 @@CLASS int8 [1 1]
 @@END
@@ -520,7 +614,9 @@ x =
 
 x =
 
-    4
+  uint8
+
+   4
 
 @@CLASS uint8 [1 1]
 @@END
@@ -528,7 +624,9 @@ x =
 
 x =
 
-  32767
+  int16
+
+   32767
 
 @@CLASS int16 [1 1]
 @@END
@@ -536,7 +634,9 @@ x =
 
 x =
 
-           5          10          15
+  int32
+
+   5  10  15
 
 @@CLASS int32 [1 3]
 @@END
@@ -544,7 +644,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -552,13 +654,17 @@ x =
 
 x =
 
-    0
+  uint8
+
+   0
 
 @@CLASS uint8 [1 1]
 @@END
 @@CASE 70|x = int8(5) .^ 2
 
 x =
+
+  int8
 
    25
 
@@ -568,13 +674,17 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 72|x = int8(-2) .^ 3
 
 x =
+
+  int8
 
    -8
 
@@ -587,7 +697,9 @@ ERR Integers can only be raised to positive integral powers.
 
 x =
 
-    0
+  int8
+
+   0
 
 @@CLASS int8 [1 1]
 @@END
@@ -595,7 +707,9 @@ x =
 
 x =
 
-     9007199254740994
+  int64
+
+   9007199254740994
 
 @@CLASS int64 [1 1]
 @@END
@@ -603,7 +717,9 @@ x =
 
 x =
 
-  9223372036854775806
+  int64
+
+   9223372036854775806
 
 @@CLASS int64 [1 1]
 @@END
@@ -611,7 +727,9 @@ x =
 
 x =
 
- 18446744073709551614
+  uint64
+
+   18446744073709551614
 
 @@CLASS uint64 [1 1]
 @@END
@@ -619,7 +737,9 @@ x =
 
 x =
 
-                   15
+  int64
+
+   15
 
 @@CLASS int64 [1 1]
 @@END
@@ -627,7 +747,9 @@ x =
 
 x =
 
-  4611686018427387904
+  int64
+
+   4611686018427387904
 
 @@CLASS int64 [1 1]
 @@END
@@ -635,7 +757,9 @@ x =
 
 x =
 
-                    2
+  int64
+
+   2
 
 @@CLASS int64 [1 1]
 @@END
@@ -643,7 +767,9 @@ x =
 
 x =
 
-    8
+  int8
+
+   8
 
 @@CLASS int8 [1 1]
 @@END
@@ -651,7 +777,9 @@ x =
 
 x =
 
-    3
+  int8
+
+   3
 
 @@CLASS int8 [1 1]
 @@END
@@ -659,7 +787,9 @@ x =
 
 x =
 
-    2
+  int8
+
+   2
 
 @@CLASS int8 [1 1]
 @@END
@@ -667,7 +797,9 @@ x =
 
 x =
 
-    8
+  int8
+
+   8
 
 @@CLASS int8 [1 1]
 @@END
@@ -681,7 +813,9 @@ ERR Integers can only be combined with integers of the same class, or scalar dou
 
 x =
 
-  102
+  int8
+
+   102
 
 @@CLASS int8 [1 1]
 @@END
@@ -689,7 +823,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -697,7 +833,9 @@ x =
 
 x =
 
-    3
+  uint8
+
+   3
 
 @@CLASS uint8 [1 1]
 @@END
@@ -705,7 +843,9 @@ x =
 
 x =
 
-    3
+  int8
+
+   3
 
 @@CLASS int8 [1 1]
 @@END
@@ -716,7 +856,9 @@ ERR Integers can only be combined with integers of the same class, or scalar dou
 
 x =
 
-     9007199254740994
+  int64
+
+   9007199254740994
 
 @@CLASS int64 [1 1]
 @@END
@@ -724,7 +866,9 @@ x =
 
 x =
 
-     9007199254740993
+  int64
+
+   9007199254740993
 
 @@CLASS int64 [1 1]
 @@END
@@ -732,7 +876,9 @@ x =
 
 x =
 
-     9007199254740994
+  int64
+
+   9007199254740994
 
 @@CLASS int64 [1 1]
 @@END
@@ -740,7 +886,9 @@ x =
 
 x =
 
-  9223372036854775808
+  uint64
+
+   9223372036854775808
 
 @@CLASS uint64 [1 1]
 @@END
@@ -801,8 +949,10 @@ To compute elementwise TIMES, use TIMES (.*) instead.
 
 x =
 
-    2    4
-    6    8
+  int8
+
+  2  4
+  6  8
 
 @@CLASS int8 [2 2]
 @@END
@@ -810,8 +960,10 @@ x =
 
 x =
 
-    2    4
-    6    8
+  int8
+
+  2  4
+  6  8
 
 @@CLASS int8 [2 2]
 @@END
@@ -841,7 +993,9 @@ x =
 
 x =
 
-    1    2
+  int8
+
+  1  2
 
 @@CLASS int8 [1 2]
 @@END
@@ -1045,7 +1199,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -1101,7 +1257,9 @@ single
 
 x =
 
-    1    3
+  int8
+
+  1  3
 
 @@CLASS int8 [1 2]
 @@END
@@ -1109,13 +1267,17 @@ x =
 
 x =
 
-    3    1
+  int8
+
+  3  1
 
 @@CLASS int8 [1 2]
 @@END
 @@CASE 145|x = [int8(1) int16(1000)]
 
 x =
+
+  int8
 
     1  127
 
@@ -1125,7 +1287,9 @@ x =
 
 x =
 
-   1000      1
+  int16
+
+  1000     1
 
 @@CLASS int16 [1 2]
 @@END
@@ -1133,7 +1297,9 @@ x =
 
 x =
 
-    1    3
+  int8
+
+  1  3
 
 @@CLASS int8 [1 2]
 @@END
@@ -1165,13 +1331,17 @@ aB
 
 x =
 
-    1    1
+  int8
+
+  1  1
 
 @@CLASS int8 [1 2]
 @@END
 @@CASE 152|x = [uint8(1); 300]
 
 x =
+
+  uint8
 
     1
   255
@@ -1190,6 +1360,8 @@ x =
 
 x =
 
+  int8
+
     1  127    3
 
 @@CLASS int8 [1 3]
@@ -1198,7 +1370,9 @@ x =
 
 x =
 
-    1    3    3
+  int8
+
+  1  3  3
 
 @@CLASS int8 [1 3]
 @@END
@@ -1230,7 +1404,9 @@ x =
 
 x =
 
-    1    2    3    0    9
+  int8
+
+  1  2  3  0  9
 
 @@CLASS int8 [1 5]
 @@END
@@ -1238,7 +1414,9 @@ x =
 
 x =
 
-   30   10
+  uint8
+
+  30  10
 
 @@CLASS uint8 [1 2]
 @@END
@@ -1246,7 +1424,9 @@ x =
 
 x =
 
-    1    2    3   -1
+  int8
+
+   1   2   3  -1
 
 @@CLASS int8 [1 4]
 @@END
@@ -1262,7 +1442,9 @@ double
 
 x =
 
-    1    2    3    4    5
+  int8
+
+  1  2  3  4  5
 
 @@CLASS int8 [1 5]
 @@END
@@ -1273,7 +1455,9 @@ ERR Double operands interacting with int8 operands must have integer values.
 
 x =
 
-    5    4    3    2    1
+  uint8
+
+  5  4  3  2  1
 
 @@CLASS uint8 [1 5]
 @@END
@@ -1289,7 +1473,9 @@ x =
 
 x =
 
-    1    2    3
+  int8
+
+  1  2  3
 
 @@CLASS int8 [1 3]
 @@END
@@ -1313,7 +1499,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -1345,6 +1533,8 @@ x =
 
 x =
 
+  int8
+
   100  127
 
 @@CLASS int8 [1 2]
@@ -1369,7 +1559,9 @@ x =
 
 x =
 
-    5
+  int8
+
+   5
 
 @@CLASS int8 [1 1]
 @@END
@@ -1377,7 +1569,9 @@ x =
 
 x =
 
-    2
+  uint8
+
+   2
 
 @@CLASS uint8 [1 1]
 @@END
@@ -1385,7 +1579,9 @@ x =
 
 x =
 
-    8
+  int8
+
+   8
 
 @@CLASS int8 [1 1]
 @@END
@@ -1393,7 +1589,9 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
@@ -1401,7 +1599,9 @@ x =
 
 x =
 
-   -1    0    1
+  int8
+
+  -1   0   1
 
 @@CLASS int8 [1 3]
 @@END
@@ -1409,13 +1609,17 @@ x =
 
 x =
 
-    2
+  int8
+
+   2
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 183|x = rem(int8(-7), int8(3))
 
 x =
+
+  int8
 
    -1
 
@@ -1425,7 +1629,9 @@ x =
 
 x =
 
-    1
+  uint8
+
+   1
 
 @@CLASS uint8 [1 1]
 @@END
@@ -1433,7 +1639,9 @@ x =
 
 x =
 
-           3
+  int32
+
+   3
 
 @@CLASS int32 [1 1]
 @@END
@@ -1441,7 +1649,9 @@ x =
 
 x =
 
-           3
+  int32
+
+   3
 
 @@CLASS int32 [1 1]
 @@END
@@ -1449,7 +1659,9 @@ x =
 
 x =
 
-          -4
+  int32
+
+   -4
 
 @@CLASS int32 [1 1]
 @@END
@@ -1457,7 +1669,9 @@ x =
 
 x =
 
-          -3
+  int32
+
+   -3
 
 @@CLASS int32 [1 1]
 @@END
@@ -1465,7 +1679,9 @@ x =
 
 x =
 
-           3
+  int32
+
+   3
 
 @@CLASS int32 [1 1]
 @@END
@@ -1473,13 +1689,17 @@ x =
 
 x =
 
-    8
+  uint8
+
+   8
 
 @@CLASS uint8 [1 1]
 @@END
 @@CASE 191|x = bitor(uint8(12), uint8(10))
 
 x =
+
+  uint8
 
    14
 
@@ -1489,7 +1709,9 @@ x =
 
 x =
 
-    6
+  uint8
+
+   6
 
 @@CLASS uint8 [1 1]
 @@END
@@ -1497,13 +1719,17 @@ x =
 
 x =
 
-  254
+  uint8
+
+   254
 
 @@CLASS uint8 [1 1]
 @@END
 @@CASE 194|x = bitshift(int8(-8), -1)
 
 x =
+
+  int8
 
    -4
 
@@ -1513,7 +1739,9 @@ x =
 
 x =
 
-  255
+  uint8
+
+   255
 
 @@CLASS uint8 [1 1]
 @@END
@@ -1521,7 +1749,9 @@ x =
 
 x =
 
-    5
+  int8
+
+   5
 
 @@CLASS int8 [1 1]
 @@END
@@ -1559,7 +1789,9 @@ ERR Undefined function 'sin' for input arguments of type 'int8'.
 
 x =
 
-   -1    2    3
+  int8
+
+  -1   2   3
 
 @@CLASS int8 [1 3]
 @@END
@@ -1567,7 +1799,9 @@ x =
 
 x =
 
-    1    3
+  uint8
+
+  1  3
 
 @@CLASS uint8 [1 2]
 @@END
@@ -1607,7 +1841,9 @@ x =
 
 x =
 
-    0    5
+  uint8
+
+  0  5
 
 @@CLASS uint8 [1 2]
 @@END
@@ -1671,7 +1907,9 @@ x =
 
 x =
 
-    4
+  int8
+
+   4
 
 @@CLASS int8 [1 1]
 @@END
@@ -1731,7 +1969,9 @@ single
 
 x =
 
-    7    7    7
+  int8
+
+  7  7  7
 
 @@CLASS int8 [1 3]
 @@END
@@ -1739,8 +1979,10 @@ x =
 
 x =
 
-      1      3
-      2      4
+  int16
+
+  1  3
+  2  4
 
 @@CLASS int16 [2 2]
 @@END
@@ -1748,10 +1990,12 @@ x =
 
 x =
 
-    1
-    2
-    3
-    4
+  int8
+
+  1
+  2
+  3
+  4
 
 @@CLASS int8 [4 1]
 @@END
@@ -1759,7 +2003,9 @@ x =
 
 x =
 
-  1065353216
+  uint32
+
+   1065353216
 
 @@CLASS uint32 [1 1]
 @@END
@@ -1767,7 +2013,9 @@ x =
 
 x =
 
-           1
+  uint32
+
+   1
 
 @@CLASS uint32 [1 1]
 @@END
@@ -1775,13 +2023,17 @@ x =
 
 x =
 
-  127
+  int8
+
+   127
 
 @@CLASS int8 [1 1]
 @@END
 @@CASE 230|x = uint8(250):uint8(255)
 
 x =
+
+  uint8
 
   250  251  252  253  254  255
 
@@ -1791,7 +2043,9 @@ x =
 
 x =
 
-  126
+  int8
+
+   126
 
 @@CLASS int8 [1 1]
 @@END
@@ -1823,7 +2077,9 @@ x =
 
 x =
 
-    1   -2  100
+  int8
+
+     1    -2   100
 
 @@CLASS int8 [1 3]
 @@END

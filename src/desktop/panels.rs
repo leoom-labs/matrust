@@ -28,54 +28,22 @@ pub(super) fn caption_semibold(ui: &Ui) -> egui::FontId {
 /// Accent square with "M" and the product name.
 pub(super) fn brand(ui: &mut Ui) {
     let p = palette(ui.ctx());
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(22.), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(20.), Sense::hover());
     ui.painter()
         .rect_filled(rect, tokens::CONTROL_RADIUS, p.accent_fill);
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
         "M",
-        semibold_font(ui, tokens::CAPTION + 1.),
+        semibold_font(ui, tokens::BODY),
         p.on_accent,
     );
+    ui.add_space(tokens::S);
     ui.label(
         RichText::new("MatRust")
-            .font(semibold_font(ui, tokens::BODY + 1.))
+            .font(semibold_font(ui, tokens::HEADING))
             .color(p.text),
     );
-}
-
-/// Top-bar tab: muted text; the selected one sits on a surface chip with the
-/// 1 px border.
-pub(super) fn ghost_tab(ui: &mut Ui, selected: bool, label: &str) -> Response {
-    let p = palette(ui.ctx());
-    let font = semibold_font(ui, tokens::BODY);
-    let galley = ui.painter().layout_no_wrap(
-        label.to_owned(),
-        font,
-        if selected { p.text } else { p.text_muted },
-    );
-    let size = galley.size() + Vec2::new(2. * tokens::M, tokens::M);
-    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), selected, label)
-    });
-    if selected {
-        ui.painter().rect(
-            rect,
-            tokens::CONTROL_RADIUS,
-            p.surface,
-            Stroke::new(1., p.border),
-            StrokeKind::Inside,
-        );
-    } else if response.hovered() {
-        ui.painter()
-            .rect_filled(rect, tokens::CONTROL_RADIUS, p.surface_sunken);
-    }
-    focus_ring(ui, &response);
-    ui.painter()
-        .galley(rect.center() - galley.size() * 0.5, galley, p.text_muted);
-    response
 }
 
 /// The 2 px accent ring of keyboard focus, from the theme's focus visuals.
@@ -148,15 +116,12 @@ pub(super) fn primary_button(ui: &mut Ui, label: &str, shortcut: &str, enabled: 
     focus_ring(ui, &response);
     let mut x = rect.left() + 14.;
     let y = rect.center().y;
-    ui.painter().add(egui::Shape::convex_polygon(
-        vec![
-            egui::pos2(x, y - icon * 0.5),
-            egui::pos2(x + icon, y),
-            egui::pos2(x, y + icon * 0.5),
-        ],
+    icons::paint(
+        ui,
+        Rect::from_center_size(egui::pos2(x + icon * 0.5, y), Vec2::splat(14.)),
+        icons::Icon::Play,
         label_color,
-        Stroke::NONE,
-    ));
+    );
     x += icon + tokens::S;
     let main_width = main.size().x;
     ui.painter()
@@ -239,9 +204,11 @@ pub(super) fn header_with<R>(
     let p = palette(ui.ctx());
     let height = header_height(ui.ctx());
     let rect = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), height));
+    #[cfg(test)]
+    log_header(ui.ctx(), title, rect);
     ui.painter().line_segment(
         [rect.left_bottom(), rect.right_bottom()],
-        Stroke::new(1., p.border),
+        Stroke::new(1., p.hairline),
     );
     // The tools claim their width first; the title and count truncate into
     // what is left, so a long name never covers a tool.
@@ -253,24 +220,26 @@ pub(super) fn header_with<R>(
             |ui| {
                 let result = tools(ui);
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    // One caption style on every pane header (plan section 6):
+                    // 11 Semibold uppercase, text 2.
                     ui.add(
                         egui::Label::new(
-                            RichText::new(title)
-                                .font(semibold_font(ui, tokens::BODY))
-                                .color(if active { p.accent_text } else { p.text }),
+                            RichText::new(title.to_uppercase())
+                                .font(caption_semibold(ui))
+                                .color(if active { p.accent_text } else { p.text_muted }),
                         )
                         .truncate(),
                     );
                     // The count is dropped, never cut: no half-words in chrome.
                     if let Some(count) = count {
                         let text = RichText::new(count)
-                            .size(tokens::CAPTION + 1.)
+                            .size(tokens::CAPTION)
                             .color(p.text_muted);
                         let width = ui
                             .painter()
                             .layout_no_wrap(
                                 count.to_owned(),
-                                egui::FontId::proportional(tokens::CAPTION + 1.),
+                                egui::FontId::proportional(tokens::CAPTION),
                                 p.text_muted,
                             )
                             .size()
@@ -288,13 +257,37 @@ pub(super) fn header_with<R>(
     inner
 }
 
+/// Pane headers of the latest pass: (pass, [(title, rect)]).
+#[cfg(test)]
+type HeaderLog = (u64, Vec<(String, Rect)>);
+
+#[cfg(test)]
+fn log_header(ctx: &egui::Context, title: &str, rect: Rect) {
+    let pass = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| {
+        let log = d.get_temp_mut_or_default::<HeaderLog>(egui::Id::new("pane_header_log"));
+        if log.0 != pass {
+            *log = (pass, Vec::new());
+        }
+        log.1.push((title.to_owned(), rect));
+    });
+}
+
+/// Title and rect of every pane header painted in the latest pass.
+#[cfg(test)]
+pub(super) fn painted_headers(ctx: &egui::Context) -> Vec<(String, Rect)> {
+    ctx.data(|d| d.get_temp::<HeaderLog>(egui::Id::new("pane_header_log")))
+        .map(|log| log.1)
+        .unwrap_or_default()
+}
+
 /// Width of a `header` title, for tools that must leave it whole.
 pub(super) fn header_title_width(ui: &Ui, title: &str) -> f32 {
     ui.painter()
         .layout_no_wrap(
-            title.to_owned(),
-            semibold_font(ui, tokens::BODY),
-            palette(ui.ctx()).text,
+            title.to_uppercase(),
+            caption_semibold(ui),
+            palette(ui.ctx()).text_muted,
         )
         .size()
         .x
@@ -302,20 +295,61 @@ pub(super) fn header_title_width(ui: &Ui, title: &str) -> f32 {
 
 /// Ghost tool link in a card header: muted text, text colour on hover.
 pub(super) fn tool_link(ui: &mut Ui, label: &str) -> Response {
+    link(ui, label, label)
+}
+
+/// Width `tool_link` and `header_tool` take for `text`.
+pub(super) fn tool_link_width(ui: &Ui, text: &str) -> f32 {
+    ui.painter()
+        .layout_no_wrap(
+            text.to_owned(),
+            egui::FontId::proportional(tokens::CAPTION),
+            egui::Color32::WHITE,
+        )
+        .size()
+        .x
+        + tokens::S
+}
+
+/// A text button of a pane header: a short visible word (`text`, as
+/// "Find" or "More") with the accessible `name` and a tooltip. Pane headers
+/// never carry icon-only buttons.
+pub(super) fn header_tool(ui: &mut Ui, text: &str, name: &str, tooltip: &str) -> Response {
+    link(ui, text, name)
+        .on_hover_text(tooltip)
+        .on_disabled_hover_text(tooltip)
+}
+
+fn link(ui: &mut Ui, text: &str, name: &str) -> Response {
     let p = palette(ui.ctx());
+    let enabled = ui.is_enabled();
     let galley = ui.painter().layout_no_wrap(
-        label.to_owned(),
-        egui::FontId::proportional(tokens::CAPTION + 1.),
+        text.to_owned(),
+        egui::FontId::proportional(tokens::CAPTION),
         p.text_muted,
     );
-    let (rect, response) = ui.allocate_exact_size(
-        galley.size() + Vec2::new(tokens::S, tokens::XS),
-        Sense::click(),
+    // A 24 px hit target; the caption stays centred in it.
+    let size = Vec2::new(
+        galley.size().x + tokens::S,
+        (galley.size().y + tokens::XS).max(tokens::INTERACT_HEIGHT),
     );
-    response.widget_info(|| {
-        egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), label)
-    });
-    let color = if response.hovered() {
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, name));
+    // Tests find a header button by its accessible name: an invisible text
+    // shape where the name differs from the visible word.
+    #[cfg(test)]
+    if name != text {
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            name,
+            egui::FontId::proportional(1.),
+            egui::Color32::TRANSPARENT,
+        );
+    }
+    let color = if !enabled {
+        p.text_disabled
+    } else if response.hovered() {
         p.text
     } else {
         p.text_muted
@@ -326,7 +360,69 @@ pub(super) fn tool_link(ui: &mut Ui, label: &str) -> Response {
     response
 }
 
-/// Mono size chip: sunken fill, 1 px border, radius 4.
+/// How many header tools of `widths` (most important first) fit in `room`.
+/// When some do not, a "More" menu of `more` width takes the rest and the
+/// second value is true.
+pub(super) fn header_fit(widths: &[f32], room: f32, more: f32) -> (usize, bool) {
+    if widths.iter().sum::<f32>() <= room {
+        return (widths.len(), false);
+    }
+    let mut used = more;
+    let shown = widths
+        .iter()
+        .take_while(|width| {
+            used += **width;
+            used <= room
+        })
+        .count();
+    (shown, true)
+}
+
+/// A panel whose edge is a pane boundary.
+pub(super) trait PaneBorder: Sized {
+    /// `show` with the panel edge drawn as the 1 px `pane_border`, which
+    /// keeps >= 3:1 against both surfaces it separates; dividers inside the
+    /// panel keep the hairline.
+    fn show_pane<R>(
+        self,
+        ui: &mut Ui,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        self.show_edge(ui, true, add_contents)
+    }
+
+    /// `show_pane` when `pane`, else `show` with the hairline edge.
+    fn show_edge<R>(
+        self,
+        ui: &mut Ui,
+        pane: bool,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R>;
+}
+
+impl PaneBorder for egui::Panel {
+    fn show_edge<R>(
+        self,
+        ui: &mut Ui,
+        pane: bool,
+        add_contents: impl FnOnce(&mut Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        // egui draws the separator with the parent's noninteractive stroke.
+        let inner = ui.visuals().widgets.noninteractive.bg_stroke;
+        if pane {
+            ui.visuals_mut().widgets.noninteractive.bg_stroke =
+                Stroke::new(1., palette(ui.ctx()).pane_border);
+        }
+        let response = self.show_separator_line(true).show(ui, |ui| {
+            ui.visuals_mut().widgets.noninteractive.bg_stroke = inner;
+            add_contents(ui)
+        });
+        ui.visuals_mut().widgets.noninteractive.bg_stroke = inner;
+        response
+    }
+}
+
+/// Mono size label in the chip's place (right-aligned, text 2, no frame).
 pub(super) fn chip(ui: &Ui, right_center: egui::Pos2, text: &str, clip: Rect) -> Rect {
     let p = palette(ui.ctx());
     let galley = ui.painter().layout_no_wrap(
@@ -340,39 +436,44 @@ pub(super) fn chip(ui: &Ui, right_center: egui::Pos2, text: &str, clip: Rect) ->
         egui::pos2(right_center.x - size.x, right_center.y - size.y * 0.5),
         size,
     );
+    // Plain mono text in text 2, right-aligned: no pills or chips.
     let painter = ui.painter().with_clip_rect(clip);
-    painter.rect(
-        rect,
-        tokens::CHIP_RADIUS,
-        p.surface_sunken,
-        Stroke::new(1., p.border),
-        StrokeKind::Inside,
+    painter.galley(
+        egui::pos2(
+            rect.right() - galley.size().x,
+            rect.center().y - galley.size().y * 0.5,
+        ),
+        galley,
+        p.text_muted,
     );
-    painter.galley(rect.center() - galley.size() * 0.5, galley, p.text_muted);
     rect
 }
 
 /// Card for the welcome row; `soft` is the accent_soft example card.
 fn start_card(ui: &mut Ui, title: &str, detail: &str, soft: bool) -> Response {
     let p = palette(ui.ctx());
-    let (fill, title_color) = if soft {
-        (p.accent_soft, p.accent_text)
+    // A plain card; the suggested example only colours its code line, so it
+    // never reads as a selected row.
+    let (fill, title_color) = (p.surface_sunken, p.text);
+    // Code is mono only (plan section 6): the example line is 13 mono text 2.
+    let detail_color = p.text_muted;
+    let detail_font = if soft {
+        egui::FontId::monospace(tokens::CODE)
     } else {
-        (p.surface_sunken, p.text)
+        egui::FontId::proportional(tokens::CAPTION)
     };
-    let detail_color = if soft { p.accent_text } else { p.text_muted };
     let title_galley = ui.painter().layout_no_wrap(
         title.to_owned(),
         semibold_font(ui, tokens::BODY),
         title_color,
     );
-    let detail_galley = ui.painter().layout_no_wrap(
-        detail.to_owned(),
-        egui::FontId::proportional(tokens::CAPTION + 1.),
-        detail_color,
-    );
+    let detail_galley = ui
+        .painter()
+        .layout_no_wrap(detail.to_owned(), detail_font, detail_color);
     let width = (title_galley.size().x.max(detail_galley.size().x) + 2. * tokens::M).max(150.);
-    let height = title_galley.size().y + detail_galley.size().y + 2. + 2. * tokens::S;
+    // One 48 px row on the 8 px grid; the two lines centre in it.
+    let lines = title_galley.size().y + detail_galley.size().y + 2.;
+    let height = 48_f32.max((lines + 2. * tokens::XS).ceil());
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::click());
     response.widget_info(|| {
         egui::WidgetInfo::labeled(egui::WidgetType::Button, ui.is_enabled(), title)
@@ -380,7 +481,7 @@ fn start_card(ui: &mut Ui, title: &str, detail: &str, soft: bool) -> Response {
     let stroke = if response.hovered() {
         Stroke::new(1., p.accent)
     } else {
-        Stroke::new(1., if soft { p.accent_soft } else { p.border })
+        Stroke::new(1., p.border)
     };
     ui.painter().rect(
         rect,
@@ -390,7 +491,7 @@ fn start_card(ui: &mut Ui, title: &str, detail: &str, soft: bool) -> Response {
         StrokeKind::Inside,
     );
     focus_ring(ui, &response);
-    let top = rect.left_top() + Vec2::new(tokens::M, tokens::S);
+    let top = rect.left_top() + Vec2::new(tokens::M, ((height - lines) / 2.).round());
     let title_height = title_galley.size().y;
     ui.painter().galley(top, title_galley, title_color);
     ui.painter().galley(
@@ -433,6 +534,18 @@ impl Workspace {
             if self.busy {
                 ui.spinner();
             }
+            // The open app's status (filter design summary) sits here, not
+            // in its work area.
+            if self.mode() == crate::modes::Mode::Apps
+                && let Some(tool) = self.toolkits.selected_tool()
+                && let Some((text, status)) = self.toolkits.app_status(tool, self.busy)
+            {
+                if status == toolkits::AppStatus::Plain {
+                    ui.label(text);
+                } else {
+                    ui.colored_label(status.color(ui.ctx()), text);
+                }
+            }
             if !self.status.is_empty() {
                 ui.add(egui::Label::new(&self.status).truncate());
             }
@@ -452,7 +565,8 @@ impl Workspace {
     /// The welcome block shows in the main Command Window and disappears
     /// once anything has run.
     pub(super) fn welcome_visible(&self) -> bool {
-        self.toolkits.selected_tool().is_none()
+        self.docked_tool().is_none()
+            && !self.apps_home
             && self.central_command()
             && !self.editor_above_command()
             && self.history.entries.is_empty()
@@ -489,7 +603,7 @@ impl Workspace {
                             self.queue_folder_browse(&ctx);
                         }
                     }
-                    if start_card(ui, "Try an example", "plot(x, sin(x))", true).clicked()
+                    if start_card(ui, "Try an example", "plot(x, sin(2*pi*5*x))", true).clicked()
                         && !self.busy
                     {
                         let command = EXAMPLE.to_owned();
@@ -504,39 +618,45 @@ impl Workspace {
             .rect;
         ui.painter().line_segment(
             [rect.left_bottom(), rect.right_bottom()],
-            Stroke::new(1., p.border),
+            Stroke::new(1., p.hairline),
         );
     }
 }
 
-/// Toolstrip tile height inside the 64 px card.
-pub(super) const STRIP_TILE: f32 = 56.;
+/// Action-row button height: one 28 px control.
+pub(super) const STRIP_TILE: f32 = tokens::CONTROL;
+
+/// Action-row icons are 16 px line glyphs left of the label.
+const ROW_ICON: f32 = 16.;
 
 fn strip_font() -> egui::FontId {
-    egui::FontId::proportional(tokens::CAPTION + 1.)
+    egui::FontId::proportional(tokens::BODY)
 }
 
-/// Width of one icon-over-label tile; labels never wrap.
+/// Width of one icon + label action; labels never wrap.
 pub(super) fn strip_action_width(ui: &Ui, label: &str) -> f32 {
     let width = ui
         .painter()
         .layout_no_wrap(label.to_owned(), strip_font(), egui::Color32::WHITE)
         .size()
         .x;
-    (width + 2. * tokens::S).max(64.)
+    tokens::S + ROW_ICON + tokens::S + width + tokens::M
 }
 
-/// Ghost toolstrip action: 20 px stroke icon (accent for Run) over a label;
-/// hover is surface_sunken, no pill background.
+/// Ghost action-row button: a 16 px stroke icon (accent for Run) and the
+/// label in text 1; hover is a surface step, no outline.
 pub(super) fn strip_action(ui: &mut Ui, label: &str, icon: shell::Icon, run: bool) -> Response {
     let p = palette(ui.ctx());
     let enabled = ui.is_enabled();
     let width = strip_action_width(ui, label);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, STRIP_TILE), Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
-    if enabled && (response.hovered() || response.is_pointer_button_down_on()) {
+    if enabled && response.is_pointer_button_down_on() {
         ui.painter()
-            .rect_filled(rect, tokens::CONTROL_RADIUS, p.surface_sunken);
+            .rect_filled(rect, tokens::CONTROL_RADIUS, p.hairline);
+    } else if enabled && response.hovered() {
+        ui.painter()
+            .rect_filled(rect, tokens::CONTROL_RADIUS, p.canvas);
     }
     focus_ring(ui, &response);
     let icon_color = if !enabled {
@@ -546,18 +666,14 @@ pub(super) fn strip_action(ui: &mut Ui, label: &str, icon: shell::Icon, run: boo
     } else {
         p.text_muted
     };
-    stroke_icon(
-        ui,
-        Rect::from_center_size(
-            rect.center_top() + Vec2::new(0., tokens::S + tokens::ICON * 0.5),
-            Vec2::splat(tokens::ICON),
-        ),
-        icon,
-        icon_color,
+    let icon_rect = Rect::from_center_size(
+        egui::pos2(rect.left() + tokens::S + ROW_ICON * 0.5, rect.center().y),
+        Vec2::splat(ROW_ICON),
     );
+    stroke_icon(ui, icon_rect, icon, icon_color);
     ui.painter().text(
-        rect.center_top() + Vec2::new(0., tokens::S + tokens::ICON + tokens::XS),
-        egui::Align2::CENTER_TOP,
+        egui::pos2(icon_rect.right() + tokens::S, rect.center().y),
+        egui::Align2::LEFT_CENTER,
         label,
         strip_font(),
         if enabled { p.text } else { p.text_disabled },
@@ -565,93 +681,43 @@ pub(super) fn strip_action(ui: &mut Ui, label: &str, icon: shell::Icon, run: boo
     response
 }
 
-/// 1 px vertical divider between toolstrip groups.
+/// 1 px vertical hairline between action groups.
 pub(super) fn strip_divider(ui: &mut Ui) {
     let (rect, _) =
         ui.allocate_exact_size(Vec2::new(2. * tokens::S + 1., STRIP_TILE), Sense::hover());
-    let x = rect.center().x;
+    let x = rect.center().x.round() + 0.5;
     ui.painter().line_segment(
         [
-            egui::pos2(x, rect.center().y - 18.),
-            egui::pos2(x, rect.center().y + 18.),
+            egui::pos2(x, rect.center().y - 8.),
+            egui::pos2(x, rect.center().y + 8.),
         ],
-        Stroke::new(1., palette(ui.ctx()).border),
+        Stroke::new(1., palette(ui.ctx()).hairline),
     );
 }
 
-/// Line icons on a 16 unit grid, 1.6 px strokes.
+/// Phosphor Regular icons in the existing 16 px action boxes.
 pub(super) fn stroke_icon(ui: &Ui, rect: Rect, icon: shell::Icon, color: egui::Color32) {
-    use shell::Icon;
-    let painter = ui.painter();
-    let stroke = Stroke::new(1.6, color);
-    let point = |x: f32, y: f32| {
-        egui::pos2(
-            rect.left() + x * rect.width() / 16.,
-            rect.top() + y * rect.height() / 16.,
-        )
+    use super::icons::{self, Icon};
+    let icon = match icon {
+        shell::Icon::Document => Icon::FilePlus,
+        shell::Icon::Folder => Icon::FolderOpen,
+        shell::Icon::Save => Icon::FloppyDisk,
+        shell::Icon::Run => Icon::Play,
+        shell::Icon::Table => Icon::Table,
+        shell::Icon::Plot => Icon::ChartLine,
+        shell::Icon::Layout => Icon::Sidebar,
+        shell::Icon::Undo => Icon::ArrowUUpLeft,
+        shell::Icon::Redo => Icon::ArrowUUpRight,
+        shell::Icon::Refresh => Icon::ArrowClockwise,
+        shell::Icon::Export => Icon::Export,
+        shell::Icon::Properties => Icon::SlidersHorizontal,
+        shell::Icon::Simulation => Icon::FlowArrow,
+        shell::Icon::Filter => Icon::Funnel,
+        shell::Icon::Copy => Icon::Copy,
+        shell::Icon::More => Icon::DotsThree,
+        shell::Icon::Search => Icon::MagnifyingGlass,
     };
-    let path = |points: &[(f32, f32)], closed: bool| {
-        let points = points.iter().map(|&(x, y)| point(x, y)).collect();
-        painter.add(if closed {
-            egui::Shape::closed_line(points, stroke)
-        } else {
-            egui::Shape::line(points, stroke)
-        });
-    };
-    match icon {
-        Icon::Document => {
-            path(
-                &[(3., 1.), (10., 1.), (13., 4.), (13., 15.), (3., 15.)],
-                true,
-            );
-            path(&[(10., 1.), (10., 4.), (13., 4.)], false);
-        }
-        Icon::Folder => path(
-            &[
-                (1., 3.),
-                (6., 3.),
-                (7.5, 5.),
-                (15., 5.),
-                (15., 14.),
-                (1., 14.),
-            ],
-            true,
-        ),
-        Icon::Save => {
-            path(
-                &[(2., 2.), (12., 2.), (14., 4.), (14., 14.), (2., 14.)],
-                true,
-            );
-            path(&[(5., 2.), (5., 6.), (11., 6.), (11., 2.)], false);
-            path(&[(5., 14.), (5., 10.), (11., 10.), (11., 14.)], false);
-        }
-        Icon::Run => path(&[(4., 2.), (14., 8.), (4., 14.)], true),
-        Icon::Table => {
-            path(&[(1., 2.), (15., 2.), (15., 14.), (1., 14.)], true);
-            path(&[(1., 6.), (15., 6.)], false);
-            path(&[(1., 10.), (15., 10.)], false);
-            path(&[(6., 2.), (6., 14.)], false);
-        }
-        Icon::Plot => {
-            path(&[(2., 1.), (2., 14.), (15., 14.)], false);
-            path(&[(4., 11.), (7., 6.), (10., 9.), (14., 3.)], false);
-        }
-        Icon::Tools => {
-            painter.circle_stroke(point(8., 8.), rect.width() * 5. / 16., stroke);
-            painter.circle_stroke(point(8., 8.), rect.width() * 2. / 16., stroke);
-        }
-        Icon::Layout => {
-            path(&[(1., 2.), (15., 2.), (15., 14.), (1., 14.)], true);
-            path(&[(8., 2.), (8., 14.)], false);
-        }
-        Icon::Undo => {
-            path(
-                &[(3., 6.), (11., 6.), (14., 9.), (11., 13.), (6., 13.)],
-                false,
-            );
-            path(&[(6., 3.), (3., 6.), (6., 9.)], false);
-        }
-    }
+    icons::paint(ui, rect, icon, color);
 }
 
 #[derive(Clone, Copy)]
@@ -659,11 +725,12 @@ pub(super) enum FileKind {
     Script,
     Folder,
     Data,
+    Csv,
+    Image,
 }
 
-/// Files row: 14 px type icon (script = accent square, folder = muted square,
-/// data = outlined) and the truncated name; selected = accent_soft fill with
-/// accent_text.
+/// Files row: neutral Phosphor file-type icon and truncated name; selection
+/// uses a tint and a 2 px accent marker.
 pub(super) fn file_row(
     ui: &mut Ui,
     label: &str,
@@ -683,33 +750,26 @@ pub(super) fn file_row(
     let fill = if selected {
         p.accent_soft
     } else if response.hovered() {
-        p.surface_sunken
+        p.canvas
     } else {
         egui::Color32::TRANSPARENT
     };
     ui.painter().rect_filled(rect, 0., fill);
+    if selected {
+        // Selected: selection tint and a 2 px accent bar at the left.
+        ui.painter().rect_filled(
+            Rect::from_min_size(rect.min, Vec2::new(2., rect.height())),
+            0.,
+            p.accent,
+        );
+    }
     focus_ring(ui, &response);
     let icon = Rect::from_center_size(
         egui::pos2(rect.left() + tokens::M + 7., rect.center().y),
         Vec2::splat(14.),
     );
-    match kind {
-        FileKind::Script => {
-            ui.painter().rect_filled(icon, 3., p.accent);
-        }
-        FileKind::Folder => {
-            ui.painter().rect_filled(icon, 3., p.text_disabled);
-        }
-        FileKind::Data => {
-            ui.painter().rect_stroke(
-                icon,
-                3.,
-                Stroke::new(1.5, p.text_disabled),
-                StrokeKind::Inside,
-            );
-        }
-    }
-    let color = if selected { p.accent_text } else { p.text };
+    file_glyph(ui, icon, kind, p.text_muted);
+    let color = p.text;
     let left = icon.right() + tokens::S;
     let mut job = egui::text::LayoutJob::single_section(
         label.to_owned(),
@@ -726,7 +786,20 @@ pub(super) fn file_row(
     response
 }
 
-/// Search launcher drawn as a 260 px field with its Ctrl K hint.
+/// Phosphor file marks in text 2, with the existing row geometry.
+fn file_glyph(ui: &Ui, r: Rect, kind: FileKind, color: egui::Color32) {
+    use super::icons::{self, Icon};
+    let icon = match kind {
+        FileKind::Script => Icon::FileCode,
+        FileKind::Folder => Icon::FolderOpen,
+        FileKind::Data => Icon::Table,
+        FileKind::Csv => Icon::FileCsv,
+        FileKind::Image => Icon::Image,
+    };
+    icons::paint(ui, r, icon, color);
+}
+
+/// Search launcher drawn as a 320 px field with its Ctrl K hint.
 pub(super) fn search_field(ui: &mut Ui, label: &str, enabled: bool) -> Response {
     let p = palette(ui.ctx());
     // The folder path next to it truncates first.
@@ -787,152 +860,4 @@ pub(super) fn search_field(ui: &mut Ui, label: &str, enabled: bool) -> Response 
         p.text_disabled,
     );
     response
-}
-
-/// Vector glyphs of the 24 px ghost icon buttons in card headers.
-#[derive(Clone, Copy)]
-pub(super) enum Glyph {
-    Up,
-    Back,
-    Forward,
-    Browse,
-    Refresh,
-    Filter,
-    /// Three dots: the overflow menu of a card.
-    More,
-    Search,
-}
-
-/// 24 px ghost icon button with a tooltip. The label is the accessible name
-/// and the tooltip; nothing is painted as text.
-pub(super) fn icon_button(ui: &mut Ui, glyph: Glyph, label: &str) -> Response {
-    icon_button_with(ui, glyph, label, label)
-}
-
-/// `icon_button` whose tooltip differs from its accessible name (shortcuts).
-pub(super) fn icon_button_with(ui: &mut Ui, glyph: Glyph, label: &str, tooltip: &str) -> Response {
-    icon_button_sized(ui, tokens::INTERACT_HEIGHT, glyph, label, tooltip)
-}
-
-/// `icon_button_with` in the HEADER_ICON box of the crowded Files header.
-pub(super) fn header_icon_button(
-    ui: &mut Ui,
-    glyph: Glyph,
-    label: &str,
-    tooltip: &str,
-) -> Response {
-    icon_button_sized(ui, tokens::HEADER_ICON, glyph, label, tooltip)
-}
-
-fn icon_button_sized(ui: &mut Ui, size: f32, glyph: Glyph, label: &str, tooltip: &str) -> Response {
-    let p = palette(ui.ctx());
-    let enabled = ui.is_enabled();
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
-    // Tests find icon-only buttons by their label: an invisible text shape.
-    #[cfg(test)]
-    ui.painter().text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        label,
-        egui::FontId::proportional(1.),
-        egui::Color32::TRANSPARENT,
-    );
-    if enabled && (response.hovered() || response.is_pointer_button_down_on()) {
-        ui.painter()
-            .rect_filled(rect, tokens::CONTROL_RADIUS, p.surface_sunken);
-    }
-    focus_ring(ui, &response);
-    let color = if !enabled {
-        p.text_disabled
-    } else if response.hovered() {
-        p.text
-    } else {
-        p.text_muted
-    };
-    stroke_glyph(
-        ui,
-        Rect::from_center_size(rect.center(), Vec2::splat(16.)),
-        glyph,
-        color,
-    );
-    response
-        .on_hover_text(tooltip)
-        .on_disabled_hover_text(tooltip)
-}
-
-/// Line glyphs on a 16 unit grid, 1.5 px strokes.
-fn stroke_glyph(ui: &Ui, rect: Rect, glyph: Glyph, color: egui::Color32) {
-    let painter = ui.painter();
-    let stroke = Stroke::new(1.5, color);
-    let scale = rect.width() / 16.;
-    let point = |x: f32, y: f32| rect.min + Vec2::new(x, y) * scale;
-    let path = |points: &[(f32, f32)], closed: bool| {
-        let points = points.iter().map(|&(x, y)| point(x, y)).collect();
-        painter.add(if closed {
-            egui::Shape::closed_line(points, stroke)
-        } else {
-            egui::Shape::line(points, stroke)
-        });
-    };
-    match glyph {
-        Glyph::Up => {
-            path(&[(8., 13.), (8., 3.)], false);
-            path(&[(4., 7.), (8., 3.), (12., 7.)], false);
-        }
-        Glyph::Back => {
-            path(&[(13., 8.), (3., 8.)], false);
-            path(&[(7., 4.), (3., 8.), (7., 12.)], false);
-        }
-        Glyph::Forward => {
-            path(&[(3., 8.), (13., 8.)], false);
-            path(&[(9., 4.), (13., 8.), (9., 12.)], false);
-        }
-        Glyph::Browse => path(
-            &[
-                (1.5, 3.),
-                (6., 3.),
-                (7.5, 5.),
-                (14.5, 5.),
-                (14.5, 13.5),
-                (1.5, 13.5),
-            ],
-            true,
-        ),
-        Glyph::Refresh => {
-            // Three quarters of a circle and an arrow head at its open end.
-            let arc: Vec<_> = (0..=14)
-                .map(|i| {
-                    let angle = (-40. + 270. * i as f32 / 14.).to_radians();
-                    (8. + 5. * angle.cos(), 8. + 5. * angle.sin())
-                })
-                .collect();
-            path(&arc, false);
-            let end = arc[0];
-            path(
-                &[(end.0 + 3., end.1 - 1.), end, (end.0 + 1., end.1 + 3.5)],
-                false,
-            );
-        }
-        Glyph::Filter => path(
-            &[
-                (2., 3.),
-                (14., 3.),
-                (9.5, 8.5),
-                (9.5, 13.),
-                (6.5, 11.5),
-                (6.5, 8.5),
-            ],
-            true,
-        ),
-        Glyph::More => {
-            for x in [3., 8., 13.] {
-                painter.circle_filled(point(x, 8.), 1.5 * scale, color);
-            }
-        }
-        Glyph::Search => {
-            painter.circle_stroke(point(7., 7.), 4.5 * scale, stroke);
-            path(&[(10.5, 10.5), (14., 14.)], false);
-        }
-    }
 }

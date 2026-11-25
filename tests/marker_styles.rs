@@ -169,7 +169,7 @@ fn marker_styles_invalid_settings_preserve_figure_and_existing_file() {
         "plot([1 2],'Marker','pentagram')",
         "plot([1 2],'rx','Marker','none')",
         "bar([1 2],'Marker','s')",
-        "scatter([1 2],[3 4],'SizeData',[1 2])",
+        "scatter([1 2],[3 4],'SizeData',[1 2 3])",
         "scatter([1 2],[3 4],'SizeData',-1)",
         "scatter([1 2],[3 4],'SizeData',0)",
         "scatter([1 2],[3 4],'Marker','none')",

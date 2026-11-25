@@ -1,9 +1,9 @@
 //! `matrust bench [options]`. Exit codes: 0 ok, 1 some case failed, 2 usage.
 use super::share::{NOTICE, SharePayload, issue_url, opener};
 use super::{
-    Case, CaseResult, ErrorKind, ResultFile, Script, builtin_cases, case_sha256, format_ms,
-    machine, parse_cases, read_bounded, read_bounded_text, run_case, select, sha256_hex, source_of,
-    utc_parts, write_atomically,
+    Case, CaseResult, ErrorKind, MAX_INPUT_BYTES, ResultFile, Script, builtin_cases, case_sha256,
+    format_ms, machine, parse_cases, read_bounded, read_bounded_text, run_case, select, sha256_hex,
+    source_of, utc_parts, write_atomically,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -208,7 +208,14 @@ fn script_case(index: usize, path: &Path) -> Result<Case, String> {
     }
     let bytes = read_bounded(path)?;
     let sha256 = sha256_hex(&bytes);
-    let source = String::from_utf8(bytes).map_err(|_| format!("{shown}: not UTF-8 text"))?;
+    let source = crate::files::decode_script_source(path, bytes).map_err(|error| match error {
+        crate::files::ScriptDecodeError::Nul => format!("{shown}: {error}"),
+        _ => format!("{shown}: not UTF-8 text"),
+    })?;
+    if source.len() > MAX_INPUT_BYTES {
+        return Err(format!("{shown}: decoded script exceeds 1 MB"));
+    }
+    let source = source.strip_prefix('\u{feff}').unwrap_or(&source);
     let absolute = std::path::absolute(path).map_err(|e| format!("{shown}: {e}"))?;
     Ok(Case {
         id: format!("script-{index}"),

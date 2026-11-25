@@ -108,21 +108,19 @@ fn figure_quit_discard_applies_only_to_final_checkpoint_and_cancel_keeps_figures
     finish(&mut app);
     app.documents[0].text.push_str("\nunsaved_note=1;");
     app.documents[0].changed();
+    // One quit dialog covers the unsaved script and figure: Cancel keeps both.
     app.request_quit(&ctx);
-    click_label(&mut app, &ctx, "Discard changes");
-    assert!(app.pending_quit);
-    assert_eq!(app.snapshot().figures.unwrap().figures.len(), 2);
-    assert_eq!(app.exit_snapshot().figures.unwrap().figures.len(), 1);
     click_label(&mut app, &ctx, "Cancel");
-    assert!(!app.pending_quit);
+    assert!(!app.pending_quit && app.figure_close.is_none());
     assert!(app.quit_discarded_figures.is_empty());
     assert_eq!(app.exit_snapshot().figures.unwrap().figures.len(), 2);
     assert_eq!(app.figure_ids, vec![1, 2]);
     app.request_quit(&ctx);
     assert!(app.quit_discarded_figures.is_empty());
     click_label(&mut app, &ctx, "Discard changes");
-    click_label(&mut app, &ctx, "Discard changes");
     assert!(app.allow_close);
+    assert_eq!(app.snapshot().figures.unwrap().figures.len(), 2);
+    assert_eq!(app.exit_snapshot().figures.unwrap().figures.len(), 1);
     eframe::App::on_exit(&mut app, None);
     let saved = Session::load(&path).unwrap();
     let manifest = saved.figure_manifest.unwrap();

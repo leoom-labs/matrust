@@ -151,10 +151,10 @@ fn desktop_scale_shortcuts_are_bounded_and_compact_tabs_do_not_change_split_pref
     for label in [
         "Menu",
         "Help",
-        "Workspace",
+        "WORKSPACE",
         "Script editor",
         "Plot figure",
-        "Command Window",
+        "COMMAND WINDOW",
     ] {
         let p = output
             .shapes
@@ -218,7 +218,7 @@ fn desktop_scale_reapplies_saved_panel_proportions_after_viewport_changes() {
             .unwrap().outer_rect;
         // The central card lies between both docked sidebars: 4 px card
         // margins, the 1 px outline and 1 px inner margin on each side.
-        let available = workspace.left() - sidebar.right() - 12.;
+        let available = workspace.left() - sidebar.right();
         assert!(available >= 580., "This fixture must exercise the actual split at scale {percent}");
         assert!(
             (editor.width() - available * 0.5).abs() < 2.,

@@ -15,8 +15,8 @@ const CORPUS: &str = include_str!("fixtures/fn/sci2-expected.txt");
 const CASES: &str = include_str!("fixtures/fn/sci2-cases.txt");
 const TOTAL: usize = 215;
 
-const ND: &str = "three-dimensional data: MatRust has no N-D arrays";
-const ND_POINTS: &str = "three-dimensional points (tetrahedra, 3-D hulls or cells): MatRust implements the 2-D forms; the reference's answer is recorded";
+const ND: &str = "outside ND_AWARE; expect the centralized size-bearing N-D guard";
+const ND_POINTS: &str = "three-dimensional points (tetrahedra or Voronoi cells): MatRust implements the 2-D forms; the reference's answer is recorded";
 
 /// External limitations and the measured cubic discrepancy permitted in fix round 1.
 const KNOWN: &[(&str, &str)] = &[
@@ -25,21 +25,8 @@ const KNOWN: &[(&str, &str)] = &[
     ("23", ND),
     ("34", ND),
     ("35", ND),
-    ("38", ND),
-    ("39", ND),
-    ("40", ND),
-    ("41", ND),
-    ("42", ND),
-    ("43", ND),
-    ("44", ND),
-    ("45", ND),
-    ("46", ND),
-    ("47", ND),
-    ("48", ND),
-    ("49", ND),
-    ("50", ND),
-    ("51", ND),
-    ("53", ND),
+    ("50", "interp3 refinement form is not implemented"),
+    ("51", "interp3 refinement form is not implemented"),
     ("70", ND),
     (
         "76",
@@ -49,11 +36,6 @@ const KNOWN: &[(&str, &str)] = &[
     ("90", ND_POINTS),
     ("100", ND_POINTS),
     ("105", ND_POINTS),
-    ("116", ND_POINTS),
-    ("117", ND_POINTS),
-    ("122", ND_POINTS),
-    ("123", ND_POINTS),
-    ("125", ND_POINTS),
     ("150", ND_POINTS),
     ("212", ND),
 ];
@@ -66,6 +48,11 @@ const WARNING: &str = "the reference's `[\\x08`/`]\\x08` warning markup and its 
 const GRIDDATA_WARNING: &str = "strip oracle warning markup/backtrace and expect MatRust's duplicate-point wording; all result text exact";
 /// Qhull (delaunayn) and CGAL (delaunay) emit triangles in their internal order.
 const TRIANGLES: &str = "same class and size; the same rows as vertex sets, each row a rotation of the reference's (same orientation), in any row order";
+
+/// convhulln lists Qhull's facets as Qhull stores them (case 122: all four inward); MatRust
+/// orients every facet of a 3-D hull outward, as the reference's convhull does (case 116).
+const FACETS: &str =
+    "same class and size; the same rows as vertex sets, in any vertex and row order";
 
 /// quad2d and the adaptive rules of quadl and quadv are written from the published methods
 /// (docs/CLEAN_ROOM.md); where a choice is left open (tile order and counting, the exact
@@ -90,6 +77,7 @@ const HARNESS: &[(&str, &str)] = &[
     ("36", LOCATION),
     ("37", LOCATION),
     ("52", LOCATION),
+    ("53", LOCATION),
     ("71", LOCATION),
     ("72", LOCATION),
     ("83", GRIDDATA_WARNING),
@@ -112,6 +100,7 @@ const HARNESS: &[(&str, &str)] = &[
     ("109", LOCATION),
     ("118", LOCATION),
     ("119", LOCATION),
+    ("122", FACETS),
     ("126", LOCATION),
     ("133", LOCATION),
     ("134", LOCATION),
@@ -225,6 +214,11 @@ fn canonical(row: &[i64]) -> Vec<i64> {
 }
 
 fn same_triangles(engine: &Engine, expected: &str) -> Option<String> {
+    same_rows(engine, expected, false)
+}
+
+/// `unoriented`: the rows are compared as vertex sets.
+fn same_rows(engine: &Engine, expected: &str, unoriented: bool) -> Option<String> {
     let Some(Array::Numeric(x)) = engine.array("x") else {
         return Some("x is not a double matrix".into());
     };
@@ -242,7 +236,7 @@ fn same_triangles(engine: &Engine, expected: &str) -> Option<String> {
         })
         .collect();
     let mut wanted = displayed_rows(expected);
-    if x.cols() == 2 {
+    if x.cols() == 2 || unoriented {
         // Segments of a 1-D triangulation have no orientation.
         for r in actual.iter_mut().chain(wanted.iter_mut()) {
             r.sort_unstable();
@@ -288,6 +282,17 @@ fn mismatch(case: &Case) -> Option<String> {
         engine.execute("format long").expect("format long");
     }
     let result = engine.execute(&case.statement);
+    if let Some(expected) = nd_guard_expected(&case.id) {
+        return match result {
+            Err(error) if unplaced(&error) == expected => {
+                Some(format!("N-D guard validated: {expected}"))
+            }
+            Err(error) => Some(format!(
+                "N-D guard mismatch: expected {expected:?}, got {error:?}"
+            )),
+            Ok(_) => Some(format!("N-D guard expected: {expected}")),
+        };
+    }
     let rule = HARNESS
         .iter()
         .find(|(id, _)| *id == case.id)
@@ -329,8 +334,8 @@ fn mismatch(case: &Case) -> Option<String> {
         Some(SINGULAR) => Some(singular_tolerance(&case.id)),
         _ => None,
     };
-    if rule == Some(TRIANGLES) {
-        if let Some(why) = same_triangles(&engine, &expected) {
+    if rule == Some(TRIANGLES) || rule == Some(FACETS) {
+        if let Some(why) = same_rows(&engine, &expected, rule == Some(FACETS)) {
             return Some(why);
         }
     } else if rule == Some(QUAD2D_BOUND) {
@@ -396,6 +401,16 @@ fn mismatch(case: &Case) -> Option<String> {
     None
 }
 
+fn nd_guard_expected(id: &str) -> Option<&'static str> {
+    Some(match id.parse::<u32>().ok()? {
+        11 | 23 => "fftn does not support N-D arrays yet (size 2x2x2)",
+        34 | 35 => "convn does not support N-D arrays yet (size 2x2x2)",
+        70 => "interpn does not support N-D arrays yet (size 2x2x2)",
+        212 => "iqr does not support N-D arrays yet (size 2x2x2)",
+        _ => return None,
+    })
+}
+
 #[test]
 fn corpus_has_every_case() {
     let all = cases();
@@ -443,6 +458,12 @@ fn matches_reference_corpus() {
         match (mismatch(&case), known) {
             (None, false) => passed += 1,
             (None, true) => failures.push(format!("case {} passes; remove it from KNOWN", case.id)),
+            (Some(why), true)
+                if nd_guard_expected(&case.id).is_some()
+                    && why.starts_with("N-D guard validated:") => {}
+            (Some(why), true) if nd_guard_expected(&case.id).is_some() => {
+                failures.push(format!("case {} `{}`\n  {why}", case.id, case.statement));
+            }
             (Some(_), true) => {}
             (Some(why), false) => {
                 failures.push(format!("case {} `{}`\n  {why}", case.id, case.statement))
@@ -756,14 +777,14 @@ fn oversized_requests_are_refused_before_allocation() {
     for (source, expected) in [
         // 65537 x 65537 refined query points.
         ("interpn(ones(2), 16)", "element limit"),
-        ("interpn(ones(2), 1:5000, (1:5000)')", "element limit"),
+        ("interpn(ones(2), 1:7095, (1:7095)')", "element limit"),
         (
             "griddata([0 1 0], [0 0 1], [1 2 3], 1:100000, (1:100000)')",
             "element limit",
         ),
         ("[a, b] = freqspace(1e12)", "element limit"),
         ("[a, b] = freqspace(1e12, 'meshgrid')", "element limit"),
-        ("freqspace([5000 5000], 'meshgrid')", "element limit"),
+        ("freqspace([7095 7095], 'meshgrid')", "element limit"),
         ("x = freqspace(1e12)", "element limit"),
         ("x = freqspace(1e100)", "element limit"),
         ("x = freqspace(1e100, 'whole')", "element limit"),
@@ -1158,4 +1179,580 @@ fn spline_and_pchip_argument_errors_use_the_reference_texts() {
         let error = refused(source);
         assert!(error.ends_with(want), "{source}: {error}");
     }
+}
+
+// -- convex hull of three-dimensional points ---------------------------------
+//
+// Expected vertex sets, triangle counts and volumes: SciPy 1.18.1
+// `scipy.spatial.ConvexHull` (Qhull), tool/refs/hull3/convhull3.py, which
+// builds every point set with the same double operations as the statements
+// here. The triangulation of a flat face and the row order are free.
+
+const HULL_TOO_FEW: &str = "Error computing the convex hull. Not enough unique points specified.";
+const HULL_FLAT: &str = "Error computing the convex hull. The points may be coplanar or collinear.";
+
+/// The 8 unit-cube corners (rows 1-8), the centre (9) and the 12 edge midpoints.
+const HULL_CUBE: &str = "c = [0 0 0; 0 0 1; 0 1 0; 0 1 1; 1 0 0; 1 0 1; 1 1 0; 1 1 1]; m = zeros(0, 3); \
+     for i = 1:8, for j = i+1:8, if sum(abs(c(i,:) - c(j,:))) == 1, \
+     m(end+1, :) = (c(i,:) + c(j,:)) / 2; end, end, end, P = [c; 0.5 0.5 0.5; m];";
+
+/// 200 points from the Park-Miller generator (exact in doubles), column-major.
+const HULL_SCATTERED: &str = "s = 20261121; r = zeros(600, 1); \
+     for k = 1:600, s = mod(16807 * s, 2147483647); r(k) = s / 2147483647; end, \
+     P = reshape(r, 200, 3);";
+
+fn matrix_rows(engine: &Engine, name: &str) -> Vec<Vec<f64>> {
+    let Some(Array::Numeric(m)) = engine.array(name) else {
+        panic!("{name} is not a double matrix");
+    };
+    (0..m.rows())
+        .map(|r| (0..m.cols()).map(|c| m.data()[c * m.rows() + r]).collect())
+        .collect()
+}
+
+struct Surface {
+    /// Sorted 1-based rows of the points used by the triangles.
+    vertices: Vec<usize>,
+    triangles: usize,
+    edges: usize,
+    /// By the divergence theorem over the triangles.
+    volume: f64,
+    smallest_area: f64,
+}
+
+/// Checks that the triangles `k` over the points `p` are the surface of the
+/// convex hull: every index valid, every edge shared by exactly two triangles
+/// that run through it in opposite directions, Euler's formula for a sphere,
+/// every triangle with a positive area and its right-hand normal pointing
+/// away from the interior, and no point outside the plane of any triangle.
+#[allow(clippy::needless_range_loop)]
+fn hull_surface(engine: &Engine, p: &str, k: &str) -> Surface {
+    let points = matrix_rows(engine, p);
+    let rows = matrix_rows(engine, k);
+    assert!(rows.len() >= 4, "{} triangles", rows.len());
+    let scale = points.iter().flatten().fold(0f64, |m, v| m.max(v.abs()));
+    let mut directed = std::collections::BTreeMap::new();
+    let mut used = std::collections::BTreeSet::new();
+    let mut triangles = Vec::new();
+    for row in &rows {
+        assert_eq!(row.len(), 3);
+        let t: Vec<usize> = row
+            .iter()
+            .map(|v| {
+                assert!(
+                    v.fract() == 0. && *v >= 1. && *v <= points.len() as f64,
+                    "index {v}"
+                );
+                *v as usize
+            })
+            .collect();
+        for i in 0..3 {
+            *directed.entry((t[i], t[(i + 1) % 3])).or_insert(0) += 1;
+            used.insert(t[i]);
+        }
+        triangles.push(t);
+    }
+    for ((a, b), count) in &directed {
+        assert_eq!(
+            *count, 1,
+            "edge {a}->{b} is used {count} times in one direction"
+        );
+        assert!(
+            directed.contains_key(&(*b, *a)),
+            "edge {a}-{b} has one triangle only"
+        );
+    }
+    let edges = directed.len() / 2;
+    assert_eq!(used.len() + rows.len(), edges + 2, "Euler's formula");
+    let at = |i: usize| [points[i - 1][0], points[i - 1][1], points[i - 1][2]];
+    let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cross = |a: [f64; 3], b: [f64; 3]| {
+        [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ]
+    };
+    let mut centre = [0.; 3];
+    for v in &used {
+        for i in 0..3 {
+            centre[i] += at(*v)[i] / used.len() as f64;
+        }
+    }
+    let (mut volume, mut smallest_area) = (0., f64::INFINITY);
+    for t in &triangles {
+        let (a, b, c) = (at(t[0]), at(t[1]), at(t[2]));
+        let normal = cross(sub(b, a), sub(c, a));
+        let length = dot(normal, normal).sqrt();
+        assert!(length > 0., "triangle {t:?} has no area");
+        smallest_area = smallest_area.min(length / 2.);
+        assert!(
+            dot(normal, sub(centre, a)) < 0.,
+            "triangle {t:?} faces inward"
+        );
+        for (i, q) in points.iter().enumerate() {
+            let height = dot(normal, sub([q[0], q[1], q[2]], a)) / length;
+            assert!(
+                height <= 1e-12 * scale,
+                "point {} is {height} outside {t:?}",
+                i + 1
+            );
+        }
+        volume += dot(sub(a, centre), cross(sub(b, centre), sub(c, centre))) / 6.;
+    }
+    Surface {
+        vertices: used.into_iter().collect(),
+        triangles: rows.len(),
+        edges,
+        volume,
+        smallest_area,
+    }
+}
+
+fn scalar(engine: &Engine, name: &str) -> f64 {
+    let rows = matrix_rows(engine, name);
+    assert_eq!((rows.len(), rows[0].len()), (1, 1), "{name}");
+    rows[0][0]
+}
+
+/// The unit cube with its centre and edge midpoints: the hull uses the 8
+/// corners only, in 12 triangles, and encloses exactly 1 (SciPy: vertices
+/// 1-8, 12 triangles, volume 1.0). convhull gives the same answer for a
+/// matrix and for three vectors; the reversed set shows that the answer does
+/// not depend on meeting the corners first.
+#[test]
+fn hull3_of_a_cube_uses_only_its_corners() {
+    let mut e = Engine::default();
+    e.execute(HULL_CUBE).unwrap();
+    assert_eq!(matrix_rows(&e, "P").len(), 21);
+    e.execute(
+        "[K, V] = convhulln(P); [K2, V2] = convhull(P); \
+         [K3, V3] = convhull(P(:,1), P(:,2), P(:,3)); K4 = convhulln(P); \
+         same = double(isequal(K, K2, K3, K4) && V == V2 && V == V3);",
+    )
+    .unwrap();
+    assert_eq!(scalar(&e, "same"), 1.);
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!(s.vertices, (1..=8).collect::<Vec<_>>());
+    assert_eq!((s.triangles, s.edges), (12, 18));
+    assert_eq!(s.smallest_area, 0.5);
+    assert_eq!(scalar(&e, "V"), 1.);
+    assert_eq!(s.volume, 1.);
+
+    e.execute("Q = P(end:-1:1, :); [K, V] = convhulln(Q);")
+        .unwrap();
+    let s = hull_surface(&e, "Q", "K");
+    assert_eq!(s.vertices, (14..=21).collect::<Vec<_>>());
+    assert_eq!((s.triangles, s.smallest_area), (12, 0.5));
+    assert_eq!(scalar(&e, "V"), 1.);
+}
+
+/// The soccer ball: 60 vertices, 12 pentagons in 3 triangles and 20 hexagons
+/// in 4, so 116 triangles on 90 + 2*12 + 3*20 = 174 edges, every one of the
+/// ball's 90 edges among them (SciPy: 60 vertices, 116 triangles, volume
+/// 3.633415364743332).
+#[test]
+fn hull3_of_bucky_splits_pentagons_and_hexagons() {
+    let mut e = Engine::default();
+    e.execute("[b, n] = bucky; [K, V] = convhulln(n); [i, j] = find(b); E = [i j];")
+        .unwrap();
+    let s = hull_surface(&e, "n", "K");
+    assert_eq!(s.vertices, (1..=60).collect::<Vec<_>>());
+    assert_eq!((s.triangles, s.edges), (116, 174));
+    let volume = scalar(&e, "V");
+    assert!(
+        within(volume, 3.633415364743332, 1e-12),
+        "volume {volume:?}"
+    );
+    assert!(
+        within(s.volume, volume, 1e-12),
+        "{} against {volume}",
+        s.volume
+    );
+    // Any split of a regular hexagon cuts an ear off, the smallest triangle
+    // there is: sqrt(3)/4 a^2 with the ball's edge a^2 = 16/(58 + 18 sqrt(5))
+    // (0.0705; a pentagon's ear has 0.0774). Nothing is thinner than that.
+    let ear = 3f64.sqrt() * 4. / (58. + 18. * 5f64.sqrt());
+    assert!(
+        within(s.smallest_area, ear, 1e-12),
+        "smallest area {}",
+        s.smallest_area
+    );
+    let sides: std::collections::BTreeSet<(usize, usize)> = matrix_rows(&e, "K")
+        .iter()
+        .flat_map(|t| {
+            (0..3)
+                .map(|i| (t[i] as usize, t[(i + 1) % 3] as usize))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let ball = matrix_rows(&e, "E");
+    assert_eq!(ball.len(), 180);
+    for edge in ball {
+        assert!(
+            sides.contains(&(edge[0] as usize, edge[1] as usize)),
+            "{edge:?}"
+        );
+    }
+}
+
+/// 200 scattered points: the vertex set and the volume are SciPy's (47
+/// vertices, 90 triangles, volume 0.7997156857201125).
+#[test]
+fn hull3_of_scattered_points_matches_scipy() {
+    const VERTICES: [usize; 47] = [
+        2, 8, 11, 12, 13, 14, 22, 23, 40, 46, 62, 63, 64, 65, 76, 83, 87, 90, 104, 105, 110, 111,
+        113, 121, 124, 129, 133, 134, 135, 138, 141, 142, 143, 145, 151, 155, 164, 165, 166, 170,
+        180, 181, 185, 189, 191, 197, 198,
+    ];
+    let mut e = Engine::default();
+    e.execute(HULL_SCATTERED).unwrap();
+    let points = matrix_rows(&e, "P");
+    // The reference script's first and last rows: the inputs are the same doubles.
+    assert_eq!(
+        points[0],
+        [0.5710145559026928, 0.6472230188768464, 0.16124692846147667]
+    );
+    assert_eq!(
+        points[199],
+        [0.5435025419776806, 0.5158660824018838, 0.13135842752240526]
+    );
+    e.execute(
+        "[K, V] = convhulln(P); [K2, V2] = convhull(P); same = double(isequal(K, K2) && V == V2);",
+    )
+    .unwrap();
+    assert_eq!(scalar(&e, "same"), 1.);
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!(s.vertices, VERTICES);
+    assert_eq!((s.triangles, s.edges), (90, 135));
+    let volume = scalar(&e, "V");
+    assert!(
+        within(volume, 0.7997156857201125, 1e-12),
+        "volume {volume:?}"
+    );
+    assert!(
+        within(s.volume, volume, 1e-12),
+        "{} against {volume}",
+        s.volume
+    );
+}
+
+/// Duplicates and points on faces, edges and inside are not hull vertices,
+/// exactly (a lattice; SciPy: vertices 1 4 13 16 49 52 61 64, 12 triangles,
+/// volume 27) and within the tolerance (the cube set of the first test,
+/// turned and moved; SciPy: vertices 1-8, 12 triangles, volume
+/// 0.9999999999999996).
+#[test]
+fn hull3_ignores_duplicates_and_points_on_faces() {
+    let mut e = Engine::default();
+    e.execute(
+        "[x, y, z] = ndgrid(0:3, 0:3, 0:3); P = [x(:) y(:) z(:)]; [K, V] = convhulln(P); \
+         D = [P; P(end:-1:1, :); P]; [KD, VD] = convhulln(D);",
+    )
+    .unwrap();
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!(s.vertices, [1, 4, 13, 16, 49, 52, 61, 64]);
+    assert_eq!((s.triangles, s.smallest_area), (12, 4.5));
+    assert_eq!(scalar(&e, "V"), 27.);
+    // Three copies of every point: still 8 corners and 12 whole triangles.
+    let s = hull_surface(&e, "D", "KD");
+    assert_eq!(
+        (s.vertices.len(), s.triangles, s.smallest_area),
+        (8, 12, 4.5)
+    );
+    assert_eq!(scalar(&e, "VD"), 27.);
+
+    e.execute(HULL_CUBE).unwrap();
+    e.execute(
+        "Rz = [cos(0.3) -sin(0.3) 0; sin(0.3) cos(0.3) 0; 0 0 1]; \
+         Ry = [cos(0.7) 0 sin(0.7); 0 1 0; -sin(0.7) 0 cos(0.7)]; \
+         Rx = [1 0 0; 0 cos(1.1) -sin(1.1); 0 sin(1.1) cos(1.1)]; \
+         T = P * (Rz * Ry * Rx)' + repmat([10 20 30], 21, 1); [K, V] = convhulln(T);",
+    )
+    .unwrap();
+    let s = hull_surface(&e, "T", "K");
+    assert_eq!(s.vertices, (1..=8).collect::<Vec<_>>());
+    assert_eq!(s.triangles, 12);
+    assert!((s.smallest_area - 0.5).abs() < 1e-12, "{}", s.smallest_area);
+    assert!(within(scalar(&e, "V"), 1., 1e-12), "{:?}", scalar(&e, "V"));
+}
+
+/// Not reference-checked (the expected corners are known by construction):
+/// the answer does not depend on the size or the place of the set, points
+/// within rounding of one another are one corner, and a face with many
+/// corners is split without slivers.
+#[test]
+fn hull3_handles_scale_offsets_near_duplicates_and_polygon_faces() {
+    let mut e = Engine::default();
+    e.execute(HULL_CUBE).unwrap();
+    // 0, 0.5 and 1 times these factors are exact; so are 1e6 + 0.5 and 1e6 + 1.
+    for (transform, volume) in [
+        ("P * 1e-100", 1e-300),
+        ("P * 1e100", 1e300),
+        ("P * 1e300", f64::INFINITY),
+        ("P * 1e-320", 0.),
+        ("P + 1e6", 1.),
+        ("-3 * P - 1e9", 27.),
+    ] {
+        e.execute(&format!("T = {transform}; [K, V] = convhulln(T);"))
+            .unwrap();
+        let rows = matrix_rows(&e, "K");
+        let mut used: Vec<usize> = rows.iter().flatten().map(|v| *v as usize).collect();
+        used.sort_unstable();
+        used.dedup();
+        assert_eq!((rows.len(), used), (12, (1..=8).collect()), "{transform}");
+        assert!(
+            within(scalar(&e, "V"), volume, 1e-12),
+            "{transform}: {:?}",
+            scalar(&e, "V")
+        );
+    }
+    // Every point twice, the copies a few rounding steps away.
+    e.execute(
+        "N = reshape(sin(1:63), 21, 3) * 1e-15; D = [P + N; P - N(end:-1:1, :)];          [K, V] = convhulln(D);",
+    )
+    .unwrap();
+    let s = hull_surface(&e, "D", "K");
+    assert_eq!((s.vertices.len(), s.triangles), (8, 12));
+    assert!((s.smallest_area - 0.5).abs() < 1e-12, "{}", s.smallest_area);
+    assert!(within(scalar(&e, "V"), 1., 1e-12));
+
+    // A prism over a regular 32-gon with points on its faces: 64 corners,
+    // 2 * 30 triangles on the ends and 2 * 32 on the sides.
+    e.execute(
+        "t = (0:31)' * 2 * pi / 32; c = [cos(t) sin(t)];          P = [c zeros(32, 1); c ones(32, 1); 0 0 0; 0 0 1; 0.3 0.2 0; 0.5 * c(1:5, :) ones(5, 1);          (c(1:8, :) + c(2:9, :)) / 2 zeros(8, 1)]; [K, V] = convhulln(P);",
+    )
+    .unwrap();
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!(s.vertices, (1..=64).collect::<Vec<_>>());
+    assert_eq!((s.triangles, s.edges), (124, 186));
+    assert!(within(
+        scalar(&e, "V"),
+        16. * (std::f64::consts::PI / 16.).sin(),
+        1e-12
+    ));
+    // The thinnest triangle any split has: an ear of the 32-gon.
+    let ear = (std::f64::consts::PI / 16.).sin() * (1. - (std::f64::consts::PI / 16.).cos());
+    assert!(
+        within(s.smallest_area, ear, 1e-9),
+        "{} against {ear}",
+        s.smallest_area
+    );
+
+    // A corner that is almost straight (1e-12 is a distance, not rounding)
+    // joins the far corners; cutting it off would leave a triangle of 2.5e-13.
+    e.execute("P = [0 0 0; 1 0 0; 1 1 0; 0 1 0; 0.5 -1e-12 0; 0.5 0.5 1]; [K, V] = convhulln(P);")
+        .unwrap();
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!((s.vertices.len(), s.triangles), (6, 8));
+    assert!(s.smallest_area > 0.24, "smallest area {}", s.smallest_area);
+}
+
+/// Fewer than four distinct points, collinear and coplanar sets (exactly and
+/// within rounding) and non-finite coordinates are refused with their reason.
+#[test]
+fn hull3_rejects_degenerate_inputs() {
+    let finite = "Data points must be finite.";
+    for (source, want) in [
+        ("convhulln([0 0 0; 1 0 0; 0 1 0])", HULL_TOO_FEW),
+        ("convhull([0 0 0; 1 0 0; 0 1 0])", HULL_TOO_FEW),
+        ("convhull([0 1 0], [0 0 1], [0 0 0])", HULL_TOO_FEW),
+        ("convhulln(zeros(0, 3))", HULL_TOO_FEW),
+        (
+            "convhulln([0 0 0; 1 0 0; 0 1 0; 0 1 0; 0 0 0])",
+            HULL_TOO_FEW,
+        ),
+        ("convhulln(ones(6, 3))", HULL_TOO_FEW),
+        ("convhulln(zeros(6, 3))", HULL_TOO_FEW),
+        (
+            "convhulln([0 0 0; 1 1 1; 2 2 2; 3 3 3; 0.5 0.5 0.5])",
+            HULL_FLAT,
+        ),
+        ("convhull([0 0 0; 1 2 3; 2 4 6; -1 -2 -3])", HULL_FLAT),
+        (
+            "convhulln([0 0 0; 1 0 0; 0 1 0; 1 1 0; 0.3 0.4 0])",
+            HULL_FLAT,
+        ),
+        (
+            "convhull([0 1 0 1 0.3], [0 0 1 1 0.4], [5 5 5 5 5])",
+            HULL_FLAT,
+        ),
+        // On the plane x + y + z = 1, where thirds and tenths are rounded.
+        (
+            "convhulln([1 0 0; 0 1 0; 0 0 1; 1/3 1/3 1/3; 0.2 0.3 0.5; 0.7 0.2 0.1])",
+            HULL_FLAT,
+        ),
+        ("convhulln([0 0 0; 1 0 0; 0 1 0; 0 0 NaN; 1 1 1])", finite),
+        ("convhulln([0 0 0; 1 0 0; 0 1 0; 0 0 1; Inf 1 1])", finite),
+        ("convhull([0 1 0 0 1], [0 0 1 0 1], [0 0 0 1 -Inf])", finite),
+        ("convhull([0 0 0; 1 0 0; NaN 1 0])", finite),
+        (
+            "convhull([0 1 0 0], [0 0 1 0], [0 0 0])",
+            "Data point coordinates have inconsistent dimension.",
+        ),
+        (
+            "convhulln(ones(5, 4))",
+            "convhulln supports points in two or three dimensions; X has 4 columns.",
+        ),
+        ("convhulln(1i * ones(5, 3))", "X must be real"),
+        (
+            "convhulln(zeros(200001, 3))",
+            "X has more than 200000 points",
+        ),
+        (
+            "z = zeros(1, 200001); convhull(z, z, z)",
+            "convhull supports up to 200000 points",
+        ),
+    ] {
+        let error = refused(source);
+        assert_eq!(unplaced(&error), want, "{source}");
+    }
+    // A hull exists as soon as one point leaves the plane by more than rounding.
+    let mut e = Engine::default();
+    e.execute("P = [0 0 0; 1 0 0; 0 1 0; 1 1 0; 0.3 0.4 1e-9]; [K, V] = convhulln(P);")
+        .unwrap();
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!((s.vertices.len(), s.triangles), (5, 6));
+    assert!(within(scalar(&e, "V"), 1e-9 / 3., 1e-12));
+}
+
+/// Not reference-checked: the surface rules alone decide. Small sets drawn
+/// from a 4x4x4 lattice are full of duplicate, collinear and coplanar points;
+/// with integer coordinates every test below is exact. A hull vertex must be
+/// a corner (the normals of its triangles span space), and the same set
+/// turned by an inexact rotation must keep the same number of corners.
+#[test]
+fn hull3_of_lattice_subsets_is_closed_convex_and_minimal() {
+    let mut state = 12345u64;
+    let mut draw = |n: u64| {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        (state >> 33) % n
+    };
+    let mut e = Engine::default();
+    let (mut hulls, mut flat) = (0, 0);
+    for case in 0..400 {
+        let count = 4 + draw(28);
+        let rows: Vec<String> = (0..count)
+            .map(|_| format!("{} {} {}", draw(4), draw(4), draw(4)))
+            .collect();
+        let source = format!("P = [{}];", rows.join("; "));
+        e.execute(&source).unwrap();
+        match e.execute("[K, V] = convhulln(P);") {
+            Err(error) => {
+                let why = unplaced(&error);
+                assert!(
+                    why == HULL_FLAT || why == HULL_TOO_FEW,
+                    "case {case} {source}: {error}"
+                );
+                // Really flat: every point is in the plane of some three, or all are collinear.
+                e.execute("r = rank(P(2:end, :) - repmat(P(1, :), size(P, 1) - 1, 1));")
+                    .unwrap();
+                assert!(scalar(&e, "r") < 3., "case {case} {source}: {error}");
+                flat += 1;
+            }
+            Ok(_) => {
+                hulls += 1;
+                // Shown only when the test fails.
+                println!("case {case}: {source}");
+                let s = hull_surface(&e, "P", "K");
+                assert!(s.smallest_area >= 0.5, "case {case} {source}");
+                assert!(
+                    within(s.volume, scalar(&e, "V"), 1e-12),
+                    "case {case} {source}"
+                );
+                let points = matrix_rows(&e, "P");
+                let triangles = matrix_rows(&e, "K");
+                for v in &s.vertices {
+                    let normals: Vec<[i64; 3]> = triangles
+                        .iter()
+                        .filter(|t| t.contains(&(*v as f64)))
+                        .map(|t| {
+                            let at = |i: usize| -> [i64; 3] {
+                                std::array::from_fn(|k| points[t[i] as usize - 1][k] as i64)
+                            };
+                            let (a, b, c) = (at(0), at(1), at(2));
+                            let (u, w): ([i64; 3], [i64; 3]) = (
+                                std::array::from_fn(|k| b[k] - a[k]),
+                                std::array::from_fn(|k| c[k] - a[k]),
+                            );
+                            [
+                                u[1] * w[2] - u[2] * w[1],
+                                u[2] * w[0] - u[0] * w[2],
+                                u[0] * w[1] - u[1] * w[0],
+                            ]
+                        })
+                        .collect();
+                    let spans = normals.iter().any(|a| {
+                        normals.iter().any(|b| {
+                            normals.iter().any(|c| {
+                                a[0] * (b[1] * c[2] - b[2] * c[1])
+                                    - a[1] * (b[0] * c[2] - b[2] * c[0])
+                                    + a[2] * (b[0] * c[1] - b[1] * c[0])
+                                    != 0
+                            })
+                        })
+                    });
+                    assert!(spans, "case {case} {source}: vertex {v} is not a corner");
+                }
+                // The same set, turned and moved: rounding puts points beside
+                // their faces and edges, the corners stay the same.
+                e.execute(
+                    "R = [cos(0.3) -sin(0.3) 0; sin(0.3) cos(0.3) 0; 0 0 1] * \
+                     [cos(0.7) 0 sin(0.7); 0 1 0; -sin(0.7) 0 cos(0.7)] * \
+                     [1 0 0; 0 cos(1.1) -sin(1.1); 0 sin(1.1) cos(1.1)]; \
+                     T = P * R' + repmat([10 20 30], size(P, 1), 1); [KT, VT] = convhulln(T);",
+                )
+                .unwrap();
+                let turned = hull_surface(&e, "T", "KT");
+                assert_eq!(
+                    turned.vertices.len(),
+                    s.vertices.len(),
+                    "case {case} {source}: corners of the turned set"
+                );
+                assert_eq!(turned.triangles, s.triangles, "case {case} {source}");
+                assert!(turned.smallest_area > 0.49, "case {case} {source}");
+                assert!(
+                    within(scalar(&e, "VT"), s.volume, 1e-11),
+                    "case {case} {source}"
+                );
+            }
+        }
+    }
+    assert!(hulls > 300 && flat > 0, "{hulls} hulls, {flat} flat sets");
+}
+
+/// 100000 points in a cube: better than quadratic (the task's limit is 2 s
+/// in the gate profile; measured 2026-11-21 in docs/tasks notes), and points
+/// on a sphere, where every point is a vertex.
+#[test]
+fn hull3_of_many_points_is_fast() {
+    let mut e = Engine::default();
+    e.execute("P = rand(100000, 3);").unwrap();
+    let started = std::time::Instant::now();
+    e.execute("[K, V] = convhulln(P);").unwrap();
+    let elapsed = started.elapsed();
+    let s = hull_surface(&e, "P", "K");
+    assert_eq!(s.triangles, 2 * s.vertices.len() - 4);
+    assert!(scalar(&e, "V") > 0.95 && scalar(&e, "V") < 1.);
+    assert!(within(s.volume, scalar(&e, "V"), 1e-12));
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "convhulln of 100000 points took {elapsed:?}"
+    );
+
+    e.execute(
+        "Q = randn(20000, 3); Q = Q ./ repmat(sqrt(sum(Q.^2, 2)), 1, 3); [K, V] = convhulln(Q);",
+    )
+    .unwrap();
+    e.execute("x = [size(K, 1), numel(unique(K)), V];").unwrap();
+    let x = values(&mut e, "x = x;");
+    assert_eq!((x[0], x[1]), (2. * 20000. - 4., 20000.));
+    assert!(
+        x[2] > 4.18 && x[2] < 4. * std::f64::consts::PI / 3.,
+        "volume {}",
+        x[2]
+    );
 }

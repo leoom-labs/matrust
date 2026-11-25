@@ -312,8 +312,23 @@ fn reshape(value: &Array, edge: &Edge, cancel: &AtomicBool) -> Result<Array> {
         Array::Cell(a) => a.reshape(edge.rows, edge.cols, cancel)?.into(),
         Array::Graphics(a) => a.reshape_recovery(edge.rows, edge.cols, cancel)?.into(),
         Array::Struct(a) => a.reshape(edge.rows, edge.cols, cancel)?.into(),
+        Array::Str(_) => {
+            return Err("Session recovery of string arrays is not supported yet".into());
+        }
         Array::Handle(_) => {
             return Err("Session recovery of function handles is not supported yet".into());
+        }
+        Array::Table(_) => {
+            return Err("Session recovery of tables is not supported yet".into());
+        }
+        Array::Categorical(_) => {
+            return Err("categorical is not supported by session recovery yet".into());
+        }
+        Array::Datetime(_) | Array::Duration(_) => {
+            return Err("Session recovery of datetime/duration values is not supported yet".into());
+        }
+        Array::Sparse(_) => {
+            return Err("Session recovery of sparse arrays is not supported yet".into());
         }
         Array::Typed(a) => a.reshaped(edge.rows, edge.cols)?.into(),
     })
@@ -366,8 +381,25 @@ pub(super) fn plan(
                 Array::Struct(_) => {
                     return Err("Workspace recovery of struct values is not supported yet".into());
                 }
+                Array::Str(_) => {
+                    return Err("Session recovery of string arrays is not supported yet".into());
+                }
                 Array::Handle(_) => {
                     return Err("Session recovery of function handles is not supported yet".into());
+                }
+                Array::Table(_) => {
+                    return Err("Session recovery of tables is not supported yet".into());
+                }
+                Array::Categorical(_) => {
+                    return Err("categorical is not supported by session recovery yet".into());
+                }
+                Array::Datetime(_) | Array::Duration(_) => {
+                    return Err(
+                        "Session recovery of datetime/duration values is not supported yet".into(),
+                    );
+                }
+                Array::Sparse(_) => {
+                    return Err("Session recovery of sparse arrays is not supported yet".into());
                 }
             };
             let node = if let Some(&node) = self.identities.get(&key) {

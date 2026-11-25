@@ -640,28 +640,28 @@ x =
 
 x =
 
-   Empty matrix: 3-by-0
+  3×0 empty double matrix
 
 @@END
 @@CASE P85|x = zeros(0,3) > 1
 
 x =
 
-   Empty matrix: 0-by-3
+  0×3 empty logical array
 
 @@END
 @@CASE P86|x = complex(zeros(0,3),zeros(0,3))
 
 x =
 
-   Empty matrix: 0-by-3
+  0×3 empty double matrix
 
 @@END
 @@CASE P87|x = char(zeros(0,3))
 
 x =
 
-   Empty matrix: 0-by-3
+  0×3 empty char array
 
 
 @@END
@@ -669,7 +669,7 @@ x =
 
 x =
 
-   Empty matrix: 3-by-0
+  3×0 empty char array
 
 
 @@END
@@ -708,7 +708,7 @@ x =
 
 x =
 
-   Empty matrix: 1-by-0
+  1×0 empty double matrix
 
 @@END
 @@CASE P94|x = 'a'
@@ -1481,7 +1481,7 @@ hi
 @@END
 @@CASE PC193|x = ''
 x =
-     ''
+  0×0 empty char array
 @@END
 @@CASE PC194|x = []
 x =
@@ -1489,7 +1489,7 @@ x =
 @@END
 @@CASE PC195|x = zeros(0,3)
 x =
-   Empty matrix: 0-by-3
+  0×3 empty double matrix
 @@END
 @@CASE PC196|x = {1,2}
 x = 

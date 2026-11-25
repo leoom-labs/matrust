@@ -30,7 +30,7 @@ fn fonts() -> egui::FontDefinitions {
     let mut fonts = egui::FontDefinitions::default();
     let proportional = fonts.families[&Proportional].clone();
     let monospace = fonts.families[&Monospace].clone();
-    let files: [(&str, &'static [u8]); 3] = [
+    let files: [(&str, &'static [u8]); 4] = [
         (
             "Inter-Regular",
             include_bytes!("../../assets/fonts/Inter-Regular.ttf"),
@@ -43,12 +43,20 @@ fn fonts() -> egui::FontDefinitions {
             "JetBrainsMono-Regular",
             include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf"),
         ),
+        (
+            "Phosphor-Regular",
+            include_bytes!("../../assets/fonts/Phosphor-Regular-Subset.ttf"),
+        ),
     ];
     for (name, data) in files {
         fonts
             .font_data
             .insert(name.into(), Arc::new(egui::FontData::from_static(data)));
     }
+    fonts.families.insert(
+        Name(super::icons::FAMILY.into()),
+        vec!["Phosphor-Regular".into()],
+    );
     // egui's own fonts stay as fallbacks for symbols and emoji.
     let first = |name: &str, fallback: &[String]| {
         std::iter::once(name.to_owned())
@@ -89,11 +97,13 @@ pub(super) fn configure(ctx: &egui::Context) {
         };
         // Default panels sit inside cards; the canvas is painted by the window.
         visuals.panel_fill = p.surface;
-        visuals.window_fill = p.surface;
+        // Dialogs, menus and popups sit on surface 2; inputs on surface 1.
+        visuals.window_fill = p.surface_sunken;
         visuals.extreme_bg_color = p.surface;
         visuals.faint_bg_color = p.surface_sunken;
         visuals.window_stroke = egui::Stroke::new(1., p.border);
-        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1., p.border);
+        // Separators are the 1 px hairline; control outlines keep `border`.
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1., p.hairline);
         visuals.widgets.noninteractive.fg_stroke.color = p.text;
         visuals.widgets.inactive.fg_stroke.color = p.text;
         // Neutral buttons: surface fill and the 1 px border; disabled ones fade
@@ -158,6 +168,16 @@ pub(super) fn configure(ctx: &egui::Context) {
 
 /// The one scrollbar every scroll area uses: a 6 px, fully rounded handle
 /// in its own gutter beside the content.
+/// Root of every native window (Editor, apps, figures): the app style and the
+/// canvas fill. Without them a child viewport paints black with egui's
+/// default widgets.
+pub(super) fn window_root(ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    ui.set_style(ctx.global_style());
+    ui.painter()
+        .rect_filled(ui.max_rect(), 0., tokens::palette(&ctx).canvas);
+}
+
 pub(super) fn scroll_style() -> egui::style::ScrollStyle {
     // Solid (not floating) bars keep a gutter, so they never overlap text.
     egui::style::ScrollStyle {
@@ -394,6 +414,10 @@ impl Workspace {
     }
 
     pub(super) fn desktop_theme_menu(&mut self, ui: &mut egui::Ui) {
+        if ui.button("Settings\u{2026}").clicked() {
+            open_settings(ui.ctx());
+            ui.close();
+        }
         ui.menu_button("Appearance", |ui| {
             let selected = self
                 .screenshot_theme_override
@@ -412,6 +436,154 @@ impl Workspace {
                 }
             }
         });
+    }
+}
+
+/// Settings window (plan section 9): Appearance, Desktop scale and Workspace
+/// position as a one-column form of 28 px toggles. The Menu > Layout
+/// submenus and the Ctrl+K "Appearance: ..." entries stay as shortcuts.
+pub(super) fn settings_id() -> egui::Id {
+    egui::Id::new("settings_window")
+}
+
+pub(super) fn open_settings(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(settings_id(), true));
+}
+
+impl Workspace {
+    pub(super) fn settings_window(&mut self, ctx: &egui::Context) {
+        if !ctx.data(|d| d.get_temp::<bool>(settings_id()).unwrap_or(false)) {
+            return;
+        }
+        let mut open = true;
+        let mut close = false;
+        let screen = ctx.content_rect();
+        let width = 400f32.min(screen.width() - 48.);
+        egui::Window::new("Settings")
+            .id(settings_id())
+            .default_pos(screen.center() - egui::vec2(width / 2., 150.))
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .frame(super::dialog_windows::dialog_frame(ctx))
+            .show(ctx, |ui| {
+                super::dialog_windows::window_chrome(ui, "Settings", Some(&mut open), |ui| {
+                    ui.set_width(width - 2. * tokens::L);
+                    let p = tokens::palette(ui.ctx());
+                    let caption = |ui: &mut egui::Ui, text: &str| {
+                        ui.label(
+                            egui::RichText::new(text)
+                                .font(crate::panels::caption_semibold(ui))
+                                .color(p.text_muted),
+                        );
+                    };
+                    ui.spacing_mut().item_spacing = egui::vec2(tokens::S, tokens::S);
+                    caption(ui, "APPEARANCE");
+                    let selected = self
+                        .screenshot_theme_override
+                        .unwrap_or_else(|| preference(self.layout.theme.unwrap_or_default()));
+                    ui.horizontal(|ui| {
+                        for (theme, label) in [
+                            (DesktopTheme::Light, "Light"),
+                            (DesktopTheme::Dark, "Dark"),
+                            (DesktopTheme::System, "Use system setting"),
+                        ] {
+                            if tokens::toggle(ui, selected == preference(theme), label).clicked() {
+                                self.set_desktop_theme(ui.ctx(), theme);
+                            }
+                        }
+                    });
+                    ui.add_space(tokens::S);
+                    caption(ui, "WINDOW LAYOUT");
+                    let separate = self.separate_windows();
+                    ui.add_enabled_ui(!self.file_action_pending() && !self.allow_close, |ui| {
+                        ui.horizontal(|ui| {
+                            use matrust::session::WindowLayout;
+                            for (layout, label) in [
+                                (WindowLayout::Separate, "Separate windows"),
+                                (WindowLayout::Docked, "Docked"),
+                            ] {
+                                if tokens::toggle(
+                                    ui,
+                                    separate == (layout == WindowLayout::Separate),
+                                    label,
+                                )
+                                .clicked()
+                                {
+                                    self.set_window_layout(ui.ctx(), layout);
+                                }
+                            }
+                        });
+                    });
+                    ui.label(
+                        egui::RichText::new(
+                            "Separate: the Editor, figures and apps open in their own windows.",
+                        )
+                        .color(p.text_muted),
+                    );
+                    ui.add_space(tokens::S);
+                    caption(ui, "DESKTOP SCALE");
+                    let scale = self.layout.ui_scale_percent();
+                    ui.horizontal(|ui| {
+                        for percent in [75, 100, 125, 150] {
+                            if tokens::toggle(ui, scale == percent, &format!("{percent}%"))
+                                .clicked()
+                            {
+                                self.set_desktop_scale(ui.ctx(), percent);
+                            }
+                        }
+                    });
+                    ui.label(
+                        egui::RichText::new("Ctrl++ / Ctrl+- to resize; Ctrl+Alt+0 for 100%.")
+                            .color(p.text_muted),
+                    );
+                    ui.add_space(tokens::S);
+                    caption(ui, "WORKSPACE POSITION");
+                    let left = self.workspace_on_left();
+                    ui.add_enabled_ui(!self.file_action_pending() && !self.allow_close, |ui| {
+                        ui.horizontal(|ui| {
+                            use matrust::session::WorkspaceDock;
+                            for (dock, label) in [
+                                (WorkspaceDock::Right, "Right"),
+                                (WorkspaceDock::BelowFiles, "Below Files"),
+                            ] {
+                                if tokens::toggle(
+                                    ui,
+                                    left == (dock == WorkspaceDock::BelowFiles),
+                                    label,
+                                )
+                                .clicked()
+                                {
+                                    self.set_workspace_dock(ui.ctx(), dock);
+                                }
+                            }
+                        });
+                    });
+                    ui.add_space(tokens::S);
+                    let size = egui::vec2(ui.available_width(), tokens::CONTROL);
+                    ui.allocate_ui_with_layout(
+                        size,
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new("Close")
+                                        .min_size(egui::vec2(72., tokens::CONTROL)),
+                                )
+                                .clicked()
+                            {
+                                close = true;
+                            }
+                        },
+                    );
+                });
+            });
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            open = false;
+        }
+        if !open {
+            ctx.data_mut(|d| d.remove::<bool>(settings_id()));
+        }
     }
 }
 

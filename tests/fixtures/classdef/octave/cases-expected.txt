@@ -1,0 +1,46 @@
+plain a empty: 1
+plain b: text
+default x: 1
+ctor x: 3
+label: a
+copy keeps original: 3 10
+method without return: 3
+dot method without return: 3
+dot call: 13
+function call: 16
+returned copy: 10 8
+static: 12
+static var: 6
+constant: 6
+constant via object: 6
+several dot: 3 3 3
+several call: 3 1
+indexed property: [1 20 3]
+indexed read: 20 3
+nested field: changed 1
+new nested field: 3
+private via method: 76
+class: Pt
+isa: 1 0
+isobject: 1 0
+isstruct: 0
+fieldnames: x,label,data,info,ro,C
+properties: x,label,data,info,ro,C
+properties by name: x,label,data,info,ro,C
+methods: Pt,forget,make,scaled,setk,setro,several,viaSecret
+isprop: 1 1 0
+ismethod: 1 0 0
+isequal: 1 0 0
+struct fields: x,label,data,info,k,ro,C
+struct k: 7
+private read: error
+private write: error
+SetAccess private write: error
+SetAccess private via method: 9
+private method: error
+constant write: error
+unknown read: error
+unknown write: error
+default once: 101 101
+<Tally first=101 second=2>
+<Tally first=101 second=2>

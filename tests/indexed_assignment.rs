@@ -79,21 +79,22 @@ fn writes_preserve_aliases_and_use_bounded_unique_commits() {
 #[test]
 fn indexed_writes_reject_invalid_targets_and_preserve_workspace() {
     let mut e = Engine::default();
-    for script in [
-        "A()=1;",
-        "A(1,2,3)=4;",
-        "A(1)+2=3;",
-        "[A(0),B]=size(1);",
-        "A(1)=B(1)=2;",
-    ] {
+    for script in ["A()=1;", "A(1)+2=3;", "[A(0),B]=size(1);", "A(1)=B(1)=2;"] {
         assert!(e.execute(script).is_err(), "{script}");
         assert!(e.variables.is_empty());
     }
+    e.execute("A=zeros(2,2); A(1,2,3)=4;").unwrap();
+    assert_eq!(e.array("A").unwrap().dims().as_ref(), &[2, 2, 3]);
+    assert_eq!(
+        e.variables["A"].data(),
+        &[0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 4., 0.]
+    );
+    e.variables.clear();
     e.execute("A=reshape(1:6,2,3);").unwrap();
     let original = e.variables["A"].clone();
     for script in [
-        "A(16777217,1)=3;",
-        "A(4097,4096)=3;",
+        "A(50331649,1)=3;",
+        "A(7095,7095)=3;",
         "A(:,4)=[1 2 3];",
         "A(0)=4;",
         "A(1)='text';",

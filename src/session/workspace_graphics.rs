@@ -1,7 +1,10 @@
 //! Checkpoint-local identity references; process addresses never reach disk.
 use super::*;
 use crate::session::figures::{FigureManifest, FigureReference, FigureSession};
-use crate::{GraphicsHandle, GraphicsKind, ObjectIdentity, plot::Position};
+use crate::{
+    GraphicsHandle, GraphicsKind, ObjectIdentity,
+    plot::{MAX_PLOT_SERIES, Position},
+};
 
 pub(super) const MAX_HANDLES: usize = 65_536;
 const MAX_IDENTITIES: usize = MAX_HANDLES * 3;
@@ -32,11 +35,18 @@ enum Location {
     Axes {
         position: Position,
     },
+    NumericRuler {
+        position: Position,
+        axis: usize,
+    },
     Series {
         position: Position,
         index: usize,
     },
     TextBox {
+        index: usize,
+    },
+    Annotation {
         index: usize,
     },
     Legend {
@@ -72,34 +82,76 @@ impl From<&FigureReference> for Fingerprint {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 enum Kind {
+    Root,
     Figure,
     Axes,
     Series,
     TextBox,
+    Annotation,
     Legend,
     Baseline,
+    Text,
+    Colorbar,
+    Image,
+    Volume,
+    SliceViewer,
+    OrthosliceViewer,
+    TiledLayout,
+    NumericRuler,
+    ConstantLine,
+    Rectangle,
+    Placeholder,
+    UiComponent,
 }
 impl From<GraphicsKind> for Kind {
     fn from(k: GraphicsKind) -> Self {
         match k {
+            GraphicsKind::Root => Self::Root,
             GraphicsKind::Figure => Self::Figure,
             GraphicsKind::Axes => Self::Axes,
             GraphicsKind::Series => Self::Series,
             GraphicsKind::TextBox => Self::TextBox,
+            GraphicsKind::Annotation => Self::Annotation,
             GraphicsKind::Legend => Self::Legend,
             GraphicsKind::Baseline => Self::Baseline,
+            GraphicsKind::Text => Self::Text,
+            GraphicsKind::Colorbar => Self::Colorbar,
+            GraphicsKind::Image => Self::Image,
+            GraphicsKind::Volume => Self::Volume,
+            GraphicsKind::SliceViewer => Self::SliceViewer,
+            GraphicsKind::OrthosliceViewer => Self::OrthosliceViewer,
+            GraphicsKind::TiledLayout => Self::TiledLayout,
+            GraphicsKind::NumericRuler => Self::NumericRuler,
+            GraphicsKind::ConstantLine => Self::ConstantLine,
+            GraphicsKind::Rectangle => Self::Rectangle,
+            GraphicsKind::Placeholder => Self::Placeholder,
+            GraphicsKind::UiComponent => Self::UiComponent,
         }
     }
 }
 impl From<Kind> for GraphicsKind {
     fn from(k: Kind) -> Self {
         match k {
+            Kind::Root => Self::Root,
             Kind::Figure => Self::Figure,
             Kind::Axes => Self::Axes,
             Kind::Series => Self::Series,
             Kind::TextBox => Self::TextBox,
+            Kind::Annotation => Self::Annotation,
             Kind::Legend => Self::Legend,
             Kind::Baseline => Self::Baseline,
+            Kind::Text => Self::Text,
+            Kind::Colorbar => Self::Colorbar,
+            Kind::Image => Self::Image,
+            Kind::Volume => Self::Volume,
+            Kind::SliceViewer => Self::SliceViewer,
+            Kind::OrthosliceViewer => Self::OrthosliceViewer,
+            Kind::TiledLayout => Self::TiledLayout,
+            Kind::NumericRuler => Self::NumericRuler,
+            Kind::ConstantLine => Self::ConstantLine,
+            Kind::Rectangle => Self::Rectangle,
+            Kind::Placeholder => Self::Placeholder,
+            Kind::UiComponent => Self::UiComponent,
         }
     }
 }
@@ -204,6 +256,7 @@ fn index(
             .as_ref()
             .is_some_and(|l| l.others.len() >= 16)
             || doc.figure.textboxes.len() > 64
+            || doc.figure.annotations.len() > 64
         {
             return Err("Graphics recovery object count exceeds limit".into());
         }
@@ -212,11 +265,14 @@ fn index(
         for (position, axes) in doc.figure.all_axes() {
             checkpoint(cancel)?;
             position.validate()?;
-            if !positions.insert(position) || axes.series.len() > 64 || axes.baselines.len() > 64 {
+            if !positions.insert(position)
+                || axes.series.len() > MAX_PLOT_SERIES
+                || axes.baselines.len() > 64
+            {
                 return Err("Invalid graphics recovery axes or series count".into());
             }
             series += axes.series.len();
-            if series > 64 {
+            if series > MAX_PLOT_SERIES {
                 return Err("Graphics recovery series count exceeds limit".into());
             }
         }
@@ -242,6 +298,9 @@ fn index(
         add(&doc.figure.identity, doc.id, Location::Figure {})?;
         for (position, axes) in doc.figure.all_axes() {
             add(&axes.identity, doc.id, Location::Axes { position })?;
+            for (axis, identity) in axes.extras.ruler_identities.iter().enumerate() {
+                add(identity, doc.id, Location::NumericRuler { position, axis })?;
+            }
             for (i, series) in axes.series.iter().enumerate() {
                 add(
                     &series.identity,
@@ -285,6 +344,9 @@ fn index(
         }
         for (i, textbox) in doc.figure.textboxes.iter().enumerate() {
             add(&textbox.identity, doc.id, Location::TextBox { index: i })?;
+        }
+        for (i, ann) in doc.figure.annotations.iter().enumerate() {
+            add(&ann.identity, doc.id, Location::Annotation { index: i })?;
         }
     }
     Ok(result)
@@ -416,20 +478,41 @@ impl Table {
                 return Err("Missing or duplicate graphics object binding".into());
             }
             match address.location {
+                Location::NumericRuler { position, axis } => {
+                    position.validate()?;
+                    if axis >= 3 {
+                        return Err("Invalid ruler axis".into());
+                    }
+                }
                 Location::Axes { position } | Location::Legend { position } => {
                     position.validate()?
                 }
                 Location::Series { position, index }
                 | Location::Baseline {
-                    position, index, ..
+                    position,
+                    index,
+                    latent: true,
+                } => {
+                    position.validate()?;
+                    if index >= MAX_PLOT_SERIES {
+                        return Err("Invalid recovered series index".into());
+                    }
+                }
+                Location::Baseline {
+                    position,
+                    index,
+                    latent: false,
                 } => {
                     position.validate()?;
                     if index >= 64 {
-                        return Err("Invalid recovered series index".into());
+                        return Err("Invalid recovered baseline index".into());
                     }
                 }
                 Location::TextBox { index } if index >= 64 => {
                     return Err("Invalid recovered textbox index".into());
+                }
+                Location::Annotation { index } if index >= 64 => {
+                    return Err("Invalid recovered annotation index".into());
                 }
                 _ => {}
             }
@@ -476,7 +559,7 @@ impl Table {
             let object = take(h.object)?;
             if (matches!(
                 h.kind,
-                Kind::Axes | Kind::Series | Kind::Legend | Kind::Baseline
+                Kind::Axes | Kind::Series | Kind::Legend | Kind::Baseline | Kind::NumericRuler
             )) != h.axes.is_some()
                 || (h.kind == Kind::Figure && h.object != h.figure)
                 || (h.kind == Kind::Axes && Some(h.object) != h.axes)
@@ -499,8 +582,10 @@ impl Table {
                 let kind = match a.location {
                     Location::Figure {} => Kind::Figure,
                     Location::Axes { .. } => Kind::Axes,
+                    Location::NumericRuler { .. } => Kind::NumericRuler,
                     Location::Series { .. } => Kind::Series,
                     Location::TextBox { .. } => Kind::TextBox,
+                    Location::Annotation { .. } => Kind::Annotation,
                     Location::Legend { .. } => Kind::Legend,
                     Location::Baseline { .. } => Kind::Baseline,
                 };
@@ -508,6 +593,7 @@ impl Table {
                     return Err("Graphics handle kind mismatch".into());
                 }
                 if let Location::Axes { position }
+                | Location::NumericRuler { position, .. }
                 | Location::Series { position, .. }
                 | Location::Legend { position }
                 | Location::Baseline { position, .. } = a.location

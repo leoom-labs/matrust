@@ -540,23 +540,10 @@ fn clearing_scripts_preserve_matrust_runner_state() {
             ],
         );
         let file = result(&dir.path().join("r.json"));
-        if clear == "clear all" {
-            // The engine explicitly rejects cache/global clearing; the bench
-            // must preserve that limitation, not silently rewrite user code.
-            assert_eq!(output.status.code(), Some(1), "{}", describe(&output));
-            assert_eq!(file.cases[0].error_kind, ErrorKind::Unsupported);
-            assert!(
-                file.cases[0]
-                    .error
-                    .as_ref()
-                    .unwrap()
-                    .contains("clear all is unsupported")
-            );
-        } else {
-            assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
-            assert_eq!(file.cases[0].error_kind, ErrorKind::None);
-            assert!(file.cases[0].runs >= 5);
-        }
+        // clear all now runs; the runner must still repeat the case.
+        assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+        assert_eq!(file.cases[0].error_kind, ErrorKind::None);
+        assert!(file.cases[0].runs >= 5);
     }
 }
 
@@ -578,4 +565,129 @@ fn matlab_options_are_unknown() {
         assert!(stdout(&output).is_empty(), "{}", describe(&output));
     }
     assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+}
+
+/// `bench/p0-speed.csv` (written by tool/refs/speed/p0_speed.py) and its analytic
+/// expected values in tests/fixtures/speed/p0-expected.csv.
+fn p0_expected() -> Vec<(String, String, u64, f64, f64)> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/speed/p0-expected.csv");
+    let text = std::fs::read_to_string(path).unwrap();
+    let mut lines = text.lines();
+    assert_eq!(
+        lines.next(),
+        Some("id,family,profile,n,iterations,ops_per_iteration,expected,rel_tol")
+    );
+    lines
+        .map(|line| {
+            let f: Vec<&str> = line.split(',').collect();
+            assert_eq!(f.len(), 8, "{line}");
+            let n: u64 = f[3].parse().unwrap();
+            assert_eq!(f[4], f[3], "{line}: one iteration per k");
+            (
+                f[0].into(),
+                f[2].into(),
+                n,
+                f[6].parse().unwrap(),
+                f[7].parse().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn p0_speed_tiny_cases_give_analytic_checksums() {
+    let bench_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("bench");
+    let csv = bench_dir.join("p0-speed.csv");
+    let cases = bench::parse_cases(&std::fs::read_to_string(&csv).unwrap()).unwrap();
+    let expected = p0_expected();
+    let ids: Vec<&str> = cases.iter().map(|c| c.id.as_str()).collect();
+    let fixture_ids: Vec<&str> = expected.iter().map(|e| e.0.as_str()).collect();
+    assert_eq!(ids, fixture_ids);
+    // Exact sums: 1..10 = 55, 1..20 = 210; sum(2k+1) = 120 and 440 in every variant.
+    let tiny: Vec<_> = expected.iter().filter(|e| e.1 == "tiny").collect();
+    for (id, value) in [
+        ("scalar_sum_n10", 55.),
+        ("scalar_sum_n20", 210.),
+        ("inline_2k1_n10", 120.),
+        ("anon_2k1_n10", 120.),
+        ("filefn_2k1_n10", 120.),
+        ("vec_2k1_n10", 120.),
+        ("inline_2k1_n20", 440.),
+        ("anon_2k1_n20", 440.),
+        ("filefn_2k1_n20", 440.),
+        ("vec_2k1_n20", 440.),
+    ] {
+        assert!(tiny.iter().any(|e| e.0 == id && e.3 == value), "{id}");
+    }
+    let only = tiny
+        .iter()
+        .map(|e| e.0.as_str())
+        .collect::<Vec<_>>()
+        .join(",");
+    let out = tempfile::tempdir().unwrap();
+    let json = out.path().join("p0.json");
+    // From bench/, where the file function p0_speed_call.m lives.
+    let output = matrust(
+        &bench_dir,
+        &[
+            "--cases",
+            csv.to_str().unwrap(),
+            "--only",
+            &only,
+            "--threads",
+            "1",
+            "--out",
+            json.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    let file = result(&json);
+    assert_eq!(file.cases.len(), tiny.len());
+    for (case, want) in file.cases.iter().zip(&tiny) {
+        let source = cases.iter().find(|c| c.id == case.id).unwrap();
+        assert_eq!(
+            (case.id.as_str(), case.error_kind),
+            (want.0.as_str(), ErrorKind::None)
+        );
+        assert_eq!(case.sha256, source.sha256, "{}", case.id);
+        assert!(
+            source.setup.starts_with(&format!("n={};", want.2)),
+            "{}",
+            case.id
+        );
+        let got = case.checksum.unwrap();
+        assert!(
+            (got - want.3).abs() <= want.4 * want.3.abs(),
+            "{}: {got} != {}",
+            case.id,
+            want.3
+        );
+        assert!(case.runs >= 5);
+    }
+}
+
+#[test]
+fn bench_runs_a_case_over_the_browser_step_cap() {
+    // 600000 iterations: over the 1e6-step browser cap that Engine::default() keeps
+    // (src/bench.rs bench_runs_past_the_browser_step_cap_which_default_engine_keeps).
+    let dir = tempfile::tempdir().unwrap();
+    let output = matrust(
+        dir.path(),
+        &[
+            "--op",
+            "s=0; for k=1:n; s=s+k; end;",
+            "--setup",
+            "n=600000;",
+            "--check",
+            "s",
+            "--threads",
+            "1",
+            "--out",
+            "cap.json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{}", describe(&output));
+    let case = &result(&dir.path().join("cap.json")).cases[0];
+    assert_eq!(case.error_kind, ErrorKind::None, "{:?}", case.error);
+    assert_eq!(case.checksum, Some(180_000_300_000.));
 }

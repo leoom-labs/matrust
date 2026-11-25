@@ -48,6 +48,7 @@ fn point(output: &egui::FullOutput, label: &str, size: Vec2) -> Pos2 {
     let (rect, clip) = output
         .shapes
         .iter()
+        .rev()
         .find_map(|s| find(&s.shape, label).map(|r| (r, s.clip_rect)))
         .unwrap_or_else(|| panic!("Missing {label}"));
     assert!(

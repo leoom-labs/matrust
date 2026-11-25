@@ -8,7 +8,7 @@ use std::{
 };
 
 const RANGE: &str = "Chebyshev-I parameters cannot be represented as stable finite f64 sections";
-pub const MAX_CHEBY1_ORDER: usize = 20;
+pub const MAX_CHEBY1_ORDER: usize = 100;
 
 #[derive(Clone, Debug)]
 struct Section {
@@ -195,7 +195,7 @@ pub fn cheby1(
             .any(|v| !v.is_finite() || *v <= 0. || *v >= 1.)
         || (paired && cutoffs[0] >= cutoffs[1])
     {
-        return Err("cheby1 needs order 1..20, positive finite ripple dB, and one low/high or two increasing bandpass/stop edges strictly between 0 and 1".into());
+        return Err("cheby1 needs order 1..100, positive finite ripple dB, and one low/high or two increasing bandpass/stop edges strictly between 0 and 1".into());
     }
     let epsilon = (ripple_db * (LN_10 / 10.)).exp_m1().sqrt();
     let mu = (1. / epsilon).asinh() / order as f64;

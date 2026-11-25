@@ -20,11 +20,23 @@ struct Position {
 impl Engine {
     /// Text for an unsuppressed `name = value` display.
     pub(super) fn display_text(&self, name: &str, array: &Array) -> Result<String> {
+        if let Some(text) = super::control_lti::display(self, array)? {
+            return Ok(format!("{name} =\n\n{text}"));
+        }
+        if let Some(text) = super::sysid::display(array)? {
+            return Ok(format!("{name} =\n\n{text}"));
+        }
         if let Some(text) = self.lng_object_text(Some(name), array)? {
+            return Ok(text);
+        }
+        if let Some(text) = self.cls_object_text(Some(name), array)? {
             return Ok(text);
         }
         if let Some(text) = self.obj_display(name, array)? {
             return Ok(text);
+        }
+        if let Some(text) = super::volume::show::volume_display(self, array) {
+            return Ok(format!("{name} =\n\n{text}"));
         }
         crate::display_format::echo(name, array, &self.display)
     }
@@ -48,14 +60,16 @@ impl Engine {
     pub(super) fn assigned_array(&self, value: Value) -> Result<Array> {
         match value {
             Value::Void => Err("This command does not return a value".into()),
-            Value::QuotedString(_) => Err(
-                "String array storage is not implemented; use single-quoted character text".into(),
-            ),
+            value @ Value::QuotedString(_) => value.array(&self.cancel),
             value => value.array(&self.cancel),
         }
     }
 
-    fn dynamic_field_name(&mut self, expr: &Expr, out: &mut Execution) -> Result<String> {
+    pub(super) fn dynamic_field_name(
+        &mut self,
+        expr: &Expr,
+        out: &mut Execution,
+    ) -> Result<String> {
         let value = self.eval(expr, None, out)?;
         self.text_name(value, "Dynamic structure field names")
     }
@@ -68,6 +82,18 @@ impl Engine {
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
         if let Some(value) = self.obj_eval(expr, out)? {
+            return Ok(vec![value]);
+        }
+        // `pkg.fn`, `pkg.Cls.Const`: names of a package folder.
+        if matches!(expr, Expr::Field(..))
+            && let Some(value) = self.pkg_value(expr, None, out)?
+        {
+            return Ok(vec![value]);
+        }
+        // `ClassName.Const` / `ClassName.staticMethod` of a classdef file.
+        if let Expr::Field(base, name) = expr
+            && let Some(value) = self.cls_static(base, name, None, out)?
+        {
             return Ok(vec![value]);
         }
         let (base, name) = match expr {
@@ -83,14 +109,46 @@ impl Engine {
         };
         self.obj_field_values_resolved(base, &name, out)
     }
-    fn obj_field_values_resolved(
+    pub(super) fn obj_field_values_resolved(
         &mut self,
         base: Value,
         name: &str,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        if let Value::Container(a) = &base
+            && super::control_lti::class(a).is_some()
+        {
+            if super::control_lti::private_property(name) {
+                return Err("The LTI type tag is private".into());
+            }
+            let facade = super::control_lti::property_facade(self, a)?;
+            if let Some(index) = facade.field_index(name) {
+                return Ok(vec![facade.get(index, 0)?.as_ref().clone().into()]);
+            }
+            return Err(format!("Unknown LTI property '{name}'"));
+        }
+        if let Value::Container(a) = &base
+            && super::linear_algebra2::decomposition_private_field(a, name)
+        {
+            return Err(format!(
+                "No public property {name} exists for class decomposition."
+            ));
+        }
+        if let Some(value) = self.cls_member(&base, name, None, out)? {
+            return Ok(vec![value]);
+        }
         if let Some(value) = self.obj_field(&base, name, out)? {
             return Ok(vec![value]);
+        }
+        if let Value::Container(Array::Graphics(handles)) = &base {
+            return self.gobj_field_values(handles, name);
+        }
+        if let Value::Container(a @ (Array::Datetime(_) | Array::Duration(_))) = &base {
+            return Ok(vec![self.dtm_field(a, name)?]);
+        }
+        if let Value::Container(Array::Table(t)) = &base {
+            let t = t.clone();
+            return Ok(vec![self.tbl_field(&t, name, out)?]);
         }
         let Value::Container(Array::Struct(s)) = base else {
             return Err(NO_FIELDS.into());
@@ -146,7 +204,18 @@ impl Engine {
         statement: bool,
     ) -> Result<Value> {
         let base = if let Expr::Field(inner, member) = expr {
+            // `pkg.fn(args)`, `pkg.Cls(args)`, `pkg.Cls.staticMethod(args)`.
+            if let Some(value) = self.pkg_value(expr, Some(args), out)? {
+                return Ok(value);
+            }
+            if let Some(value) = self.cls_static(inner, member, Some(args), out)? {
+                return Ok(value);
+            }
             let receiver = self.eval(inner, end, out)?;
+            // A user object: property (then indexed) first, else its method.
+            if let Some(value) = self.cls_member(&receiver, member, Some(args), out)? {
+                return Ok(value);
+            }
             if let Some(value) = self.obj_member_value(&receiver, member, args, out)? {
                 return Ok(value);
             }
@@ -179,14 +248,35 @@ impl Engine {
         args: &[Expr],
         out: &mut Execution,
     ) -> Result<Value> {
+        if args.iter().any(|arg| matches!(arg, Expr::NameValue(_))) {
+            return Err("Name=Value syntax is not supported for indexing".into());
+        }
         if let Some(value) = self.obj_index(&base, args, out)? {
             return Ok(value);
+        }
+        if super::string_class::is_string(&base) {
+            return self
+                .str_index(base, args, false, out)
+                .map(|mut v| v.remove(0));
         }
         match base {
             Value::Container(Array::Handle(handle)) => {
                 self.call_handle_expression(&handle, args, out)
             }
+            Value::Container(a) if a.is_nd() => {
+                super::nd::index(self, Value::Container(a), args, out)
+            }
             Value::Container(a) => self.index_container(&a, args, false, out),
+            // Chained reads such as s.f(:,:,2) and c{1}(:,:,2) use the N-D reader.
+            Value::Matrix(m) if m.is_nd() || args.len() > 2 => {
+                super::nd::index(self, Value::Matrix(m), args, out)
+            }
+            Value::Logical(m) if m.is_nd() || args.len() > 2 => {
+                super::nd::index(self, Value::Logical(m), args, out)
+            }
+            Value::Complex(m) if m.is_nd() || args.len() > 2 => {
+                super::nd::index(self, Value::Complex(m), args, out)
+            }
             Value::Matrix(m) => Ok(Value::Matrix(self.index_array(&m, args, out, true)?)),
             Value::Logical(m) => Ok(Value::Logical(self.index_array(&m, args, out, true)?)),
             Value::Complex(m) => Ok(Value::Complex(self.index_array(&m, args, out, true)?)),
@@ -204,6 +294,9 @@ impl Engine {
         args: &[Expr],
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        if super::string_class::is_string(&base) {
+            return self.str_index(base, args, true, out);
+        }
         let Value::Container(a @ Array::Cell(_)) = base else {
             return Err("Cell contents reference from a non-cell array object".into());
         };
@@ -247,10 +340,33 @@ impl Engine {
         let Some((step, rest)) = steps.split_first() else {
             return Ok(value);
         };
+        if let Some(array) = current.as_ref().filter(|a| super::classdef::is_object(a)) {
+            return self.cls_assign(array.clone(), steps, value, deletion, out);
+        }
         if let Some(array) = &current
-            && self.obj_assign_nested(array, steps, &value, out)?
+            && let Some(updated) = self.ctl_set(array, steps, &value, deletion, out)?
         {
-            return Ok(array.clone());
+            return Ok(updated);
+        }
+        if let Some(array) = &current
+            && let Some(updated) = self.obj_assign_nested(array, steps, &value, out)?
+        {
+            return Ok(updated);
+        }
+        if let Some(Array::Graphics(handles)) = &current
+            && let Some(updated) = self.gobj_assign(handles, steps, &value, deletion, out)?
+        {
+            return Ok(updated);
+        }
+        if let Some(array @ (Array::Datetime(_) | Array::Duration(_))) = &current
+            && let Some(updated) = self.dtm_assign_path(array, steps, &value, deletion, out)?
+        {
+            return Ok(updated);
+        }
+        if let Some(Array::Table(t)) = &current
+            && let Some(updated) = self.tbl_assign_path(&t.clone(), steps, &value, deletion, out)?
+        {
+            return Ok(updated);
         }
         match step {
             PathStep::Field(name) => self.assign_field(current, name, rest, value, deletion, out),
@@ -261,24 +377,6 @@ impl Engine {
             PathStep::Paren(args) => self.assign_paren(current, args, rest, value, deletion, out),
             PathStep::Brace(args) => {
                 if !rest.is_empty() {
-                    // A live object in the selected cell takes its own nested
-                    // assignment; only then are the brace subscripts evaluated
-                    // here (cel_assign_child evaluates them once otherwise).
-                    if self.obj_live()
-                        && let Some(array) = &current
-                    {
-                        let contents = self.brace_values(Value::from(array.clone()), args, out)?;
-                        if let [child] = contents.as_slice()
-                            && self.obj_assign_nested(
-                                &child.clone().array(&self.cancel)?,
-                                rest,
-                                &value,
-                                out,
-                            )?
-                        {
-                            return Ok(array.clone());
-                        }
-                    }
                     return self.cel_assign_child(current, args, rest, value, deletion, out);
                 }
                 self.assign_via_variable(current, args, true, value, deletion, out)
@@ -398,7 +496,12 @@ impl Engine {
             });
         }
         let [row, col] = args else {
-            return Err("Indexed assignment requires one or two subscripts".into());
+            return Err(if args.len() > 2 {
+                super::nd::STRUCT_ND
+            } else {
+                "Indexed assignment requires one or two subscripts"
+            }
+            .into());
         };
         let i = self.subscript_number(row, rows, out)?;
         let j = self.subscript_number(col, cols, out)?;
@@ -585,6 +688,9 @@ impl Engine {
             return Err("Curly brace assignment requires a cell array".into());
         }
         let target = self.temp_name("target");
+        // A missing field still takes `end` as 0, unlike an undefined variable.
+        let missing = current.is_none().then(|| target.clone());
+        let saved_end = std::mem::replace(&mut self.field_end_target, missing);
         if let Some(array) = current {
             self.publish_array(target.clone(), array);
         }
@@ -603,6 +709,7 @@ impl Engine {
         } else {
             self.assign_indexed(&target, args, &rhs, true, out)
         };
+        self.field_end_target = saved_end;
         let updated = self.array(&target);
         self.remove_array(&target);
         self.remove_array(&source);
@@ -807,6 +914,15 @@ impl Engine {
                 }
                 other => self.text_name(other.clone(), "getfield: field names")?,
             };
+            // A user object inside the path keeps its access rules: no raw walk.
+            if super::classdef::object_class(&current).is_some() {
+                return Err("getfield: a path into an object is not supported; use dot syntax (obj.prop) instead.".into());
+            }
+            if super::linear_algebra2::decomposition_private_field(&current, &name) {
+                return Err(format!(
+                    "No public property {name} exists for class decomposition."
+                ));
+            }
             let Array::Struct(s) = &current else {
                 return Err(NO_FIELDS.into());
             };
@@ -864,6 +980,9 @@ impl Engine {
         } else {
             let inner = match s.field_index(name) {
                 Some(f) => match s.get(f, 0)?.as_ref() {
+                    a @ Array::Struct(_) if super::classdef::object_class(a).is_some() => {
+                        return Err("setfield: a path into an object is not supported; use dot syntax (obj.prop = value) instead.".into());
+                    }
                     Array::Struct(inner) => inner.clone(),
                     other if Self::is_empty_double(other) => {
                         StructArray::scalar_empty(&self.cancel)?

@@ -78,7 +78,11 @@ fn concatenation_functions() {
     assert!(error("x = cat(0,1,2);").contains("Dimension must be a real positive finite integer."));
     assert!(error("x = cat(1.5,1,2);").contains("real positive finite integer"));
     assert!(error("x = cat();").contains("Not enough input arguments."));
-    assert!(error("x = cat(3,1,2);").contains("N-dimensional"));
+    // N-D arrays task: two nonempty parts create a third axis.
+    let mut engine = Engine::default();
+    engine.execute("x = cat(3,1,2);").unwrap();
+    assert_eq!(engine.array("x").unwrap().dims().as_ref(), &[1, 1, 2]);
+    assert_eq!(engine.variables["x"].data(), &[1., 2.]);
 }
 
 #[test]
@@ -431,6 +435,11 @@ fn randperm_is_a_permutation() {
     assert_eq!(show("numel(unique(randperm(1000,40)))"), "40");
     assert_eq!(show("max(randperm(20000,5)) <= 20000"), "true");
     assert_eq!(show("size(randperm(0))"), "[1 0]");
+    // randperm(n,k) samples in O(k): n may exceed the element limit, randperm(n) may not.
+    assert_eq!(show("numel(unique(randperm(1e9,5)))"), "5");
+    assert_eq!(show("max(randperm(2^53,3)) <= 2^53"), "true");
+    assert!(error("x = randperm(1e9);").contains("Matrix exceeds the element limit"));
+    assert!(error("x = randperm(2^54,2);").contains("Matrix exceeds the element limit"));
     assert!(error("x = randperm(5,6);").contains("K must be less than or equal to N."));
     assert!(error("x = randperm(2.5);").contains("Size inputs must be integers."));
     assert!(error("x = randperm([1 2]);").contains("Size inputs must be scalar."));

@@ -104,8 +104,11 @@ fn script_file_commands_reject_side_effecting_output_forms_options_and_missing_n
         assert_eq!(scalar(&e, "A"), 7.);
     }
     e.execute("A=99;").unwrap();
+    e.execute("result=load('existing.mat');").unwrap();
+    assert_eq!(scalar(&e, "A"), 99.);
+    e.execute("loadedA=result.A;").unwrap();
+    assert_eq!(scalar(&e, "loadedA"), 7.);
     for script in [
-        "result=load('existing.mat')",
         "result=sin(load('existing.mat'))",
         "load existing.mat A missing",
         "load existing.mat -regexp A",

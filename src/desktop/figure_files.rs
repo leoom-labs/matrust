@@ -417,11 +417,6 @@ impl Workspace {
         }
     }
     pub(super) fn request_quit(&mut self, ctx: &egui::Context) {
-        if self.csv_import.is_some() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.status = "Finish or cancel CSV import before closing".into();
-            return;
-        }
         if self
             .figure_close
             .as_ref()
@@ -461,6 +456,7 @@ impl Workspace {
         }
         if !self.pending_quit && self.figure_close.is_none() {
             self.quit_discarded_figures.clear();
+            self.quit_save_scripts = false;
         }
         if !self.busy {
             self.workspace_import = None;
@@ -479,10 +475,13 @@ impl Workspace {
                     action: Closing::Application,
                     saving: false,
                 });
+                self.status.clear();
             }
         } else if self.documents.iter().any(|d| d.dirty) || self.toolkits.model_dirty() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.pending_quit = true;
+            // The dialog shows status for save results only, not the last run's.
+            self.status.clear();
         }
     }
     fn finish_figure_close(&mut self, ctx: &egui::Context) {
@@ -498,6 +497,7 @@ impl Workspace {
             Closing::Application => {
                 if self.documents.iter().any(|d| d.dirty) || self.toolkits.model_dirty() {
                     self.pending_quit = true;
+                    self.status.clear();
                 } else {
                     self.allow_close = true;
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -527,23 +527,38 @@ impl Workspace {
         let saving = flow.saving;
         let save_only = matches!(flow.action, Closing::SaveOnly);
         let close_all = matches!(flow.action, Closing::All);
+        let quitting = matches!(flow.action, Closing::Application);
+        // Quit asks once for everything: unsaved scripts and the block model
+        // are listed with the figures, and Save / Discard covers all of them.
+        let scripts = if quitting {
+            self.unsaved_script_names(true)
+        } else {
+            Vec::new()
+        };
+        let model_dirty = quitting && self.toolkits.model_dirty();
         let mut save = false;
         let mut discard = false;
         let mut cancel = false;
         let viewport = ctx.content_rect();
-        let shown = egui::Modal::new(egui::Id::new("unsaved_figures")).show(ctx, |ui| {
+        let heading = if save_only {
+            "Saving figures"
+        } else if close_all {
+            "Close all figures"
+        } else if quitting && (!scripts.is_empty() || model_dirty) {
+            "Unsaved work"
+        } else {
+            "Unsaved figures"
+        };
+        let shown = egui::Modal::new(egui::Id::new("unsaved_figures"))
+            .frame(crate::dialog_windows::dialog_frame(ctx))
+            .show(ctx, |ui| crate::dialog_windows::window_chrome(ui, heading, None, |ui| {
             ui.set_width((viewport.width() - 48.).clamp(240., 420.));
-            ui.label(crate::tokens::title(ui.ctx(), if save_only {
-                "Saving figures"
-            } else if close_all {
-                "Close all figures"
-            } else {
-                "Unsaved figures"
-            }));
             ui.label(if save_only {
                 "Save modified figures and keep them open. Completed saves stay saved."
             } else if close_all {
                 "Save modified figures before closing all figures? Scripts and workspace variables stay open."
+            } else if quitting {
+                "Save changes before closing?"
             } else {
                 "Save figure changes before closing?"
             });
@@ -556,9 +571,15 @@ impl Workspace {
                         let name = self.figure_documents[id]
                             .path
                             .as_ref()
-                            .map_or_else(|| "Untitled".into(), |p| crate::path_label::display(p).to_string());
+                            .map_or_else(|| "not saved to a file yet".into(), |p| crate::path_label::display(p).to_string());
                         ui.add(egui::Label::new(format!("Figure {id}: {name}")).truncate())
                             .on_hover_text(name);
+                    }
+                    for name in &scripts {
+                        ui.add(egui::Label::new(format!("Script: {name}")).truncate());
+                    }
+                    if model_dirty {
+                        ui.label("Block model: unsaved changes");
                     }
                 });
             if save_only {
@@ -566,8 +587,9 @@ impl Workspace {
             } else {
                 ui.add_enabled_ui(!self.busy, |ui| {
                     ui.horizontal_wrapped(|ui| {
+                        let items = dirty.len() + scripts.len() + usize::from(model_dirty);
                         save = ui
-                            .button(if dirty.len() > 1 { "Save all" } else { "Save" })
+                            .button(if items > 1 { "Save all" } else { "Save" })
                             .clicked();
                         discard = ui.button("Discard changes").clicked();
                         cancel = ui.button("Cancel").clicked();
@@ -582,7 +604,7 @@ impl Workspace {
                 .show_themed(ui, |ui| {
                     ui.label(&self.status);
                 });
-        });
+        }));
         if shown.is_top_modal
             && !shown.any_popup_open
             && (save_only || close_all || !self.busy)
@@ -603,19 +625,23 @@ impl Workspace {
                 .into();
             }
             self.quit_discarded_figures.clear();
+            self.quit_save_scripts = false;
             self.figure_close = None;
             return;
         }
         if discard {
-            if self
-                .figure_close
-                .as_ref()
-                .is_some_and(|f| matches!(f.action, Closing::Application))
-            {
+            if quitting {
                 self.quit_discarded_figures.extend(dirty);
+                for doc in &mut self.documents {
+                    doc.discard();
+                }
+                self.toolkits.discard_model();
             }
             self.finish_figure_close(ctx);
             return;
+        }
+        if save && quitting {
+            self.quit_save_scripts = true;
         }
         if (save || saving) && !self.busy {
             if let Some(&id) = dirty.first() {
@@ -708,6 +734,7 @@ impl Workspace {
                 self.figure_close = None;
                 self.pending_quit = false;
                 self.quit_discarded_figures.clear();
+                self.quit_save_scripts = false;
                 self.status = if conflict.reload_requested {
                     "Figure reload cancelled; current figure and disk file retained"
                 } else {

@@ -1,0 +1,16 @@
+1 handle: a.total=10 b.total=10
+2 isequal: same=1 equal_values=1
+2 isequal: after_change=0
+3 chain: area=9 name=square tag=Square>Rect>Shape
+3 chain: isa Square=1 Rect=1 Shape=1 class=Square
+3 chain: square with area 9
+4 protected: peek=42
+4 protected: outside read rejected
+5 getset: f=212 k=373.15 sets=1
+5 getset: c=0 sets=2
+5 getset: c=5 sets=3
+5 getset: rejected: below absolute zero
+6 guard: v1=1 value=10 reads=3
+Left constructor
+Right constructor
+7 multiple: side=Left.side only=Right.onlyRight root=Root.rootName who=Both:Left+Right

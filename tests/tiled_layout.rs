@@ -76,8 +76,6 @@ fn rejected_tile_changes_are_atomic_and_limits_apply_to_all_axes() {
     let mut e = Engine::default();
     e.execute("tiledlayout(2,2);nexttile;plot([1 2]);").unwrap();
     for source in [
-        "h=tiledlayout(1,1)",
-        "h=nexttile(2)",
         "tiledlayout(0,2)",
         "tiledlayout(17,1)",
         "tiledlayout('bad')",
@@ -269,10 +267,9 @@ fn shared_title_targets_live_figure_without_selecting_or_copying_payloads() {
     assert!(handle.same_snapshot(&e.array("alias").unwrap()));
     for invalid in [
         "sgtitle(a,'wrong target');",
-        "sgtitle(f,'lost','Interpreter','tex');",
+        "sgtitle(f,'lost','Interpreter','invalid');",
         "sgtitle(f,'lost','FontSize',20);",
         "sgtitle(f,'lost','Interpreter');",
-        "out=sgtitle(f,'unsupported output');",
     ] {
         let all: Vec<_> = e.figures().map(|(id, f)| (id, f.clone())).collect();
         assert!(e.execute(invalid).is_err(), "{invalid}");

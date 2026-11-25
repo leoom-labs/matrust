@@ -25,13 +25,91 @@ const NAMES: &[&str] = &[
     "imread",
     "imwrite",
     "imfinfo",
+    "dicomlookup",
+    "dicomdict",
+    "dicominfo",
+    "dicomBrowser",
+    "dicomCollection",
+    "dicomread",
+    "dicomwrite",
     "audioread",
     "audiowrite",
     "audioinfo",
     "fileattrib",
+    "VideoWriter",
+    "open",
+    "writeVideo",
+    "VideoReader",
+    "implay",
+    "registrationEstimator",
+    "cameraCalibrator",
+    "volumeViewer",
+    "pdeModeler",
+    "hasFrame",
+    "readFrame",
+    "read",
 ];
 pub(super) fn fl2_handles(name: &str) -> bool {
     NAMES.contains(&name)
+}
+
+// Scoped, thread-local presentation only: no desktop dependency in the engine.
+type DicomBrowserOpen = Box<dyn FnMut(Option<PathBuf>) -> Result<()>>;
+thread_local! {
+    static DICOM_BROWSER_OPEN: std::cell::RefCell<Option<DicomBrowserOpen>> = std::cell::RefCell::new(None);
+}
+pub struct DicomBrowserPresentation {
+    previous: Option<DicomBrowserOpen>,
+    thread: std::marker::PhantomData<std::rc::Rc<()>>,
+}
+impl Drop for DicomBrowserPresentation {
+    fn drop(&mut self) {
+        DICOM_BROWSER_OPEN.with(|slot| *slot.borrow_mut() = self.previous.take());
+    }
+}
+pub fn present_dicom_browser(
+    open: impl FnMut(Option<PathBuf>) -> Result<()> + 'static,
+) -> DicomBrowserPresentation {
+    DicomBrowserPresentation {
+        previous: DICOM_BROWSER_OPEN.with(|slot| slot.replace(Some(Box::new(open)))),
+        thread: std::marker::PhantomData,
+    }
+}
+fn fl2_dicom_browser(engine: &Engine, args: &[Value]) -> Result<()> {
+    if args.len() > 1 {
+        return Err("dicomBrowser: expected zero or one folder input and no outputs".into());
+    }
+    if !DICOM_BROWSER_OPEN.with(|slot| slot.borrow().is_some()) {
+        return Err("dicomBrowser requires the desktop".into());
+    }
+    let folder = args
+        .first()
+        .map(|value| -> Result<PathBuf> {
+            let value = match value {
+                Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+                    .as_ref()
+                    .map(|s| Value::QuotedString(s.to_string()))
+                    .ok_or("dicomBrowser: folder must be a nonmissing string scalar")?,
+                value => value.clone(),
+            };
+            let text = engine.fl2_name(
+                &value,
+                "dicomBrowser: folder must be a character vector or string scalar",
+            )?;
+            if text.is_empty() || text.len() > 4096 || text.chars().any(char::is_control) {
+                return Err("dicomBrowser: invalid folder path".into());
+            }
+            let path = PathBuf::from(text);
+            let path = engine
+                .file_directory
+                .as_ref()
+                .filter(|_| path.is_relative())
+                .map_or(path.clone(), |base| base.join(&path));
+            // Show `C:\x`, not the `\\?\C:\x` form a canonical working folder carries.
+            Ok(PathBuf::from(super::env_files::envx_path_text(&path)))
+        })
+        .transpose()?;
+    DICOM_BROWSER_OPEN.with(|slot| slot.borrow_mut().as_mut().unwrap()(folder))
 }
 /// Largest file read or written, and largest total archive extraction.
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
@@ -245,6 +323,467 @@ fn fl2_crc(kind: &[u8], data: &[u8]) -> u32 {
     crc.update(data);
     crc.sum()
 }
+fn fl2_dicom_text(
+    engine: &Engine,
+    value: &Value,
+    function: &str,
+    name: &str,
+    limit: usize,
+) -> Result<String> {
+    fl2_dicomwrite_text(engine, value, name, limit)
+        .map_err(|e| e.replacen("dicomwrite:", &format!("{function}:"), 1))
+}
+
+fn fl2_dicom_dictionary(
+    engine: &Engine,
+    args: &[Value],
+    function: &str,
+) -> Result<super::dicom::custom_dict::Dictionary> {
+    if args.is_empty() {
+        return Ok(engine.dicom_dictionary.clone());
+    }
+    if args.len() != 2 {
+        return Err(format!(
+            "{function}: options must be name/value pairs; only Dictionary is supported; other options are not supported yet"
+        ));
+    }
+    let name = fl2_dicom_text(engine, &args[0], function, "option name", 128)?;
+    if !name.eq_ignore_ascii_case("Dictionary") {
+        return Err(format!(
+            "{function}: options '{name}' are not supported yet; only Dictionary is supported"
+        ));
+    }
+    fl2_dicom_load_dictionary(engine, &args[1], function)
+}
+
+fn fl2_dicom_load_dictionary(
+    engine: &Engine,
+    value: &Value,
+    function: &str,
+) -> Result<super::dicom::custom_dict::Dictionary> {
+    let name = fl2_dicom_text(engine, value, function, "Dictionary filename", 32768)?;
+    let path = engine.file_path(&name, "")?;
+    let budget = super::limits::memory_bytes(&engine.limits)
+        .saturating_sub(engine.workspace_bytes())
+        .saturating_sub(engine.dicom_dictionary.memory_bytes());
+    super::dicom::custom_dict::load(&path, budget, &engine.cancel)
+        .map_err(|e| format!("{function}: Dictionary options: {e}"))
+}
+
+fn fl2_dicomdict(engine: &mut Engine, args: &[Value], nargout: usize) -> Result<Vec<Value>> {
+    let action = args
+        .first()
+        .ok_or("dicomdict: expected action get, set or factory")?;
+    let action = fl2_dicom_text(engine, action, "dicomdict", "action", 128)?;
+    let expected = match action.as_str() {
+        "get" | "factory" => 1,
+        "set" => 2,
+        _ => return Err(format!("dicomdict: action '{action}' is not supported yet")),
+    };
+    if args.len() != expected {
+        return Err(format!(
+            "dicomdict: action '{action}' expects {expected} input arguments"
+        ));
+    }
+    if action != "get" && nargout != 0 {
+        return Err(format!(
+            "dicomdict: action '{action}' does not return outputs"
+        ));
+    }
+    match action.as_str() {
+        "get" => Ok(vec![Value::Text(super::env_files::envx_path_text(
+            &engine.dicom_dictionary.path(&engine.cancel)?,
+        ))]),
+        "factory" => {
+            engine.dicom_dictionary = Default::default();
+            Ok(Vec::new())
+        }
+        "set" => {
+            let dictionary = fl2_dicom_load_dictionary(engine, &args[1], "dicomdict")?;
+            engine.dicom_dictionary = dictionary;
+            Ok(Vec::new())
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn fl2_dicomlookup(engine: &Engine, args: &[Value]) -> Result<Vec<Value>> {
+    let dictionary = &engine.dicom_dictionary;
+    if args.len() == 1 {
+        let name = fl2_dicom_text(engine, &args[0], "dicomlookup", "name", 128)?;
+        return Ok(match dictionary.tag_by_name(&name) {
+            Some(tag) => vec![
+                Value::Matrix(Matrix::scalar((tag >> 16) as f64)),
+                Value::Matrix(Matrix::scalar((tag & 65535) as f64)),
+            ],
+            None => vec![fl2_empty(), fl2_empty()],
+        });
+    }
+    if args.len() != 2 {
+        return Err("dicomlookup: expected name or group, element".into());
+    }
+    let group = fl2_dicom_tag_component(engine, &args[0])?;
+    let element = fl2_dicom_tag_component(engine, &args[1])?;
+    if group.1 != element.1 {
+        return Err(
+            "dicomlookup: group and element must both be numeric or both hexadecimal text".into(),
+        );
+    }
+    let tag = (u32::from(group.0) << 16) | u32::from(element.0);
+    Ok(vec![Value::Text(
+        dictionary
+            .lookup(tag)
+            .map_or_else(String::new, |e| e.field_name(tag)),
+    )])
+}
+
+fn fl2_dicom_tag_component(engine: &Engine, value: &Value) -> Result<(u16, bool)> {
+    let number = match value {
+        Value::Matrix(m) if m.len() == 1 => Some(m.data()[0]),
+        Value::Container(Array::Typed(a)) if a.len() == 1 => Some(a.real(0)),
+        _ => None,
+    };
+    if let Some(number) = number {
+        if number.is_finite() && number.fract() == 0. && (0. ..=65535.).contains(&number) {
+            return Ok((number as u16, false));
+        }
+        return Err("dicomlookup: numeric tags must be integer scalars in 0..65535".into());
+    }
+    let text = fl2_dicom_text(engine, value, "dicomlookup", "hexadecimal tag", 4)?;
+    if text.is_empty() || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("dicomlookup: tags require 1..4 hexadecimal digits".into());
+    }
+    Ok((
+        u16::from_str_radix(&text, 16).map_err(|_| "dicomlookup: invalid hexadecimal tag")?,
+        true,
+    ))
+}
+
+fn fl2_dicominfo(engine: &Engine, args: &[Value]) -> Result<Value> {
+    if args.is_empty() {
+        return Err("dicominfo: Not enough input arguments.".into());
+    }
+    let dictionary = fl2_dicom_dictionary(engine, &args[1..], "dicominfo")?;
+    let value = match &args[0] {
+        Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+            .as_ref()
+            .map(|s| Value::QuotedString(s.to_string()))
+            .ok_or("dicominfo: filename must be a nonmissing string scalar")?,
+        value => value.clone(),
+    };
+    let filename = engine.fl2_name(
+        &value,
+        "dicominfo: filename must be a character vector or string scalar",
+    )?;
+    let path = engine.fl2_resolve(&filename)?;
+    super::dicom::info(engine, &path, MAX_BYTES, &dictionary)
+}
+
+fn fl2_dicom_collection(engine: &mut Engine, args: &[Value], out: &mut Execution) -> Result<Value> {
+    if args.is_empty() {
+        return Err("dicomCollection: Not enough input arguments.".into());
+    }
+    let source_val = match &args[0] {
+        Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+            .as_ref()
+            .map(|s| Value::QuotedString(s.to_string()))
+            .ok_or("dicomCollection: source must be a nonmissing string scalar")?,
+        value => value.clone(),
+    };
+    let source_text = engine.fl2_name(
+        &source_val,
+        "dicomCollection: source must be a character vector or string scalar",
+    )?;
+    let opt_args = &args[1..];
+    if !opt_args.len().is_multiple_of(2) {
+        return Err("dicomCollection: options must be name/value pairs".into());
+    }
+    let mut include_subfolders = true;
+    let mut seen_subfolders = false;
+    for pair in opt_args.chunks_exact(2) {
+        let name = match &pair[0] {
+            Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+                .as_ref()
+                .map(|s| Value::QuotedString(s.to_string()))
+                .ok_or("dicomCollection: option name must be a nonmissing string scalar")?,
+            other => other.clone(),
+        };
+        let key = engine.fl2_name(
+            &name,
+            "dicomCollection: option name must be a character vector or string scalar",
+        )?;
+        if !key.eq_ignore_ascii_case("IncludeSubfolders") {
+            return Err(format!("dicomCollection: unsupported option '{key}'"));
+        }
+        if seen_subfolders {
+            return Err("dicomCollection: duplicate option 'IncludeSubfolders'".into());
+        }
+        seen_subfolders = true;
+        include_subfolders = super::dicom::collection::parse_logical_scalar(&pair[1])?;
+    }
+    let path = engine.fl2_resolve(&source_text)?;
+    super::dicom::collection::run_parsed(engine, &path, include_subfolders, out, MAX_BYTES)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn fl2_dicomwrite(engine: &mut Engine, args: &[Value]) -> Result<()> {
+    use super::dicom::{parser::TransferSyntax, writer};
+    if args.len() < 2 {
+        return Err(
+            "dicomwrite: expected X, filename, optional scalar metadata and name/value options"
+                .into(),
+        );
+    }
+    // dicomwrite(X,cmap,filename): a numeric second argument before the filename.
+    if args.len() >= 3
+        && matches!(
+            &args[1],
+            Value::Matrix(_) | Value::Container(Array::Typed(_) | Array::Numeric(_))
+        )
+    {
+        return Err(
+            "dicomwrite: indexed images dicomwrite(X,cmap,filename) are not supported yet".into(),
+        );
+    }
+    let Value::Container(Array::Typed(pixels)) = &args[0] else {
+        let class = match &args[0] {
+            Value::Matrix(_) => "double",
+            Value::Logical(_) => "logical",
+            Value::Complex(_) => "complex double",
+            Value::Text(_) => "char",
+            Value::QuotedString(_) => "string",
+            Value::Container(array) => array.class(),
+            Value::Void => "empty",
+        };
+        return Err(format!(
+            "dicomwrite: X of class {class} is not supported; X must be int8, int16, uint8 or uint16"
+        ));
+    };
+    let filename = fl2_dicomwrite_text(engine, &args[1], "filename", 32768)?;
+    let path = engine.file_path(&filename, "")?;
+    let (metadata, start) = match args.get(2) {
+        Some(Value::Container(Array::Struct(m))) => (Some(m), 3),
+        Some(Value::Matrix(_) | Value::Logical(_) | Value::Complex(_)) => {
+            return Err("dicomwrite: metadata must be a scalar struct".into());
+        }
+        _ => (None, 2),
+    };
+    let options = args.get(start..).ok_or("dicomwrite: invalid arguments")?;
+    if options.len() % 2 != 0 {
+        return Err(
+            "dicomwrite: options must be name/value pairs; metadata must be a scalar struct".into(),
+        );
+    }
+    // TransferSyntax, explicit VR, little endian, copy mode, WritePrivate.
+    let mut transfer = None;
+    let (mut explicit, mut little, mut copy, mut private) = (None, None, None, None);
+    let mut seen: Vec<String> = Vec::new();
+    for pair in options.chunks_exact(2) {
+        let name = fl2_dicomwrite_text(engine, &pair[0], "option name", 128)?;
+        let key = name.to_ascii_lowercase();
+        if key == "dictionary" {
+            return Err("dicomwrite: Dictionary option is not supported yet; writer uses only the factory dictionary".into());
+        }
+        const OPTIONS: [&str; 10] = [
+            "transfersyntax",
+            "createmode",
+            "writeprivate",
+            "vr",
+            "endian",
+            "compressionmode",
+            "usemetadatabitdepths",
+            "multiframesinglefile",
+            "objecttype",
+            "sopclassuid",
+        ];
+        if !OPTIONS.contains(&key.as_str()) {
+            return Err(format!(
+                "dicomwrite: unsupported option '{name}'; supported options are TransferSyntax, CreateMode, WritePrivate, VR and Endian"
+            ));
+        }
+        if seen.contains(&key) {
+            return Err(format!("dicomwrite: duplicate {name} option"));
+        }
+        let logical = match &pair[1] {
+            Value::Logical(m) if m.len() == 1 => Some(m.data()[0] != 0),
+            Value::Matrix(m) if m.len() == 1 && matches!(m.data()[0], 0. | 1.) => {
+                Some(m.data()[0] == 1.)
+            }
+            _ => None,
+        };
+        let flag = |default: bool| -> Result<()> {
+            match logical {
+                Some(value) if value == default => Ok(()),
+                Some(value) => Err(format!(
+                    "dicomwrite: {name} {value} is not supported yet; only the default {default} is supported"
+                )),
+                None => Err(format!("dicomwrite: {name} must be a logical scalar")),
+            }
+        };
+        match key.as_str() {
+            "writeprivate" => {
+                private = Some(logical.ok_or("dicomwrite: WritePrivate must be a logical scalar")?);
+            }
+            // Documented defaults are accepted as no-ops; other values are not in this slice.
+            "usemetadatabitdepths" => flag(false)?,
+            "multiframesinglefile" => flag(true)?,
+            _ => {
+                let value = fl2_dicomwrite_text(engine, &pair[1], &name, 128)?;
+                let choice = value.to_ascii_lowercase();
+                match (key.as_str(), choice.as_str()) {
+                    ("transfersyntax", _) => transfer = Some(writer::syntax(&value)?),
+                    ("createmode", "create") => copy = Some(false),
+                    ("createmode", "copy") => copy = Some(true),
+                    ("vr", "explicit") => explicit = Some(true),
+                    ("vr", "implicit") => explicit = Some(false),
+                    ("endian", "ieee-le") => little = Some(true),
+                    ("endian", "ieee-be") => little = Some(false),
+                    ("compressionmode", "none")
+                    | ("objecttype", "secondary capture image storage")
+                    | ("sopclassuid", "1.2.840.10008.5.1.4.1.1.7") => {}
+                    ("createmode", _) => {
+                        return Err(format!(
+                            "dicomwrite: CreateMode must be 'create' or 'copy', not '{value}'"
+                        ));
+                    }
+                    ("vr", _) => {
+                        return Err(format!(
+                            "dicomwrite: VR must be 'implicit' or 'explicit', not '{value}'"
+                        ));
+                    }
+                    ("endian", _) => {
+                        return Err(format!(
+                            "dicomwrite: Endian must be 'ieee-le' or 'ieee-be', not '{value}'"
+                        ));
+                    }
+                    ("compressionmode", _) => {
+                        return Err(format!(
+                            "dicomwrite: CompressionMode '{value}' is not supported yet; only native (uncompressed) transfer syntaxes are written"
+                        ));
+                    }
+                    _ => {
+                        return Err(format!(
+                            "dicomwrite: {name} '{value}' is not supported yet; only Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7) is created, without IOD checks"
+                        ));
+                    }
+                }
+            }
+        }
+        seen.push(key);
+    }
+    // TransferSyntax overrides VR and Endian (MathWorks dicomwrite); the default
+    // here is explicit VR little endian.
+    let syntax = match (transfer, explicit.unwrap_or(true), little.unwrap_or(true)) {
+        (Some(syntax), _, _) => syntax,
+        (None, true, true) => TransferSyntax::ExplicitLittle,
+        (None, true, false) => TransferSyntax::ExplicitBig,
+        (None, false, true) => TransferSyntax::ImplicitLittle,
+        (None, false, false) => {
+            return Err("dicomwrite: VR 'implicit' with Endian 'ieee-be' is not a DICOM transfer syntax; use explicit VR for big endian".into());
+        }
+    };
+    let write_private = private.unwrap_or(false);
+    if engine.dicom_dictionary.is_custom() && !write_private {
+        return Err("dicomwrite: custom dictionary writing is not supported yet (it is read only for private-tag VRs with 'WritePrivate',true); reset with dicomdict('factory')".into());
+    }
+    let dictionary = engine.dicom_dictionary.clone();
+    let options = writer::Options {
+        syntax,
+        copy: copy.unwrap_or(false),
+        write_private,
+        dictionary: &dictionary,
+    };
+    let fixed_cost = filename
+        .len()
+        .checked_mul(8)
+        .and_then(|n| n.checked_add(4096))
+        .ok_or("dicomwrite: filename budget overflow")?;
+    let budget = super::limits::memory_bytes(&engine.limits)
+        .saturating_sub(engine.workspace_bytes())
+        .checked_sub(fixed_cost)
+        .ok_or("dicomwrite: insufficient memory budget")?;
+    let max_elements = super::limits::memory_units(&engine.limits);
+    let units = writer::admission(pixels, metadata, &options, budget, max_elements)?;
+    engine.charge(units)?;
+    let plan = writer::prepare(
+        pixels,
+        metadata,
+        &options,
+        budget,
+        max_elements,
+        &engine.cancel,
+    )?;
+    let bytes = writer::encode(&plan, &engine.cancel)?;
+    crate::files::atomic_write_with_cancel(&path, &bytes, &engine.cancel)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn fl2_dicomwrite(_engine: &mut Engine, _args: &[Value]) -> Result<()> {
+    Err(super::browser::NO_FILES.into())
+}
+
+fn fl2_dicomwrite_text(engine: &Engine, value: &Value, name: &str, limit: usize) -> Result<String> {
+    let error = format!(
+        "dicomwrite: {name} must be bounded character-vector or nonmissing string-scalar text"
+    );
+    let text = match value {
+        Value::Text(s) | Value::QuotedString(s) if s.len() <= limit => s.clone(),
+        Value::Container(Array::Character(c))
+            if c.is_text_row() && c.ndims() == 2 && c.bytes() <= limit * 2 =>
+        {
+            c.to_utf8(&engine.cancel)?
+        }
+        Value::Container(Array::Str(s)) if s.len() == 1 => s
+            .data()
+            .first()
+            .and_then(|v| v.as_ref())
+            .filter(|v| v.len() <= limit)
+            .map(|v| v.to_string())
+            .ok_or_else(|| error.clone())?,
+        _ => return Err(error),
+    };
+    if text.len() > limit || text.contains('\0') {
+        return Err(error);
+    }
+    Ok(text)
+}
+
+fn fl2_dicomread(engine: &mut Engine, args: &[Value]) -> Result<Value> {
+    if args.is_empty() {
+        return Err("dicomread: Not enough input arguments.".into());
+    }
+    let dictionary = fl2_dicom_dictionary(engine, &args[1..], "dicomread")?;
+    let (value, error) = match &args[0] {
+        Value::Container(Array::Struct(info)) => {
+            if info.len() != 1 {
+                return Err("dicomread: info must be a scalar struct with a text Filename".into());
+            }
+            let field = info
+                .field_index("Filename")
+                .ok_or("dicomread: info struct is missing Filename")?;
+            (
+                Value::Container(info.get(field, 0)?.as_ref().clone()),
+                "dicomread: info Filename must be a character vector or nonmissing string scalar",
+            )
+        }
+        value => (
+            value.clone(),
+            "dicomread: filename must be a character vector, nonmissing string scalar or scalar dicominfo struct",
+        ),
+    };
+    let value = match value {
+        Value::Container(Array::Str(s)) if s.len() == 1 => s.data()[0]
+            .as_ref()
+            .map(|s| Value::QuotedString(s.to_string()))
+            .ok_or(error)?,
+        value => value,
+    };
+    let filename = engine.fl2_name(&value, error)?;
+    let path = engine.fl2_resolve(&filename)?;
+    super::dicom::read(engine, &path, MAX_BYTES, &dictionary)
+        .map_err(|error| error.replace("dicominfo:", "dicomread:"))
+}
+
 fn fl2_read_limited(path: &Path, limit: u64) -> Result<Vec<u8>> {
     let file = fs::File::open(path).map_err(fl2_io)?;
     let length = file.metadata().map_err(fl2_io)?.len();
@@ -855,7 +1394,7 @@ impl Engine {
         if !fl2_handles(name) || self.contains_array(name) {
             return Ok(None);
         }
-        let args = self.function_arguments(expressions, None, out)?;
+        let args = self.fl2_arguments(name, expressions, out)?;
         if let Some(function) = self.resolve_function(name)? {
             return self
                 .invoke_function(function, args, count, None, out)
@@ -880,13 +1419,54 @@ impl Engine {
         if !fl2_handles(name) {
             return Ok(false);
         }
-        let args = self.function_arguments(expressions, None, out)?;
-        let mut values = self.fl2_run(name, &args, 0, out)?;
+        let args = self.fl2_arguments(name, expressions, out)?;
+        let mut values = if name == "volumeViewer" {
+            super::volume_viewer_app_hooks::open(self, &args, Some(expressions), 0)?
+        } else {
+            self.fl2_run(name, &args, 0, out)?
+        };
         if !values.is_empty() {
             let value = values.remove(0).array(&self.cancel)?;
             self.assign_workspace_array("ans", value, quiet, out)?;
         }
         Ok(true)
+    }
+
+    /// Call arguments; imwrite admits H-by-W-by-3 image data (no N-D guard).
+    fn fl2_arguments(
+        &mut self,
+        name: &str,
+        expressions: &[Expr],
+        out: &mut Execution,
+    ) -> Result<Vec<Value>> {
+        if matches!(
+            name,
+            "dicomlookup"
+                | "dicomdict"
+                | "dicominfo"
+                | "dicomBrowser"
+                | "volumeViewer"
+                | "pdeModeler"
+                | "dicomCollection"
+                | "dicomread"
+                | "dicomwrite"
+        ) {
+            // These handlers validate their own input classes, dimensions and options.
+            return self.function_arguments(expressions, None, out);
+        }
+        if name != "imwrite" {
+            return super::string_class::arguments(self, name, expressions, out);
+        }
+        let args = self.function_arguments(expressions, None, out)?;
+        if self.resolve_function(name)?.is_none() {
+            if args.iter().any(super::string_class::is_string) {
+                super::string_class::guard(name, &args)?;
+            }
+            if args.iter().skip(1).any(Value::is_nd) {
+                super::nd::guard(name, &args[1..])?;
+            }
+        }
+        Ok(args)
     }
 
     fn fl2_run(
@@ -898,18 +1478,50 @@ impl Engine {
     ) -> Result<Vec<Value>> {
         self.check_cancel()?;
         let max = match name {
-            "imwrite" | "audiowrite" => 0,
+            "imwrite" | "audiowrite" | "dicomwrite" | "dicomBrowser" => 0,
             "imread" | "importdata" | "fileattrib" => 3,
-            "audioread" => 2,
+            "audioread" | "dicomlookup" => 2,
             _ => 1,
         };
         if nargout > max {
+            if name == "dicomwrite" {
+                return Err(
+                    "dicomwrite: statement-only; status/output arguments are not supported yet"
+                        .into(),
+                );
+            }
+            if name == "dicomread" {
+                return Err("dicomread: only one output is supported; auxiliary outputs are not supported yet".into());
+            }
             return Err("Too many output arguments.".into());
         }
         match name {
+            "implay" => super::implay::open(self, args, nargout),
+            "registrationEstimator" => super::regest_app_hooks::open(self, args, nargout),
+            "cameraCalibrator" => super::camcal_app_hooks::open(self, args, nargout),
+            "volumeViewer" => super::volume_viewer_app_hooks::open(self, args, None, nargout),
+            "pdeModeler" => super::pde_modeler_app_hooks::open(self, args, nargout),
+            "VideoWriter" | "open" | "writeVideo" | "VideoReader" | "hasFrame" | "readFrame"
+            | "read" => self
+                .obj_call(name, args, out)?
+                .map(|v| {
+                    if matches!(v, Value::Void) {
+                        Vec::new()
+                    } else {
+                        vec![v]
+                    }
+                })
+                .ok_or_else(|| format!("{name}: expected a video handle object")),
             "imwrite" => self.fl2_imwrite(args).map(|()| Vec::new()),
             "imread" => self.fl2_imread(args, nargout),
             "imfinfo" => self.fl2_imfinfo(args, out).map(|v| vec![v]),
+            "dicomlookup" => fl2_dicomlookup(self, args),
+            "dicomdict" => fl2_dicomdict(self, args, nargout),
+            "dicomBrowser" => fl2_dicom_browser(self, args).map(|()| Vec::new()),
+            "dicominfo" => fl2_dicominfo(self, args).map(|v| vec![v]),
+            "dicomCollection" => fl2_dicom_collection(self, args, out).map(|v| vec![v]),
+            "dicomread" => fl2_dicomread(self, args).map(|v| vec![v]),
+            "dicomwrite" => fl2_dicomwrite(self, args).map(|()| Vec::new()),
             "audiowrite" => self.fl2_audiowrite(args, out).map(|()| Vec::new()),
             "audioread" => self.fl2_audioread(args),
             "audioinfo" => self.fl2_audioinfo(args).map(|v| vec![v]),
@@ -1082,22 +1694,23 @@ impl Engine {
                 .ok_or("Parameter names must be character vectors.")?;
             pairs.push((key, &pair[1]));
         }
+        if super::image_basic::codecs::handles(format) {
+            let path = self.fl2_resolve(&filename)?;
+            let bytes = super::image_basic::codecs::write(self, &args[0], map, format, &pairs)?;
+            return self.fl2_write_file(&path, &bytes);
+        }
         if format != "png" {
-            if format == "jpg"
-                && let Some((_, value)) = pairs
-                    .iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case("Quality"))
-            {
-                let quality = fl2_data(value, &self.cancel)?;
-                if quality.reals.len() != 1 || quality.reals[0] > 100. {
-                    return Err("Expected QUALITY to be a scalar with value <= 100.".into());
-                }
-            }
             return Err(format!(
-                "imwrite: {} files are not supported yet; only PNG images can be written",
+                "imwrite: {} files are not supported yet; only PNG, JPEG, BMP and TIFF images can be written",
                 format.to_ascii_uppercase()
             ));
         }
+        // Grayscale/indexed M-by-N or truecolor M-by-N-by-3.
+        let channels = match *args[0].dims() {
+            [_, _] => 1,
+            [_, _, 3] => 3,
+            _ => return Err("PNG image data must be either MxN or MxNx3.".into()),
+        };
         let data = fl2_data(&args[0], &self.cancel)?;
         if !matches!(
             data.class,
@@ -1146,25 +1759,31 @@ impl Engine {
             }
         }
         let path = self.fl2_resolve(&filename)?;
-        let bytes = self.fl2_png_encode(&data, map, depth, alpha.as_ref(), &texts)?;
+        let bytes = self.fl2_png_encode(&data, channels, map, depth, alpha.as_ref(), &texts)?;
         self.fl2_write_file(&path, &bytes)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn fl2_png_encode(
         &self,
         data: &Fl2Data,
+        channels: usize,
         map: Option<&Value>,
         depth: Option<f64>,
         alpha: Option<&Fl2Data>,
         texts: &[(String, String)],
     ) -> Result<Vec<u8>> {
-        let (rows, cols) = (data.rows, data.cols);
+        // Folded storage: an M-by-N-by-3 array has 3N columns.
+        let (rows, cols) = (data.rows, data.cols / channels);
         let mut palette = Vec::new();
         let color: u8;
         let bit_depth: u32;
         // Integer levels per pixel per channel, row-major.
         let mut levels: Vec<u16> = Vec::with_capacity(rows * cols * 2);
         if let Some(map) = map {
+            if channels != 1 {
+                return Err("imwrite: an indexed image with a colormap must be 2-D".into());
+            }
             let map = fl2_data(map, &self.cancel)?;
             if map.cols != 3 || map.rows == 0 || map.rows > 256 {
                 return Err("The colormap must be a 1x3 to 256x3 array.".into());
@@ -1214,6 +1833,10 @@ impl Engine {
             };
             bit_depth = match depth {
                 None => default,
+                Some(d) if channels == 3 && [8., 16.].contains(&d) => d as u32,
+                Some(_) if channels == 3 => {
+                    return Err("Invalid bitdepth for RGB image; must be 8 or 16.".into());
+                }
                 Some(d) if alpha.is_none() && [1., 2., 4., 8., 16.].contains(&d) => d as u32,
                 Some(d) if alpha.is_some() && [8., 16.].contains(&d) => d as u32,
                 Some(_) if alpha.is_some() => {
@@ -1227,7 +1850,7 @@ impl Engine {
                     );
                 }
             };
-            let bit_depth = if alpha.is_some() && bit_depth < 8 {
+            let bit_depth = if (alpha.is_some() || channels == 3) && bit_depth < 8 {
                 8
             } else {
                 bit_depth
@@ -1254,10 +1877,18 @@ impl Engine {
             {
                 return Err("The alpha data must be the same size as the image.".into());
             }
-            color = if alpha.is_some() { 4 } else { 0 };
+            color = match (channels, alpha.is_some()) {
+                (3, true) => 6,
+                (3, false) => 2,
+                (_, true) => 4,
+                (_, false) => 0,
+            };
+            let plane = rows * cols;
             for r in 0..rows {
                 for c in 0..cols {
-                    levels.push(level(data.class, data.reals[c * rows + r]));
+                    for k in 0..channels {
+                        levels.push(level(data.class, data.reals[k * plane + c * rows + r]));
+                    }
                     if let Some(a) = alpha {
                         levels.push(level(a.class, a.reals[c * rows + r]));
                     }
@@ -1388,11 +2019,12 @@ impl Engine {
                 format!("Could not find format \"{f}\" in format registry.")
             });
         }
-        let mut path = self.fl2_resolve(&filename)?;
+        let mut path = self.files_read_path(&filename, "")?;
         if !path.is_file()
+            && crate::files::read_fallback::can_append_suffix(&filename)
             && let Some(f) = &format
         {
-            let candidate = self.fl2_resolve(&format!("{filename}.{f}"))?;
+            let candidate = self.files_read_path(&format!("{filename}.{f}"), "")?;
             if candidate.is_file() {
                 path = candidate;
             }
@@ -1415,8 +2047,9 @@ impl Engine {
         }
         match detected {
             Some("png") => Ok((path, bytes)),
+            Some(other) if super::image_basic::codecs::handles(other) => Ok((path, bytes)),
             Some(other) => Err(format!(
-                "{} images are not supported yet; only PNG images can be read",
+                "{} images are not supported yet; only PNG, JPEG, BMP and TIFF images can be read",
                 other.to_ascii_uppercase()
             )),
             None => Err(unknown.into()),
@@ -1436,6 +2069,9 @@ impl Engine {
             self.fl2_open_image(args, "Unable to determine the file format.", |name| {
                 format!("File \"{name}\" does not exist.")
             })?;
+        if let Some(format) = Self::fl2_sniff(&bytes).filter(|f| *f != "png") {
+            return super::image_basic::codecs::read(self, &bytes, format, nargout.max(1));
+        }
         let png = fl2_png_decode(&bytes, true, &self.cancel)?;
         self.fl2_png_values(&png, nargout.max(1))
     }
@@ -1443,9 +2079,9 @@ impl Engine {
     fn fl2_png_values(&self, png: &Fl2Png, count: usize) -> Result<Vec<Value>> {
         let (rows, cols) = (png.height, png.width);
         let channels = fl2_png_channels(png.color);
-        if matches!(png.color, 2 | 6) {
-            return Err("Truecolor PNG images need N-D arrays, which are not supported yet".into());
-        }
+        // Truecolor (2) and truecolor with alpha (6) give M-by-N-by-3 arrays.
+        let truecolor = matches!(png.color, 2 | 6);
+        Matrix::checked_len(rows, cols * if truecolor { 3 } else { 1 })?;
         let n = rows * cols;
         let column_major = |channel: usize| -> Vec<u16> {
             let mut v = Vec::with_capacity(n);
@@ -1456,8 +2092,16 @@ impl Engine {
             }
             v
         };
-        let gray = column_major(0);
+        let gray = if truecolor {
+            let mut v = column_major(0);
+            v.extend(column_major(1));
+            v.extend(column_major(2));
+            v
+        } else {
+            column_major(0)
+        };
         let image = |levels: Vec<u16>| -> Result<Value> {
+            let planes = levels.len() / n;
             Ok(match (png.color, png.depth) {
                 (0, 1) => Value::Logical(LogicalMatrix::from_column_vec(
                     rows,
@@ -1465,18 +2109,24 @@ impl Engine {
                     levels.into_iter().map(|v| v as u8).collect(),
                     &self.cancel,
                 )?),
-                (_, 16) => Value::Container(Array::Typed(TypedArray::from_ints(
-                    NumericClass::Uint16,
-                    rows,
-                    cols,
-                    levels.into_iter().map(i128::from),
-                )?)),
-                (3, _) | (_, 8) => Value::Container(Array::Typed(TypedArray::from_ints(
-                    NumericClass::Uint8,
-                    rows,
-                    cols,
-                    levels.into_iter().map(i128::from),
-                )?)),
+                (_, 16) => Value::Container(Array::Typed(
+                    TypedArray::from_ints(
+                        NumericClass::Uint16,
+                        rows,
+                        cols * planes,
+                        levels.into_iter().map(i128::from),
+                    )?
+                    .with_dims(&[rows, cols, planes])?,
+                )),
+                (3, _) | (_, 8) => Value::Container(Array::Typed(
+                    TypedArray::from_ints(
+                        NumericClass::Uint8,
+                        rows,
+                        cols * planes,
+                        levels.into_iter().map(i128::from),
+                    )?
+                    .with_dims(&[rows, cols, planes])?,
+                )),
                 (_, depth) => {
                     let scale = 255 / ((1u16 << depth) - 1);
                     Value::Container(Array::Typed(TypedArray::from_ints(
@@ -1504,8 +2154,8 @@ impl Engine {
             });
         }
         if count >= 3 {
-            values.push(if png.color == 4 {
-                image(column_major(1))?
+            values.push(if matches!(png.color, 4 | 6) {
+                image(column_major(channels - 1))?
             } else {
                 fl2_empty()
             });
@@ -1522,6 +2172,19 @@ impl Engine {
             self.fl2_open_image(args, "Unable to determine file format.", |name| {
                 format!("Unable to open file \"{name}\" for reading.")
             })?;
+        if let Some(format) = Self::fl2_sniff(&bytes).filter(|f| *f != "png") {
+            let date = self.fl2_mod_date(&path, out)?;
+            let (names, values) = super::image_basic::codecs::info(self, &bytes, format)?;
+            let mut fields = vec!["Filename", "FileModDate", "FileSize"];
+            fields.extend(names);
+            let mut all = vec![
+                fl2_str(super::env_files::envx_path_text(&path)),
+                date,
+                fl2_num(bytes.len() as f64),
+            ];
+            all.extend(values);
+            return self.fl2_struct(&fields, all);
+        }
         let png = fl2_png_decode(&bytes, false, &self.cancel)?;
         let date = self.fl2_mod_date(&path, out)?;
         let bit_depth = match png.color {
@@ -1878,7 +2541,7 @@ impl Engine {
 
     fn fl2_open_audio(&self, value: &Value) -> Result<(PathBuf, Fl2Wav)> {
         let filename = self.fl2_name(value, "The filename must be a character vector.")?;
-        let path = self.fl2_resolve(&filename)?;
+        let path = self.files_read_path(&filename, "")?;
         if !path.is_file() {
             return Err("File not found.".into());
         }
@@ -2042,7 +2705,7 @@ impl Engine {
         if filename == "-pastespecial" {
             return Err("importdata('-pastespecial') is not supported".into());
         }
-        let path = self.fl2_resolve(&filename)?;
+        let path = self.files_read_path(&filename, "")?;
         if !path.is_file() {
             return Err("Unable to open file.".into());
         }

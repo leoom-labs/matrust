@@ -104,16 +104,13 @@ fn invalid_calls_and_stop_preserve_destination_input_and_figure_then_retry() {
     for source in [
         "result=isempty();",
         "result=isempty(A,A);",
-        "result=isempty(\"unsupported string\");",
         "result=isempty(h,A);",
     ] {
         let error = engine.execute(source).unwrap_err();
-        if !source.contains("unsupported string") {
-            assert!(
-                error.contains("exactly one array input"),
-                "{source}: {error}"
-            );
-        }
+        assert!(
+            error.contains("exactly one array input"),
+            "{source}: {error}"
+        );
         for (name, value) in &before {
             assert!(
                 engine.array(name).unwrap().same_snapshot(value),
@@ -159,4 +156,15 @@ fn local_and_file_function_resolution_keep_precedence_over_builtin() {
     file.set_function_directory(directory.path()).unwrap();
     file.execute("out=isempty([]);").unwrap();
     assert_eq!(file.variables["out"].data(), &[42.]);
+}
+
+#[test]
+fn string_scalar_is_one_element_even_when_its_text_is_empty() {
+    let mut engine = Engine::default();
+    engine
+        .execute(r#"a=isempty("text"); b=isempty(""); c=isempty(strings(0,0));"#)
+        .unwrap();
+    assert_eq!(engine.logical_variables["a"].data(), &[0]);
+    assert_eq!(engine.logical_variables["b"].data(), &[0]);
+    assert_eq!(engine.logical_variables["c"].data(), &[1]);
 }

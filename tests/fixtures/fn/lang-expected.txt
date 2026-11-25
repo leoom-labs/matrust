@@ -191,7 +191,7 @@ x =
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]

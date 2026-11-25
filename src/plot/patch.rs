@@ -3,7 +3,145 @@ use super::{AxisTransform, Matrix, PlotKind, Result, Series};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub const MAX_PATCH_FACES: usize = 10_000;
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum IndexedColor {
+    Rgb([u8; 3]),
+    Flat,
+    Interp,
+    None,
+}
+
+impl IndexedColor {
+    pub fn mapped(self) -> bool {
+        matches!(self, Self::Flat | Self::Interp)
+    }
+}
+
+/// Shared input matrices for a live indexed Patch. The renderer uses the
+/// expanded face stream, as it does for other 3-D patches.
+#[derive(Clone, Debug)]
+pub struct IndexedPatch {
+    pub faces: Matrix,
+    pub vertices: Matrix,
+    pub colors: Option<Matrix>,
+    pub normals: Option<Matrix>,
+    pub face_color: IndexedColor,
+    pub color_range: Option<[f64; 2]>,
+    pub mapped_with: Option<MappedWith>,
+}
+
+/// Colormap and colour limits an indexed patch's colours were last mapped with.
+pub type MappedWith = (std::sync::Arc<Vec<[f64; 3]>>, [f64; 2]);
+
+impl IndexedPatch {
+    /// Expand each connectivity row in corner order after the figure budget check.
+    pub(crate) fn expand(
+        &self,
+        mut checkpoint: impl FnMut() -> Result<()>,
+    ) -> Result<(Vec<[f64; 2]>, Vec<f64>)> {
+        let (faces, vertices) = (&self.faces, &self.vertices);
+        let has_z = vertices.cols() == 3;
+        let mut points = Vec::with_capacity(faces.len());
+        let mut z = Vec::with_capacity(if has_z { faces.len() } else { 0 });
+        for row in 0..faces.rows() {
+            if row.is_multiple_of(4096) {
+                checkpoint()?;
+            }
+            for col in 0..faces.cols() {
+                let index = faces.get(row, col);
+                if !(1. ..=vertices.rows() as f64).contains(&index) || index.fract() != 0. {
+                    return Err(
+                        "Patch Faces must contain valid one-based indices into Vertices".into(),
+                    );
+                }
+                let vertex = index as usize - 1;
+                let xy = [vertices.get(vertex, 0), vertices.get(vertex, 1)];
+                if !xy.iter().all(|p| p.is_finite()) {
+                    return Err("Indexed patch vertices must be finite".into());
+                }
+                points.push(xy);
+                if has_z {
+                    let value = vertices.get(vertex, 2);
+                    if !value.is_finite() {
+                        return Err("Indexed patch vertices must be finite".into());
+                    }
+                    z.push(value);
+                }
+            }
+        }
+        Ok((points, z))
+    }
+    pub(crate) fn geometry_cost(
+        &self,
+        expanded: super::coordinates::GeometryCost,
+        z_len: usize,
+    ) -> Result<super::coordinates::GeometryCost> {
+        let color_count = if self.face_color.mapped() && self.colors.is_some() {
+            self.faces.rows()
+        } else {
+            0
+        };
+        let bytes = self.faces.retained_bytes()
+            + self.vertices.retained_bytes()
+            + self.colors.as_ref().map_or(0, Matrix::retained_bytes)
+            + self.normals.as_ref().map_or(0, Matrix::retained_bytes)
+            + z_len * 8
+            + color_count * 3;
+        expanded.with_additional_storage(bytes)
+    }
+}
+
+/// Patch faces one figure holds in total (surf/mesh quads count one each).
+pub const MAX_PATCH_FACES: usize = 100_000;
+/// Faces of low-level `patch` objects (and their figure budget): the bound
+/// they had before surfaces raised the figure cap.
+pub const MAX_PATCH_OBJECT_FACES: usize = 10_000;
+
+/// Draw style shared by the faces one surface contributes to a merged,
+/// depth-sorted draw list (display copy only, never saved).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FaceStyle {
+    /// Fill opacity (FaceAlpha); None is opaque, 0 draws no fill.
+    pub alpha: Option<f64>,
+    /// Whether the faces draw an outline (EdgeColor other than 'none').
+    pub outline: bool,
+    pub edge_width: f32,
+    pub pattern: super::LinePattern,
+}
+impl FaceStyle {
+    pub fn of(series: &Series) -> Self {
+        // An indexed mesh hides its fill with `face_color_none` and keeps the
+        // requested FaceAlpha. The draw style uses alpha 0 so a merged neighbor
+        // list does not paint that mesh. Positional patches are unchanged.
+        let alpha = if series.face_color_none && series.indexed_patch.is_some() {
+            Some(0.)
+        } else {
+            series.face_alpha
+        };
+        Self {
+            alpha,
+            outline: series.face_edge_color.is_some() || series.face_edge_colors.is_some(),
+            edge_width: series.face_edge_width(),
+            pattern: series.pattern,
+        }
+    }
+}
+/// Per-face styles of a merged surface draw list: face k is drawn with
+/// `styles[owner[k]]` (one style per contributing surface, at most 64).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FaceStyles {
+    styles: Vec<FaceStyle>,
+    owner: Vec<u8>,
+}
+impl FaceStyles {
+    pub fn new(styles: Vec<FaceStyle>, owner: Vec<u8>) -> Self {
+        Self { styles, owner }
+    }
+    pub fn get(&self, face: usize) -> Option<FaceStyle> {
+        let k = *self.owner.get(face)?;
+        self.styles.get(usize::from(k)).copied()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,7 +167,9 @@ impl PatchFaces {
         }
         let count = vertices / width;
         if count > MAX_PATCH_FACES {
-            return Err("Patch exceeds 10000 faces".into());
+            return Err(format!(
+                "Patch exceeds {MAX_PATCH_FACES} faces (a figure holds at most {MAX_PATCH_FACES} patch faces)"
+            ));
         }
         Ok(count)
     }
@@ -71,14 +211,20 @@ impl Series {
             color,
             cancel,
             super::coordinates::GeometryLedger::default(),
+            0,
         )
     }
+    /// `ledger` is the figure's (every series, figure-wide caps);
+    /// `object_faces` the general faces the figure's low-level `patch`
+    /// objects already hold (surfaces and contourf bands excluded), checked
+    /// against the [`MAX_PATCH_OBJECT_FACES`] patch-object bound.
     pub(crate) fn patch_from_matrices_with_ledger(
         x: &Matrix,
         y: &Matrix,
         color: [u8; 3],
         cancel: &AtomicBool,
         mut ledger: super::coordinates::GeometryLedger,
+        object_faces: usize,
     ) -> Result<Self> {
         if cancel.load(Ordering::Relaxed) {
             return Err("Cancelled".into());
@@ -87,6 +233,9 @@ impl Series {
             return Err(
                 "Patch XData and YData must have equal three-by-N or four-by-N shape".into(),
             );
+        }
+        if x.cols() > MAX_PATCH_OBJECT_FACES {
+            return Err(format!("Patch exceeds {MAX_PATCH_OBJECT_FACES} faces"));
         }
         // Facts are optional: an ineligible descriptor or derived finite-bit
         // mismatch takes the original dense path. Stop is never swallowed.
@@ -115,6 +264,11 @@ impl Series {
             }
             return Ok(series);
         }
+        if object_faces.saturating_add(x.cols()) > MAX_PATCH_OBJECT_FACES {
+            return Err(format!(
+                "Patch face budget exceeds {MAX_PATCH_OBJECT_FACES} faces for patch objects in one figure"
+            ));
+        }
         ledger.add(super::coordinates::GeometryCost::dense_face_allocation(
             x.len(),
             x.rows(),
@@ -135,6 +289,45 @@ impl Series {
     }
 
     pub(crate) fn validate_patch(&self) -> Result<()> {
+        if self.patch_cdata.is_some_and(|v| !v.is_finite()) {
+            return Err("Patch CData must be finite".into());
+        }
+        if self.patch_cdata.is_some() && self.kind != PlotKind::Patch {
+            return Err("Scalar patch CData belongs only to Patch series".into());
+        }
+        if let Some(vertex) = &self.patch_vertex_cdata
+            && (self.kind != PlotKind::Patch
+                || self.patch_cdata.is_some()
+                || self.patch.map(|p| p.vertices_per_face()) != Some(3)
+                || vertex.corners.len() != self.points.len()
+                || vertex.source.iter().any(|v| !v.is_finite())
+                || vertex
+                    .corners
+                    .iter()
+                    .any(|&i| i as usize >= vertex.source.len()))
+        {
+            return Err("Invalid per-vertex Patch CData".into());
+        }
+        if let Some(level) = self.slice_contour_level {
+            if self.kind != PlotKind::Patch
+                || self.patch.is_some()
+                || self.points.patch().is_some()
+                || self.points.len() < 2
+                || !self.is_3d()
+                || !level.is_finite()
+                || self.face_colors.is_some()
+                || self.face_edge_colors.is_some()
+                || self.face_alpha.is_some()
+                || self.face_edge_color.is_some()
+                || self.markers
+                || self.marker_shape.is_some()
+                || self.marker_size.is_some()
+                || self.marker_filled
+            {
+                return Err("Invalid contourslice patch".into());
+            }
+            return Ok(());
+        }
         match (self.kind, self.patch) {
             (PlotKind::Patch, Some(faces)) => {
                 if self.markers
@@ -151,6 +344,11 @@ impl Series {
                 }
                 let width = faces.vertices_per_face();
                 let count = faces.face_count(self.points.len())?;
+                self.validate_face_style(count)?;
+                // Surface quads (with z) are general quadrilaterals.
+                if self.is_3d() {
+                    return Ok(());
+                }
                 for face in 0..count {
                     let mut corners = [[0.0; 2]; 4];
                     for (corner, value) in corners[..width].iter_mut().enumerate() {
@@ -166,11 +364,90 @@ impl Series {
             (PlotKind::Patch, None) | (_, Some(_)) => {
                 Err("Patch geometry and series kind disagree".into())
             }
+            (PlotKind::Bar, None) => {
+                if self.face_edge_colors.is_some() {
+                    return Err("Per-face edge colours belong only to Patch series".into());
+                }
+                self.validate_face_style(self.points.len())?;
+                if self.points.patch().is_some() {
+                    return Err("Stored Patch coordinates require Patch kind".into());
+                }
+                Ok(())
+            }
+            (_, None)
+                if self.face_colors.is_some()
+                    || self.face_edge_colors.is_some()
+                    || self.face_alpha.is_some()
+                    || self.face_color_none
+                    || self.edge_alpha.is_some() =>
+            {
+                Err("Per-face colours and FaceAlpha belong only to Patch or Bar series".into())
+            }
             (_, None) if self.points.patch().is_some() => {
                 Err("Stored Patch coordinates require Patch kind".into())
             }
             (_, None) => Ok(()),
         }
+    }
+
+    /// Per-face colour lists hold one colour per face; FaceAlpha is in 0..=1.
+    pub(crate) fn validate_face_style(&self, faces: usize) -> Result<()> {
+        for list in [&self.face_colors, &self.face_edge_colors]
+            .into_iter()
+            .flatten()
+        {
+            if list.len() != faces {
+                return Err("Per-face colour list length differs from the face count".into());
+            }
+        }
+        let bad_alpha =
+            |a: Option<f64>| a.is_some_and(|a| !a.is_finite() || !(0. ..=1.).contains(&a));
+        if bad_alpha(self.face_alpha) {
+            return Err("FaceAlpha must be a scalar in 0..1".into());
+        }
+        if bad_alpha(self.edge_alpha) {
+            return Err("EdgeAlpha must be a scalar in 0..1".into());
+        }
+        if let Some(table) = &self.face_styles
+            && (table.owner.len() != faces
+                || table.styles.len() > usize::from(u8::MAX) + 1
+                || table
+                    .owner
+                    .iter()
+                    .any(|&k| usize::from(k) >= table.styles.len())
+                || table.styles.iter().any(|s| bad_alpha(s.alpha)))
+        {
+            return Err("Per-face style list differs from the face count".into());
+        }
+        Ok(())
+    }
+    /// Fill colour of face `index`: its own colour when the series has a list.
+    pub fn face_fill_color(&self, index: usize) -> Option<[u8; 3]> {
+        self.face_colors
+            .as_ref()
+            .and_then(|c| c.get(index).copied())
+    }
+    /// Edge colour of face `index`, None when the face has no outline.
+    pub fn face_outline_color(&self, index: usize) -> Option<[u8; 3]> {
+        if !self.face_style(index).outline {
+            return None;
+        }
+        match &self.face_edge_colors {
+            Some(list) => list.get(index).copied(),
+            None => self.face_edge_color,
+        }
+    }
+    /// Draw style of face `index`: its own entry of a merged surface draw
+    /// list, else the series' style.
+    pub fn face_style(&self, index: usize) -> FaceStyle {
+        self.face_styles
+            .as_ref()
+            .and_then(|t| t.get(index))
+            .unwrap_or_else(|| FaceStyle::of(self))
+    }
+    /// Whether any face of this series draws an outline.
+    pub fn has_face_outline(&self) -> bool {
+        self.face_edge_color.is_some() || self.face_edge_colors.is_some()
     }
 
     /// Whole-face eligibility: partial missing polygons never affect fill/bounds.
@@ -434,9 +711,201 @@ pub fn patch_screen_point(point: [f64; 2], bounds: [f64; 4], frame: [f64; 4]) ->
     ]
 }
 
+/// Per-vertex scalar CData of a positional fill/patch drawn with FaceColor
+/// 'interp'. `source` keeps the caller's values (including a closing vertex);
+/// `corners` maps each rendered triangle-stream point to its source vertex.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VertexCData {
+    pub source: std::sync::Arc<[f64]>,
+    pub corners: std::sync::Arc<[u32]>,
+}
+
+impl VertexCData {
+    /// Values of the three corners of rendered triangle `face`.
+    pub fn triangle(&self, face: usize) -> Option<[f64; 3]> {
+        let mut out = [0.; 3];
+        for (k, v) in out.iter_mut().enumerate() {
+            let i = *self.corners.get(face * 3 + k)? as usize;
+            *v = *self.source.get(i)?;
+        }
+        Some(out)
+    }
+}
+
+/// Bands one interpolated triangle may draw when it is alone in a series.
+pub const MAX_INTERP_BANDS: usize = 256;
+/// Bands one interpolated series draws in total (each triangle gets a share).
+pub const MAX_INTERP_SERIES_BANDS: usize = 65_536;
+
+/// Per-triangle band limit for a series of `faces` interpolated triangles.
+pub fn interp_band_limit(faces: usize) -> usize {
+    (MAX_INTERP_SERIES_BANDS / faces.max(1)).clamp(1, MAX_INTERP_BANDS)
+}
+
+/// Fill one triangle whose scalar CData varies linearly between its corners.
+/// The scalar is interpolated across the face, then mapped through the
+/// colormap with the CDataMapping 'scaled' row rule (`colormap::scaled_rgb`).
+/// Rows are therefore constant over bands between iso-value lines; each band
+/// is a convex polygon clipped to `bounds` (display-data coordinates), emitted
+/// with its row colour. At most `max_bands` bands are emitted; when a triangle
+/// crosses more rows, adjacent rows merge and take their middle row's colour.
+pub fn interp_triangle_bands(
+    tri: [[f64; 2]; 3],
+    values: [f64; 3],
+    bounds: [f64; 4],
+    map: &[[f64; 3]],
+    clim: [f64; 2],
+    max_bands: usize,
+    mut emit: impl FnMut(&[[f64; 2]], [u8; 3]),
+) {
+    let clipped = clip_patch_face(&tri, bounds);
+    if clipped.points().len() < 3 || values.iter().any(|v| !v.is_finite()) {
+        return;
+    }
+    // Affine c(p) = c0 + g . (p - p0), solved in coordinates relative to p0.
+    let [p0, p1, p2] = tri;
+    let (ux, uy) = (p1[0] - p0[0], p1[1] - p0[1]);
+    let (vx, vy) = (p2[0] - p0[0], p2[1] - p0[1]);
+    let det = ux * vy - uy * vx;
+    let (d1, d2) = (values[1] - values[0], values[2] - values[0]);
+    let gradient = if det != 0. && det.is_finite() {
+        [(d1 * vy - d2 * uy) / det, (d2 * ux - d1 * vx) / det]
+    } else {
+        [0., 0.]
+    };
+    let value =
+        |p: [f64; 2]| values[0] + gradient[0] * (p[0] - p0[0]) + gradient[1] * (p[1] - p0[1]);
+    let m = map.len().max(1);
+    let span = clim[1] - clim[0];
+    let row = |v: f64| {
+        let t = (v - clim[0]) / span;
+        if t.is_nan() {
+            0
+        } else {
+            ((t * m as f64).floor().max(0.) as usize).min(m - 1)
+        }
+    };
+    let rgb = |r: usize| {
+        map.get(r)
+            .copied()
+            .unwrap_or([0.; 3])
+            .map(|c| (c * 255.).round() as u8)
+    };
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for &p in clipped.points() {
+        let v = value(p);
+        lo = lo.min(v);
+        hi = hi.max(v);
+    }
+    let (r0, r1) = (row(lo), row(hi));
+    if r0 == r1 || !lo.is_finite() || !hi.is_finite() {
+        emit(
+            clipped.points(),
+            rgb(row(value(tri_centroid(clipped.points())))),
+        );
+        return;
+    }
+    let step = (r1 - r0 + 1).div_ceil(max_bands.max(1));
+    let boundary = |r: usize| clim[0] + span * (r as f64 / m as f64);
+    let mut band: Vec<[f64; 2]> = Vec::with_capacity(12);
+    let mut scratch: Vec<[f64; 2]> = Vec::with_capacity(12);
+    let mut r = r0;
+    while r <= r1 {
+        let next = r + step;
+        band.clear();
+        band.extend_from_slice(clipped.points());
+        if r > r0 {
+            clip_half_plane(&band, &mut scratch, |p| value(p) - boundary(r));
+            std::mem::swap(&mut band, &mut scratch);
+        }
+        if next <= r1 {
+            clip_half_plane(&band, &mut scratch, |p| boundary(next) - value(p));
+            std::mem::swap(&mut band, &mut scratch);
+        }
+        if band.len() >= 3 {
+            emit(&band, rgb((r + (next.min(r1 + 1) - 1)) / 2));
+        }
+        r = next;
+    }
+}
+
+fn tri_centroid(points: &[[f64; 2]]) -> [f64; 2] {
+    let n = points.len().max(1) as f64;
+    let s = points
+        .iter()
+        .fold([0., 0.], |a, p| [a[0] + p[0], a[1] + p[1]]);
+    [s[0] / n, s[1] / n]
+}
+
+/// Keep the part of a convex polygon where `side(p) >= 0` (Sutherland-Hodgman).
+fn clip_half_plane(input: &[[f64; 2]], out: &mut Vec<[f64; 2]>, side: impl Fn([f64; 2]) -> f64) {
+    out.clear();
+    let n = input.len();
+    for i in 0..n {
+        let (a, b) = (input[i], input[(i + 1) % n]);
+        let (sa, sb) = (side(a), side(b));
+        if sa >= 0. {
+            out.push(a);
+        }
+        if (sa >= 0.) != (sb >= 0.) {
+            let t = sa / (sa - sb);
+            out.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn interp_bands_tile_the_triangle_and_respect_the_band_limit() {
+        let map: Vec<[f64; 3]> = (0..256).map(|k| [k as f64 / 255., 0., 0.]).collect();
+        let tri = [[0., 0.], [2., 0.], [0., 1.]];
+        let area = |p: &[[f64; 2]]| {
+            (0..p.len())
+                .map(|i| {
+                    let (a, b) = (p[i], p[(i + 1) % p.len()]);
+                    a[0] * b[1] - b[0] * a[1]
+                })
+                .sum::<f64>()
+                .abs()
+                / 2.
+        };
+        for (limit, expected) in [(256, 256), (8, 8), (1, 1)] {
+            let (mut count, mut total) = (0, 0.);
+            let mut reds = Vec::new();
+            interp_triangle_bands(
+                tri,
+                [0., 1., 0.],
+                [-1., 3., -1., 2.],
+                &map,
+                [0., 1.],
+                limit,
+                |band, rgb| {
+                    count += 1;
+                    total += area(band);
+                    reds.push(rgb[0]);
+                },
+            );
+            assert_eq!(count, expected);
+            assert!((total - 1.).abs() < 1e-12, "{total}");
+            assert!(reds.windows(2).all(|w| w[0] < w[1]) || expected == 1);
+        }
+        // Constant values draw one polygon of their row.
+        let mut rows = Vec::new();
+        interp_triangle_bands(
+            tri,
+            [0.5; 3],
+            [-1., 3., -1., 2.],
+            &map,
+            [0., 1.],
+            8,
+            |_, c| rows.push(c),
+        );
+        assert_eq!(rows, vec![[128, 0, 0]]);
+        assert_eq!(interp_band_limit(1), MAX_INTERP_BANDS);
+        assert_eq!(interp_band_limit(3000), MAX_INTERP_SERIES_BANDS / 3000);
+    }
     #[test]
     fn patch_geometry_cancellation_is_bounded_and_retry_preserves_payload() {
         let x = Matrix::from_column_vec(

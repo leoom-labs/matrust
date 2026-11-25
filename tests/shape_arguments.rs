@@ -99,18 +99,16 @@ fn shape_rejections_are_atomic_and_bounds_apply_even_to_empty_outputs() {
         "reshape(A,0,[])",
         "reshape(A,[6])",
         "reshape(A,[2;3])",
-        "reshape(A,1,1,[])",
         "reshape(A,[],2,0)",
         "reshape(A,-2,-3)",
         "reshape(A,1.5,4)",
         "reshape(A,NaN,2)",
         "reshape(A,Inf,2)",
-        "reshape([],0,16777217)",
+        "reshape([],0,50331649)",
         "reshape([],zeros(0,2),2)",
         "zeros([2;3])",
-        "ones([2 3 2])",
-        "zeros(-1,16777217)",
-        "ones(4097,4097)",
+        "zeros(-1,50331649)",
+        "ones(7095,7095)",
         "zeros(NaN,0)",
         "zeros(-Inf,0)",
         "zeros(-0.5,2)",
@@ -124,6 +122,9 @@ fn shape_rejections_are_atomic_and_bounds_apply_even_to_empty_outputs() {
         );
         assert_eq!(e.variables["saved"].data(), &[7.]);
     }
+    e.execute("X=reshape(A,1,1,[]); Y=ones([2 3 2]);").unwrap();
+    assert_eq!(e.array("X").unwrap().dims().as_ref(), &[1, 1, 6]);
+    assert_eq!(e.array("Y").unwrap().dims().as_ref(), &[2, 3, 2]);
     let too_many = vec!["1"; 33].join(",");
     assert!(e.execute(&format!("saved=zeros({too_many});")).is_err());
     assert_eq!(e.variables["saved"].data(), &[7.]);
@@ -181,4 +182,27 @@ fn exported_empty_series_data_fragment_executes_without_copy_or_shape_loss() {
         (e.variables["mr_y"].rows(), e.variables["mr_y"].cols()),
         (0, 2)
     );
+}
+
+#[test]
+fn nan_and_inf_constructors_take_size_class_and_like_arguments() {
+    let mut e = Engine::default();
+    e.execute("a = NaN(2,3); b = nan(2); c = Inf([1 4]); d = inf(0,3); f = NaN(2,2,'single'); g = Inf(1,2,'like',single(1)); h = NaN(2,3,2); k = -Inf(2,1); s = NaN; m = NaN(3,1,'double');").unwrap();
+    let shape = |e: &Engine, n: &str| {
+        let a = e.array(n).unwrap();
+        (a.rows(), a.cols())
+    };
+    assert_eq!(shape(&e, "a"), (2, 3));
+    assert!(e.variables["a"].data().iter().all(|v| v.is_nan()));
+    assert_eq!(shape(&e, "b"), (2, 2));
+    assert_eq!(e.variables["c"].data(), &[f64::INFINITY; 4]);
+    assert_eq!(shape(&e, "d"), (0, 3));
+    assert_eq!(e.array("f").unwrap().class(), "single");
+    assert_eq!(e.array("g").unwrap().class(), "single");
+    assert_eq!(e.variables["k"].data(), &[f64::NEG_INFINITY; 2]);
+    assert!(e.variables["s"].data()[0].is_nan());
+    assert_eq!(shape(&e, "m"), (3, 1));
+    e.execute("z = size(h);").unwrap();
+    assert_eq!(e.variables["z"].data(), &[2., 3., 2.]);
+    assert!(e.execute("x = NaN(2,'int8');").is_err());
 }

@@ -266,7 +266,7 @@ fn transforms_validate_resource_bounds_and_precancelled_noops() {
         assert!(a.diagonal(k, &c).is_err());
         assert!(a.triangular(k, true, &c).is_err());
     }
-    assert!(matrix(1, 4097, &vec![1.; 4097]).diagonal(0, &c).is_err());
+    assert!(matrix(1, 7095, &vec![1.; 7095]).diagonal(0, &c).is_err());
     assert!(
         Matrix::scalar(1.)
             .diagonal(MAX_ELEMENTS as i64, &c)
@@ -400,8 +400,8 @@ fn array_function_scripts_reject_unsupported_options_without_changing_inputs() {
         "R=flip(A,0);",
         "R=flip(A,-1);",
         "R=cumsum(A,1.5);",
-        "R=cumprod(A,'reverse');",
-        "R=cumsum(A,1,'omitnan');",
+        "R=cumprod(A,'reverse','forward');",
+        "R=cumsum(A,1,'unknown');",
         "R=flipud(A,2);",
         "R=triu(A,0,1);",
         "R=diag(logical(A));",

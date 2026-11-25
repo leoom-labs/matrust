@@ -4,6 +4,61 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum LegendOrientation {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+impl LegendOrientation {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "vertical" => Ok(Self::Vertical),
+            "horizontal" => Ok(Self::Horizontal),
+            _ => Err("Legend Orientation must be vertical or horizontal".into()),
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Vertical => "vertical",
+            Self::Horizontal => "horizontal",
+        }
+    }
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LegendBox {
+    #[default]
+    On,
+    Off,
+}
+impl LegendBox {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "on" => Ok(Self::On),
+            "off" => Ok(Self::Off),
+            _ => Err("Legend Box must be on or off".into()),
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::On => "on",
+            Self::Off => "off",
+        }
+    }
+    pub fn is_on(self) -> bool {
+        self == Self::On
+    }
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum LegendLocation {
     North,
     South,

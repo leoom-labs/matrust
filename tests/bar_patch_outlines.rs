@@ -117,12 +117,9 @@ fn mfig_outlines_require_new_capability_and_old_defaults_keep_old_bytes() {
         g.series[0].pattern = LinePattern::DashDot;
         g.series[0].line_width = Some(3.);
         if multi {
-            g.layout = Some(matrust::plot::Layout {
-                active: matrust::plot::Position::from_grid(1, 2, &[1]).unwrap(),
-                others: Vec::new(),
-                tiled: None,
-                title: String::new(),
-            });
+            g.layout = Some(matrust::plot::Layout::plain(
+                matrust::plot::Position::from_grid(1, 2, &[1]).unwrap(),
+            ));
         }
         files::save_figure(&path, &g).unwrap();
         let mut bytes = std::fs::read(&path).unwrap();

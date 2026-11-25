@@ -63,8 +63,6 @@ const HARNESS: &[(usize, &str)] = &[
     (51, ERROR_MESSAGE),
     (52, ERROR_MESSAGE),
     (53, ERROR_MESSAGE),
-    // Windows only, last digit: -0.300075221748571 for the reference's -0.300075221748570 (x(1,2) real part).
-    (54, LAST_DIGIT),
     (63, WARNING_LINE),
     (64, ERROR_MESSAGE),
     (71, ERROR_MESSAGE),
@@ -426,8 +424,8 @@ fn complex_svd_family_beyond_the_corpus() {
             "A is rectangular.  Use the 2 norm.",
         ),
         (
-            "[a, b] = svd([1i 2]);",
-            "svd does not support 2 outputs; use 1 or 3",
+            "[a, b, c, d] = svd([1i 2]);",
+            "svd does not support 4 outputs; use 1 to 3",
         ),
         ("x = expm([1i 2]);", "Expected input to be a square matrix."),
     ] {
@@ -502,4 +500,25 @@ fn complex_svd_family_survives_values_near_realmax() {
     truth(
         "s = svd([1e-310i 0; 0 1e-310]); x = abs(s(1)/1e-310 - 1) < 1e-9 && abs(s(2)/1e-310 - 1) < 1e-9;",
     );
+}
+
+/// [U, S] = svd(A) returns the first two outputs of [U, S, V] = svd(A)
+/// (GNU Octave 10.3: 3x2 input gives U 3x3, S 3x2; 'econ' gives 3x2, 2x2).
+/// matGeom fitPlane.m uses this form.
+#[test]
+fn svd_two_outputs_match_three_output_form() {
+    let mut engine = Engine::default();
+    engine
+        .execute(
+            "A = [2 1; 1 3; 0 1]; [U, S] = svd(A); [U3, S3, V3] = svd(A); \
+             [Ue, Se] = svd(A, 'econ'); [Uz, Sz] = svd(A, 0); \
+             C = [1i 2; 3 -1i]; [Uc, Sc] = svd(C); [Uc3, Sc3, Vc3] = svd(C); \
+             x = isequal(U, U3) && isequal(S, S3) && isequal(size(U), [3 3]) && isequal(size(S), [3 2]) \
+                 && isequal(size(Ue), [3 2]) && isequal(size(Se), [2 2]) && isequal(size(Uz), [3 2]) \
+                 && isequal(Uc, Uc3) && isequal(Sc, Sc3);",
+        )
+        .unwrap();
+    let x = engine.array("x").unwrap();
+    assert_eq!(x.class(), "logical");
+    assert!(format!("{x:?}").contains("data: [1]"), "{x:?}");
 }

@@ -223,7 +223,7 @@ fn quadx_gk(
             t.extend(
                 inner
                     .iter()
-                    .map(|w| 2. * (((lo + hi - 2. * w) / (lo - hi)).asin() / 3.).sin()),
+                    .map(|w| 2. * libm::sin(libm::asin((lo + hi - 2. * w) / (lo - hi)) / 3.)),
             );
             t.push(1.);
             (Map::Finite, t)

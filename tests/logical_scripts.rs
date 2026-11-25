@@ -58,12 +58,15 @@ fn script_comparison_precedence_short_circuit_and_types() {
         "R=[true false]&&true;",
         "R=[]&&true;",
         "R=logical(NaN);",
-        "R=[1 2]>[1;2];",
-        "R=true(1,2,3);",
+        "R=[1 2]>[1 2 3];",
         "R=1!=2;",
     ] {
         assert!(Engine::default().execute(s).is_err(), "{s}");
     }
+    // true(1,2,3) is a 1x2x3 logical array since the legacy N-D work.
+    let mut nd = Engine::default();
+    nd.execute("R=true(1,2,3);").unwrap();
+    assert_eq!(nd.array("R").unwrap().dims().as_ref(), &[1, 2, 3]);
 }
 
 #[test]
@@ -95,7 +98,7 @@ fn masks_select_values_in_column_major_order_and_preserve_vector_orientation() {
     );
     check(
         "A=[10 20 30 40];R=A(logical([1 0;0 1]));",
-        (2, 1),
+        (1, 2),
         false,
         &[10., 40.],
     );

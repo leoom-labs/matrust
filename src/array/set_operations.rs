@@ -1,7 +1,7 @@
 //! Borrowed vector sets. Serial production, bounded scratch, exact output counts.
-use super::sort::{check, compare, sort_lane};
+use super::sort::{Key, check, compare_keys as compare, keys_equal, sort_lane, typed_key};
 use crate::{
-    Array, LogicalMatrix, Matrix, Result,
+    Array, LogicalMatrix, Matrix, NumericClass, Result, TypedArray,
     array::{MissingPlacement, SortOrder, UniqueOrder},
 };
 use std::sync::atomic::AtomicBool;
@@ -45,16 +45,24 @@ fn checkpoint(cancel: &AtomicBool, phase: Phase) -> Result<()> {
 enum Values<'a> {
     Real(&'a [f64]),
     Logical(&'a [u8]),
+    Typed(&'a TypedArray),
 }
 impl Values<'_> {
-    fn get(self, i: usize) -> f64 {
+    fn key(self, i: usize) -> Key {
         match self {
-            Self::Real(a) => a[i],
-            Self::Logical(a) => f64::from(a[i]),
+            Self::Real(a) => Key::Real(a[i]),
+            Self::Logical(a) => Key::Real(f64::from(a[i])),
+            Self::Typed(a) => typed_key(a, i),
         }
     }
     fn logical(self) -> bool {
         matches!(self, Self::Logical(_))
+    }
+    fn class(self) -> Option<NumericClass> {
+        match self {
+            Self::Typed(a) => Some(a.class()),
+            _ => None,
+        }
     }
 }
 struct Inputs<'a> {
@@ -64,20 +72,70 @@ struct Inputs<'a> {
     nb: usize,
     row_a: bool,
     row_b: bool,
+    rows_mode: bool,
+    cols: usize,
 }
 impl Inputs<'_> {
-    fn read(&self, i: usize) -> f64 {
+    fn read(&self, i: usize) -> Key {
         if i < self.na {
-            self.a.get(i)
+            self.a.key(i)
         } else {
-            self.b.get(i - self.na)
+            self.b.key(i - self.na)
         }
     }
-    fn value(&self, r: Record) -> f64 {
-        if r.a != ABSENT {
-            self.a.get(r.a as usize)
+    fn read_at(&self, i: usize, col: usize) -> Key {
+        if !self.rows_mode {
+            return self.read(i);
+        }
+        if i < self.na {
+            self.a.key(col * self.na + i)
         } else {
-            self.b.get(r.b as usize)
+            self.b.key(col * self.nb + (i - self.na))
+        }
+    }
+    fn cmp_items(&self, i: usize, j: usize) -> std::cmp::Ordering {
+        if !self.rows_mode {
+            return compare(
+                self.read(i),
+                self.read(j),
+                SortOrder::Ascend,
+                MissingPlacement::Last,
+            );
+        }
+        for col in 0..self.cols {
+            let ord = compare(
+                self.read_at(i, col),
+                self.read_at(j, col),
+                SortOrder::Ascend,
+                MissingPlacement::Last,
+            );
+            if ord != std::cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+    fn equal_items(&self, i: usize, j: usize) -> bool {
+        if !self.rows_mode {
+            return keys_equal(self.read(i), self.read(j));
+        }
+        (0..self.cols).all(|col| keys_equal(self.read_at(i, col), self.read_at(j, col)))
+    }
+    fn value_at(&self, r: Record, col: usize) -> Key {
+        if !self.rows_mode {
+            return self.value(r);
+        }
+        if r.a != ABSENT {
+            self.a.key(col * self.na + r.a as usize)
+        } else {
+            self.b.key(col * self.nb + r.b as usize)
+        }
+    }
+    fn value(&self, r: Record) -> Key {
+        if r.a != ABSENT {
+            self.a.key(r.a as usize)
+        } else {
+            self.b.key(r.b as usize)
         }
     }
     fn ordinal(&self, r: Record) -> usize {
@@ -90,15 +148,11 @@ impl Inputs<'_> {
 }
 fn admit(a: &Array) -> Result<Values<'_>> {
     Matrix::checked_len(a.rows(), a.cols())?;
-    if !a.is_empty() && a.rows() != 1 && a.cols() != 1 {
-        return Err(
-            "Set operations support vectors and shaped empties, not nonempty matrices".into(),
-        );
-    }
     match a {
         Array::Numeric(a) => Ok(Values::Real(a.data())),
         Array::Logical(a) => Ok(Values::Logical(a.data())),
-        _ => Err("Set operations support real double or logical inputs only".into()),
+        Array::Typed(a) => Ok(Values::Typed(a)),
+        _ => Err("Set operations support real numeric or logical inputs only".into()),
     }
 }
 #[derive(Clone, Copy)]
@@ -176,16 +230,44 @@ fn counts(records: impl Iterator<Item = Record>, cancel: &AtomicBool) -> Result<
     checkpoint(cancel, Phase::Count)?;
     Ok(counts)
 }
-fn output_admission(counts: [usize; 3], request: Request, logical: bool) -> Result<usize> {
+fn output_class(inputs: &Inputs<'_>, op: SetOperation) -> Result<(bool, Option<NumericClass>)> {
+    if let (Some(ca), Some(cb)) = (inputs.a.class(), inputs.b.class())
+        && ca != cb
+    {
+        return Err("Set operations require inputs of the same integer or single class".into());
+    }
+    let typed = if op == SetOperation::Difference {
+        inputs.a.class()
+    } else {
+        inputs.a.class().or_else(|| inputs.b.class())
+    };
+    let logical = typed.is_none()
+        && inputs.a.logical()
+        && (op == SetOperation::Difference || inputs.b.logical());
+    Ok((logical, typed))
+}
+fn output_admission(
+    counts: [usize; 3],
+    rows_mode: bool,
+    cols: usize,
+    request: Request,
+    logical: bool,
+    typed: Option<NumericClass>,
+) -> Result<usize> {
     let mut units = 0usize;
     let mut size = 0usize;
+    let elem_size = typed.map_or(if logical { 1 } else { 8 }, NumericClass::size);
     for (i, &n) in counts.iter().enumerate() {
         if request.outputs[i] {
-            Matrix::checked_len(n, 1)?;
-            units = units.checked_add(n).ok_or("Set output count overflow")?;
+            let c = if i == 0 && rows_mode { cols } else { 1 };
+            let elems = Matrix::checked_len(n, c)?;
+            units = units
+                .checked_add(elems)
+                .ok_or("Set output count overflow")?;
             size = size
                 .checked_add(
-                    n.checked_mul(if i == 0 && logical { 1 } else { 8 })
+                    elems
+                        .checked_mul(if i == 0 { elem_size } else { 8 })
                         .ok_or("Set output size overflow")?,
                 )
                 .ok_or("Set output size overflow")?;
@@ -208,7 +290,6 @@ fn scan(
     let mut start = 0;
     while start < indices.len() {
         let first = indices[start] as usize;
-        let value = inputs.read(first);
         let mut r = Record::default();
         let mut end = start;
         loop {
@@ -223,7 +304,7 @@ fn scan(
             }
             end += 1;
             // IEEE equality, not sort equivalence: each NaN is a separate run.
-            if end == indices.len() || inputs.read(indices[end] as usize) != value {
+            if end == indices.len() || !inputs.equal_items(first, indices[end] as usize) {
                 break;
             }
         }
@@ -280,22 +361,45 @@ fn finish(
     cancel: &AtomicBool,
 ) -> Result<SetResult> {
     let lengths = counts(records.iter().copied(), cancel)?;
-    let logical =
-        inputs.a.logical() && (request.operation == SetOperation::Difference || inputs.b.logical());
-    let output_bytes = output_admission(lengths, request, logical)?;
+    let (logical, typed) = output_class(inputs, request.operation)?;
+    let output_bytes = output_admission(
+        lengths,
+        inputs.rows_mode,
+        inputs.cols,
+        request,
+        logical,
+        typed,
+    )?;
     budget(live.checked_add(output_bytes))?;
     checkpoint(cancel, Phase::Output)?;
     let mut real = None;
+    let mut ints = None;
     let mut bits = None;
     let mut ia = None;
     let mut ib = None;
+    let out_rows_len = lengths[0];
+    let out_val_len = if inputs.rows_mode {
+        out_rows_len * inputs.cols
+    } else {
+        out_rows_len
+    };
     if request.outputs[0] {
-        if logical {
-            let a = allocate::<u8>(lengths[0], live, cancel)?;
+        if let Some(class) = typed {
+            if class.is_integer() {
+                let a = allocate::<i128>(out_val_len, live, cancel)?;
+                live += bytes(&a);
+                ints = Some(a);
+            } else {
+                let a = allocate::<f64>(out_val_len, live, cancel)?;
+                live += bytes(&a);
+                real = Some(a);
+            }
+        } else if logical {
+            let a = allocate::<u8>(out_val_len, live, cancel)?;
             live += bytes(&a);
             bits = Some(a);
         } else {
-            let a = allocate::<f64>(lengths[0], live, cancel)?;
+            let a = allocate::<f64>(out_val_len, live, cancel)?;
             live += bytes(&a);
             real = Some(a);
         }
@@ -312,16 +416,33 @@ fn finish(
     }
     budget(Some(live))?;
     let (mut ai, mut bi) = (0, 0);
+    let cols = if inputs.rows_mode { inputs.cols } else { 1 };
     for i in 0..records.len() {
         if i.is_multiple_of(CHUNK) {
             checkpoint(cancel, Phase::Output)?;
         }
         let r = records[permutation.map_or(i, |p| p[i] as usize)];
         if let Some(a) = &mut real {
-            a[i] = inputs.value(r);
+            for col in 0..cols {
+                a[col * out_rows_len + i] = match inputs.value_at(r, col) {
+                    Key::Real(v) => v,
+                    Key::Integer(v) => v as f64,
+                };
+            }
+        }
+        if let (Some(a), Some(class)) = (&mut ints, typed) {
+            for col in 0..cols {
+                a[col * out_rows_len + i] = match inputs.value_at(r, col) {
+                    Key::Integer(v) => v,
+                    Key::Real(v) => class.from_f64(v),
+                };
+            }
         }
         if let Some(a) = &mut bits {
-            a[i] = u8::from(inputs.value(r) != 0.);
+            for col in 0..cols {
+                a[col * out_rows_len + i] =
+                    u8::from(!keys_equal(inputs.value_at(r, col), Key::Real(0.)));
+            }
         }
         if r.a != ABSENT {
             if let Some(a) = &mut ia {
@@ -337,13 +458,21 @@ fn finish(
         }
     }
     checkpoint(cancel, Phase::Output)?;
-    let row = inputs.row_a && (request.operation == SetOperation::Difference || inputs.row_b);
-    let (rows, cols) = if row {
-        (1, lengths[0])
+    let (rows, cols) = if inputs.rows_mode {
+        (out_rows_len, inputs.cols)
+    } else if inputs.row_a && (request.operation == SetOperation::Difference || inputs.row_b) {
+        (1, out_rows_len)
     } else {
-        (lengths[0], 1)
+        (out_rows_len, 1)
     };
-    let values = if let Some(a) = real {
+    let values = if let Some(class) = typed {
+        if let Some(a) = ints {
+            Some(TypedArray::from_ints(class, rows, cols, a.into_iter())?.into())
+        } else {
+            real.map(|a| TypedArray::from_reals(class, rows, cols, a.into_iter()).map(Into::into))
+                .transpose()?
+        }
+    } else if let Some(a) = real {
         Some(Matrix::from_column_vec(rows, cols, a)?.into())
     } else if let Some(a) = bits {
         Some(LogicalMatrix::from_column_vec(rows, cols, a, cancel)?.into())
@@ -371,7 +500,7 @@ fn run(inputs: &Inputs<'_>, request: Request, cancel: &AtomicBool) -> Result<Set
             first_b: None,
         });
     }
-    if inputs.a.logical() && inputs.b.logical() {
+    if !inputs.rows_mode && inputs.a.logical() && inputs.b.logical() {
         let (records, n) = logical_records(inputs, request, cancel)?;
         return finish(inputs, &records[..n], None, 0, request, cancel);
     }
@@ -402,14 +531,7 @@ fn run(inputs: &Inputs<'_>, request: Request, cancel: &AtomicBool) -> Result<Set
         &mut indices,
         &mut scratch,
         false,
-        &|a, b| {
-            compare(
-                inputs.read(a as usize),
-                inputs.read(b as usize),
-                SortOrder::Ascend,
-                MissingPlacement::Last,
-            )
-        },
+        &|a, b| inputs.cmp_items(a as usize, b as usize),
         cancel,
     )?;
     checkpoint(cancel, Phase::Sort)?;
@@ -420,8 +542,15 @@ fn run(inputs: &Inputs<'_>, request: Request, cancel: &AtomicBool) -> Result<Set
         lengths[1] += usize::from(r.a != ABSENT);
         lengths[2] += usize::from(r.b != ABSENT);
     })?;
-    let logical = inputs.a.logical() && request.operation == SetOperation::Difference;
-    let out_bytes = output_admission(lengths, request, logical)?;
+    let (logical, typed) = output_class(inputs, request.operation)?;
+    let out_bytes = output_admission(
+        lengths,
+        inputs.rows_mode,
+        inputs.cols,
+        request,
+        logical,
+        typed,
+    )?;
     let k = lengths[0];
     // Staged capacities: no result payload before exact output-unit admission.
     budget(bytes(&indices).checked_add(8 * k))?;
@@ -492,17 +621,41 @@ impl Array {
         units: usize,
         cancel: &AtomicBool,
     ) -> Result<SetResult> {
+        self.set_operation_rows_bounded(b, operation, order, false, outputs, units, cancel)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn set_operation_rows_bounded(
+        &self,
+        b: &Array,
+        operation: SetOperation,
+        order: UniqueOrder,
+        rows_mode: bool,
+        outputs: [bool; 3],
+        units: usize,
+        cancel: &AtomicBool,
+    ) -> Result<SetResult> {
         check(cancel)?;
         if operation == SetOperation::Difference && outputs[2] {
             return Err("setdiff supports only C and ia outputs".into());
         }
+        if rows_mode {
+            if self.is_nd() || b.is_nd() {
+                return Err("Set operations with 'rows' are not supported for N-D arrays".into());
+            }
+            if self.cols() != b.cols() {
+                return Err("A and B must have the same number of columns.".into());
+            }
+        }
         let inputs = Inputs {
             a: admit(self)?,
             b: admit(b)?,
-            na: self.len(),
-            nb: b.len(),
+            na: if rows_mode { self.rows() } else { self.len() },
+            nb: if rows_mode { b.rows() } else { b.len() },
             row_a: self.rows() == 1,
             row_b: b.rows() == 1,
+            rows_mode,
+            cols: if rows_mode { self.cols() } else { 1 },
         };
         run(
             &inputs,
@@ -647,15 +800,21 @@ mod tests {
             outputs: [true; 3],
             units: 6,
         };
-        assert_eq!(output_admission([2, 2, 2], request, true).unwrap(), 34);
+        assert_eq!(
+            output_admission([2, 2, 2], false, 1, request, true, None).unwrap(),
+            34
+        );
         assert!(
             output_admission(
                 [2, 2, 2],
+                false,
+                1,
                 Request {
                     units: 5,
                     ..request
                 },
-                true
+                true,
+                None
             )
             .unwrap_err()
             .contains("evaluation budget")
@@ -663,11 +822,14 @@ mod tests {
         assert!(
             output_admission(
                 [crate::matrix::MAX_ELEMENTS + 1, 0, 0],
+                false,
+                1,
                 Request {
                     units: usize::MAX,
                     ..request
                 },
-                false
+                false,
+                None
             )
             .is_err()
         );

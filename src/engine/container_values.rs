@@ -3,6 +3,10 @@ use super::{Engine, Execution, Value, indexing::Indices};
 use crate::{Array, CellArray, CharacterRow, LogicalMatrix, Matrix, Result, syntax::Expr};
 use std::sync::Arc;
 const MAX: usize = crate::script_containers::MAX_CELL_SLOTS;
+const CELL_USAGE: &str =
+    "Use cell(n), cell(rows,cols), or cell([rows cols]); 2-D numeric dimensions only";
+/// Folded result shape, linear source positions and, for an N-D index, its full shape.
+type NdPositions = ((usize, usize), Vec<usize>, Option<Vec<usize>>);
 
 impl Engine {
     pub(super) fn text_value(&self, value: Value) -> Result<String> {
@@ -36,7 +40,9 @@ impl Engine {
         args.into_iter()
             .map(|v| match v {
                 Value::QuotedString(s) => Ok(Value::Text(s)),
-                Value::Container(Array::Character(a)) => Ok(Value::Text(a.to_utf8(&self.cancel)?)),
+                Value::Container(Array::Character(a)) if a.is_text_row() => {
+                    Ok(Value::Text(a.to_utf8(&self.cancel)?))
+                }
                 other => Ok(other),
             })
             .collect()
@@ -51,7 +57,8 @@ impl Engine {
             Value::Matrix(a) => a.is_empty(),
             Value::Logical(a) => a.is_empty(),
             Value::Complex(a) => a.is_empty(),
-            Value::Container(a) => a.is_empty(),
+            Value::Container(a) => super::control_lti::io_shape(a)
+                .map_or_else(|| a.is_empty(), |(ny, nu)| ny == 0 || nu == 0),
             // Single-quoted character literals need no UTF16 allocation here.
             Value::Text(text) => text.is_empty(),
             Value::QuotedString(_) | Value::Void => {
@@ -75,6 +82,28 @@ impl Engine {
         if matches!(name, "iscell" | "ischar" | "class") {
             one()?;
             let a = args[0].clone().array(&self.cancel)?;
+            if name == "class"
+                && let Array::Graphics(g) = &a
+                && g.is_empty()
+                && let Some(cls) = g.empty_class()
+            {
+                return Ok(Some(Value::Text(cls.into())));
+            }
+            if name == "class"
+                && let Array::Graphics(g) = &a
+                && g.len() == 1
+                && let Ok(h) = g.scalar_handle()
+                && h.kind() == crate::GraphicsKind::NumericRuler
+                && let Some(class_name) = self.figures().find_map(|(_, fig)| {
+                    fig.all_axes().find_map(|(_, ax)| {
+                        ax.extras
+                            .ruler_index(&h.object)
+                            .map(|idx| ax.extras.rulers[idx].kind.class_name())
+                    })
+                })
+            {
+                return Ok(Some(Value::Text(class_name.into())));
+            }
             return Ok(Some(if name == "class" {
                 Value::Text(a.class().into())
             } else {
@@ -86,6 +115,22 @@ impl Engine {
             }));
         }
         if name == "cell" {
+            fn text(v: &Value) -> Option<&str> {
+                match v {
+                    Value::Text(s) | Value::QuotedString(s) => Some(s.as_str()),
+                    _ => None,
+                }
+            }
+            let args = if args.len() >= 2 && text(&args[args.len() - 2]) == Some("like") {
+                if !matches!(args.last(), Some(Value::Container(Array::Cell(_)))) {
+                    return Err("cell: prototype for 'like' must be a cell array".into());
+                }
+                &args[..args.len() - 2]
+            } else if args.last().and_then(text) == Some("cell") {
+                &args[..args.len() - 1]
+            } else {
+                args
+            };
             let dimension = |v: f64| -> Result<usize> {
                 if !v.is_finite() || v < 0. || v.fract() != 0. || v > MAX as f64 {
                     Err("Cell dimensions must be integers in 0..65536".into())
@@ -94,10 +139,35 @@ impl Engine {
                 }
             };
             let (rows, cols) = match args {
-                [Value::Matrix(a)] if a.len() == 1 => { let n = dimension(a.as_scalar()?)?; (n,n) },
-                [Value::Matrix(a)] if a.rows() == 1 && a.len() == 2 => (dimension(a.data()[0])?,dimension(a.data()[1])?),
-                [Value::Matrix(a), Value::Matrix(b)] => (dimension(a.as_scalar()?)?,dimension(b.as_scalar()?)?),
-                _ => return Err("Use cell(n), cell(rows,cols), or cell([rows cols]); 2-D numeric dimensions only".into()),
+                [Value::Matrix(a)]
+                    if a.is_empty()
+                        && ((a.rows() == 0 && a.cols() == 0)
+                            || (a.rows() == 1 && a.cols() == 0)) =>
+                {
+                    (0, 0)
+                }
+                [Value::Matrix(a)] if a.len() == 1 => {
+                    let n = dimension(a.as_scalar()?)?;
+                    (n, n)
+                }
+                [Value::Matrix(a)] if a.rows() == 1 && a.len() == 2 => {
+                    (dimension(a.data()[0])?, dimension(a.data()[1])?)
+                }
+                [Value::Matrix(a), Value::Matrix(b)] => {
+                    (dimension(a.as_scalar()?)?, dimension(b.as_scalar()?)?)
+                }
+                // cell(2,3,1) and cell([2 3 1]) are 2-D: shape_dims drops trailing singleton
+                // dimensions, so any dimension left beyond the second needs N-D cells.
+                _ if args.len() > 2
+                    || matches!(args, [Value::Matrix(a)] if a.rows() == 1 && a.len() > 2) =>
+                {
+                    match super::shape_arguments::shape_dims(args, None) {
+                        Ok(dims) if dims.len() > 2 => return Err(super::nd::CELL_ND.into()),
+                        Ok(dims) => (dimension(dims[0] as f64)?, dimension(dims[1] as f64)?),
+                        Err(_) => return Err(CELL_USAGE.into()),
+                    }
+                }
+                _ => return Err(CELL_USAGE.into()),
             };
             return Ok(Some(
                 CellArray::empty(rows, cols, &self.cancel)?.into_array_value(),
@@ -130,8 +200,9 @@ impl Engine {
             // Preserve typed shape/UTF16 before the later row-only text projection.
             "reshape" if matches!(a, Array::Character(_)) => self.shape_call(name, args),
             "size" => {
+                let (rows, cols) = super::control_lti::io_shape(&a).unwrap_or((a.rows(), a.cols()));
                 let result = match args {
-                    [_] => Matrix::from_column_slice(1, 2, &[a.rows() as f64, a.cols() as f64])?,
+                    [_] => Matrix::from_column_slice(1, 2, &[rows as f64, cols as f64])?,
                     [_, Value::Matrix(dim)] => {
                         let d = dim.as_scalar()?;
                         if !d.is_finite()
@@ -142,9 +213,9 @@ impl Engine {
                             return Err("Invalid size dimension".into());
                         }
                         Matrix::scalar(if d == 1. {
-                            a.rows() as f64
+                            rows as f64
                         } else if d == 2. {
-                            a.cols() as f64
+                            cols as f64
                         } else {
                             1.
                         })
@@ -176,15 +247,37 @@ impl Engine {
         args: &[Expr],
         out: &mut Execution,
     ) -> Result<((usize, usize), Vec<usize>)> {
+        self.container_positions_nd(a, args, out, false)
+            .map(|(shape, positions, _)| (shape, positions))
+    }
+
+    /// With `keep_nd`, `A(idx)` with an N-D index array also returns the index's full
+    /// shape; `shape` is then the index's own fold (no source-orientation rule).
+    fn container_positions_nd(
+        &mut self,
+        a: &Array,
+        args: &[Expr],
+        out: &mut Execution,
+        keep_nd: bool,
+    ) -> Result<NdPositions> {
         if args.is_empty() || args.len() > 2 {
             return Err("Container indexing requires one or two subscripts".into());
         }
         let bound = if args.len() == 1 { a.len() } else { a.rows() };
-        let containers = matches!(a, Array::Cell(_) | Array::Struct(_) | Array::Character(_));
+        let containers = matches!(
+            a,
+            Array::Str(_) | Array::Cell(_) | Array::Struct(_) | Array::Character(_)
+        );
         let (rows, mut shape) = if containers {
             self.cel_subscript(&args[0], bound, bound, out)?
         } else {
             self.subscript_with_limit(&args[0], Some(bound), bound, out)?
+        };
+        let nd_shape = match &rows {
+            Indices::Explicit(values) if keep_nd && args.len() == 1 && values.is_nd() => {
+                Some(values.dims().into_owned())
+            }
+            _ => None,
         };
         let cols = if args.len() == 2 {
             let (cols, _) = if containers {
@@ -195,7 +288,8 @@ impl Engine {
             shape = (rows.len(), cols.len());
             Some(cols)
         } else {
-            if !self.colon_subscript(&args[0])
+            if nd_shape.is_none()
+                && !self.colon_subscript(&args[0])
                 && shape != (0, 0)
                 && (a.rows() == 1 || a.cols() == 1)
                 && match &rows {
@@ -228,6 +322,11 @@ impl Engine {
             {
                 return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
             }
+        } else if matches!(
+            a,
+            Array::Categorical(_) | Array::Datetime(_) | Array::Duration(_)
+        ) {
+            crate::datetime_array::checked_len(shape.0, shape.1, a.class())?;
         } else if n > MAX || shape.0 > MAX || shape.1 > MAX {
             return Err("Container selection exceeds 65536 slots".into());
         }
@@ -246,7 +345,7 @@ impl Engine {
             };
             positions.push(index);
         }
-        Ok((shape, positions))
+        Ok((shape, positions, nd_shape))
     }
     pub(super) fn index_container(
         &mut self,
@@ -255,6 +354,31 @@ impl Engine {
         content: bool,
         out: &mut Execution,
     ) -> Result<Value> {
+        if !content && let Some(value) = super::control_lti::index(self, a, args, out)? {
+            return Ok(value);
+        }
+        if let Array::Sparse(s) = a {
+            if content {
+                return Err("Brace indexing is not supported for sparse arrays".into());
+            }
+            return super::sparse_fns::index(self, s, args, out);
+        }
+        if let Array::Table(t) = a {
+            return self.tbl_index(t, args, content, out);
+        }
+        if (content || !a.is_empty()) && super::classdef::is_object(a) {
+            return Err(super::classdef::OBJECT_ARRAYS.into());
+        }
+        if let Array::Str(s) = a {
+            let mut values =
+                self.str_index(super::string_class::value(s.clone()), args, content, out)?;
+            if values.len() != 1 {
+                return Err(
+                    "String content indexing in an expression requires exactly one element".into(),
+                );
+            }
+            return Ok(values.remove(0));
+        }
         if content {
             let values = self.cell_contents_inner(a, args, out, false)?;
             if values.len() != 1 {
@@ -262,7 +386,13 @@ impl Engine {
             }
             return Ok(values.into_iter().next().unwrap());
         }
-        let (shape, positions) = self.container_positions(a, args, out)?;
+        // Char and typed results take an N-D index's shape, like numeric `A(idx)`.
+        let keep_nd = matches!(a, Array::Character(_) | Array::Typed(_));
+        let (shape, positions, nd_shape) = self.container_positions_nd(a, args, out, keep_nd)?;
+        let shaped = |array: Array| match &nd_shape {
+            Some(dims) => array.with_dims(dims),
+            None => Ok(array),
+        };
         match a {
             Array::Graphics(h) => Ok(Value::Container(
                 h.selected(shape.0, shape.1, &positions, &self.cancel)?
@@ -295,20 +425,24 @@ impl Engine {
                     }
                     units.push(c.units()[index]);
                 }
-                Ok(Value::Container(
+                Ok(Value::Container(shaped(
                     CharacterRow::from_column_major(shape.0, shape.1, units, &self.cancel)?.into(),
-                ))
+                )?))
             }
             Array::Struct(s) => Ok(Value::Container(
                 s.select(shape.0, shape.1, &positions, &self.cancel)?.into(),
             )),
             Array::Typed(t) => {
                 self.charge(positions.len())?;
-                Ok(Value::Container(
+                Ok(Value::Container(shaped(
                     t.select_with_cancel(shape.0, shape.1, &positions, &self.cancel)?
                         .into(),
-                ))
+                )?))
             }
+            Array::Categorical(c) => Ok(Value::Container(
+                c.select(shape.0, shape.1, &positions)?.into(),
+            )),
+            Array::Datetime(_) | Array::Duration(_) => self.dtm_select(a, shape, &positions),
             _ => Err("Expected a character or cell array".into()),
         }
     }
@@ -318,6 +452,12 @@ impl Engine {
         args: &[Expr],
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        if let Array::Str(s) = a {
+            return self.str_index(super::string_class::value(s.clone()), args, true, out);
+        }
+        if let Array::Table(t) = a {
+            return Ok(vec![self.tbl_index(t, args, true, out)?]);
+        }
         self.cell_contents_inner(a, args, out, true)
     }
     fn cell_contents_inner(
@@ -434,11 +574,38 @@ impl Engine {
         quiet: bool,
         out: &mut Execution,
     ) -> Result<()> {
-        if content || matches!(self.array(name), Some(Array::Cell(_) | Array::Character(_))) {
-            let old = self.array(name);
-            let value = self.eval(rhs, None, out)?.array(&self.cancel)?;
+        if let Some(Array::Str(old)) = self.array(name) {
+            if content {
+                return Err("Use parentheses to assign string elements".into());
+            }
+            let value = self.eval(rhs, None, out)?;
             let deletion = matches!(rhs, Expr::Matrix(rows) if rows.is_empty());
-            let updated = self.cel_assign(old, args, content, value, deletion, out)?;
+            let updated = self.str_assign(Some(old), args, value, deletion, out)?;
+            return self.assign_workspace_array(name, Array::Str(updated), quiet, out);
+        }
+        if content
+            || matches!(
+                self.array(name),
+                Some(Array::Cell(_) | Array::Character(_) | Array::Graphics(_))
+            )
+        {
+            let old = self.array(name);
+            let value = self.eval(rhs, None, out)?;
+            let deletion = matches!(rhs, Expr::Matrix(rows) if rows.is_empty());
+            if !content
+                && matches!(old, Some(Array::Character(_)))
+                && matches!(value, Value::Complex(_))
+            {
+                return self.assign_indexed_value(name, args, value, deletion, quiet, out);
+            }
+            let updated = self.cel_assign(
+                old,
+                args,
+                content,
+                value.array(&self.cancel)?,
+                deletion,
+                out,
+            )?;
             return self.assign_workspace_array(name, updated, quiet, out);
         }
         let old=self.array(name).ok_or("Container assignment requires an existing variable; implicit cell growth is unsupported")?;
@@ -449,16 +616,6 @@ impl Engine {
         }
         let index = positions[0];
         let updated = match (&old, content) {
-            (Array::Graphics(h), false) => {
-                let Array::Graphics(replacement) = value else {
-                    return Err("Graphics handle replacement requires a handle array".into());
-                };
-                if replacement.len() != 1 {
-                    return Err("One handle is required for a single-slot replacement".into());
-                }
-                h.replaced(index, replacement.get_linear(0)?.clone(), &self.cancel)?
-                    .into()
-            }
             (Array::Cell(c), true) => c.replaced(index, value, &self.cancel)?.into(),
             (Array::Cell(c), false) => {
                 let Array::Cell(replacement) = value else {

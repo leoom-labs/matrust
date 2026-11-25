@@ -71,11 +71,10 @@ fn direct_workspace_changes_are_counted_and_type_replacement_preserves_aliases()
 fn single_output_failures_and_output_budget_keep_prior_assignment_semantics() {
     let mut e = Engine::default();
     e.execute("A=7;").unwrap();
-    assert!(
-        e.execute("A=\"text\";")
-            .unwrap_err()
-            .contains("String array storage")
-    );
+    e.execute("A=\"text\";").unwrap();
+    assert_eq!(e.array("A").unwrap().class(), "string");
+    assert_eq!(e.array("A").unwrap().preview(1), "\"text\"");
+    e.execute("A=7;").unwrap();
     assert!(
         e.execute("A=disp(3);")
             .unwrap_err()

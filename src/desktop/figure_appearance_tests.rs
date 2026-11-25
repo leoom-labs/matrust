@@ -83,6 +83,42 @@ impl Painted {
         )
     }
 }
+
+#[test]
+fn shared_layout_labels_are_painted_and_centered() {
+    let mut engine = matrust::Engine::default();
+    engine.execute("t=tiledlayout(1,2); nexttile; plot(1:3); nexttile; plot(3:-1:1); title(t,'Layout heading'); xlabel(t,'Shared horizontal'); ylabel(t,'Shared vertical');").unwrap();
+    let ctx = egui::Context::default();
+    crate::theme::configure(&ctx);
+    let mut painted = Painted::new(engine.figure.unwrap());
+    let mut output = painted.paint(&ctx, false, vec![]);
+    for _ in 0..3 {
+        output = painted.paint(&ctx, false, vec![]);
+    }
+    fn find<'a>(shape: &'a egui::Shape, label: &str) -> Option<&'a egui::epaint::TextShape> {
+        match shape {
+            egui::Shape::Text(t) if t.galley.text() == label => Some(t),
+            egui::Shape::Vec(v) => v.iter().find_map(|s| find(s, label)),
+            _ => None,
+        }
+    }
+    let get = |label| {
+        output
+            .shapes
+            .iter()
+            .find_map(|s| find(&s.shape, label))
+            .unwrap()
+    };
+    let title = get("Layout heading");
+    let xlabel = get("Shared horizontal");
+    let ylabel = get("Shared vertical");
+    assert!(
+        (title.visual_bounding_rect().center().x - xlabel.visual_bounding_rect().center().x).abs()
+            < 1.
+    );
+    assert!(title.pos.y < xlabel.pos.y);
+    assert!(ylabel.angle.abs() > 1.);
+}
 #[test]
 fn native_auto_fixed_and_legacy_appearance_share_prepared_routes_without_sample_changes() {
     for subplot in [false, true] {

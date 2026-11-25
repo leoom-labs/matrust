@@ -73,7 +73,7 @@ impl Editor {
             self.jump = None;
         }
     }
-    fn selection(&self, ctx: &egui::Context, doc: &Document) -> Range<usize> {
+    pub(super) fn selection(&self, ctx: &egui::Context, doc: &Document) -> Range<usize> {
         self.jump
             .as_ref()
             .filter(|(d, _)| *d == doc.id)
@@ -334,6 +334,8 @@ impl Editor {
                     let output = egui::TextEdit::multiline(&mut buffer)
                         .id(editor_id)
                         .code_editor()
+                        // Flat editor: the pane is the surface; no outline.
+                        .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(4, 2)))
                         .desired_width(f32::INFINITY)
                         .desired_rows(28)
                         .lock_focus(true)

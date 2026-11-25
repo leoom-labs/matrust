@@ -82,6 +82,129 @@ fn scatter_hint(props: &Fields<'_>) -> Result<Option<LinePattern>> {
         _ => return Err("Invalid MatRustGraphics Pattern".into()),
     }))
 }
+// MatRust chart helpers (error-bar segments, polar grid) are never legend
+// members: MATLAB's Annotation.LegendInformation.IconDisplayStyle 'off'.
+// FIG Annotation objects are not modelled, so the flag rides in UserData.
+fn legend_hidden_hint(props: &Fields<'_>) -> Result<bool> {
+    let Some(items) = props.get("UserData").and_then(Value::structs) else {
+        return Ok(false);
+    };
+    if !items.iter().any(|f| f.contains_key("MatRustLegend")) {
+        return Ok(false);
+    }
+    if items.len() != 1 {
+        return Err("MatRustLegend UserData must be scalar".into());
+    }
+    let hint = object(field(&items[0], "MatRustLegend")?)
+        .map_err(|_| "MatRustLegend metadata must be a scalar structure".to_owned())?;
+    if hint.len() != 2 || scalar(hint, "Version", f64::NAN)? != 1. {
+        return Err("Unsupported MatRustLegend version or fields".into());
+    }
+    match string(hint, "IconDisplayStyle", "")? {
+        "off" => Ok(true),
+        "on" => Ok(false),
+        _ => Err("Invalid MatRustLegend IconDisplayStyle".into()),
+    }
+}
+fn encode_marker_color(c: crate::plot::MarkerColor) -> mat::Encoded<'static> {
+    match c {
+        crate::plot::MarkerColor::Default => mat::text("default"),
+        crate::plot::MarkerColor::None => mat::text("none"),
+        crate::plot::MarkerColor::Flat => mat::text("flat"),
+        crate::plot::MarkerColor::Auto => mat::text("auto"),
+        crate::plot::MarkerColor::Rgb(rgb) => {
+            mat::numbers(rgb.into_iter().map(|v| f64::from(v) / 255.))
+        }
+    }
+}
+fn decode_marker_color(value: &Value<'_>) -> Result<crate::plot::MarkerColor> {
+    if let Some(t) = value.text() {
+        return match t {
+            "default" => Ok(crate::plot::MarkerColor::Default),
+            "none" => Ok(crate::plot::MarkerColor::None),
+            "flat" => Ok(crate::plot::MarkerColor::Flat),
+            "auto" => Ok(crate::plot::MarkerColor::Auto),
+            _ => Err("Invalid MatRustScatter marker color".into()),
+        };
+    }
+    Ok(crate::plot::MarkerColor::Rgb(color(value)?))
+}
+fn apply_scatter_style_hint(props: &Fields<'_>, series: &mut Series) -> Result<()> {
+    let Some(items) = props.get("UserData").and_then(Value::structs) else {
+        return Ok(());
+    };
+    if !items.iter().any(|f| f.contains_key("MatRustScatter")) {
+        return Ok(());
+    }
+    if items.len() != 1 {
+        return Err("MatRustScatter UserData must be scalar".into());
+    }
+    let hint = object(field(&items[0], "MatRustScatter")?)
+        .map_err(|_| "MatRustScatter metadata must be a scalar structure".to_owned())?;
+    if scalar(hint, "Version", f64::NAN)? != 1. {
+        return Err("Unsupported MatRustScatter version".into());
+    }
+    if let Some(sizes) = hint.get("SizeData") {
+        let vals: Vec<f64> = (0..sizes.len()).filter_map(|i| sizes.number(i)).collect();
+        if vals.len() != sizes.len() {
+            return Err("Invalid MatRustScatter SizeData".into());
+        }
+        series.marker_sizes = Some(std::sync::Arc::from(vals));
+    }
+    if let Some(rgbs) = hint.get("CDataRgb") {
+        if !rgbs.len().is_multiple_of(3) {
+            return Err("Invalid MatRustScatter CDataRgb".into());
+        }
+        let mut list = Vec::with_capacity(rgbs.len() / 3);
+        for i in 0..rgbs.len() / 3 {
+            let mut rgb = [0u8; 3];
+            for (c, out) in rgb.iter_mut().enumerate() {
+                let v = rgbs
+                    .number(3 * i + c)
+                    .ok_or("Invalid MatRustScatter CDataRgb")?;
+                if !v.is_finite() || !(0. ..=1.).contains(&v) {
+                    return Err("Invalid MatRustScatter CDataRgb".into());
+                }
+                *out = (v * 255.).round() as u8;
+            }
+            list.push(rgb);
+        }
+        series.scatter_cdata = Some(crate::plot::ScatterCData::Rgb(std::sync::Arc::from(list)));
+    } else if let Some(indexed) = hint.get("CDataIndexed") {
+        let vals: Vec<f64> = (0..indexed.len())
+            .filter_map(|i| indexed.number(i))
+            .collect();
+        if vals.len() != indexed.len() {
+            return Err("Invalid MatRustScatter CDataIndexed".into());
+        }
+        series.scatter_cdata = Some(crate::plot::ScatterCData::Indexed(std::sync::Arc::from(
+            vals,
+        )));
+    }
+    if let Some(face) = hint.get("MarkerFaceColor") {
+        series.marker_face_color = decode_marker_color(face)?;
+        match series.marker_face_color {
+            crate::plot::MarkerColor::None => series.marker_filled = false,
+            crate::plot::MarkerColor::Default => {}
+            _ => series.marker_filled = true,
+        }
+    }
+    if let Some(edge) = hint.get("MarkerEdgeColor") {
+        series.marker_edge_color = decode_marker_color(edge)?;
+    }
+    if hint.contains_key("MarkerFaceAlpha") {
+        let a = scalar(hint, "MarkerFaceAlpha", f64::NAN)?;
+        crate::plot::validate_alpha(a, "MarkerFaceAlpha")?;
+        series.marker_face_alpha = Some(a);
+    }
+    if hint.contains_key("MarkerEdgeAlpha") {
+        let a = scalar(hint, "MarkerEdgeAlpha", f64::NAN)?;
+        crate::plot::validate_alpha(a, "MarkerEdgeAlpha")?;
+        series.marker_edge_alpha = Some(a);
+    }
+    series.validate_scatter()?;
+    Ok(())
+}
 // A single public FIG width cannot express the separate legacy line/marker
 // defaults. Restore implicit semantics only while the public width is unchanged.
 fn implicit_width_hint(props: &Fields<'_>, kind: PlotKind) -> Result<bool> {
@@ -210,10 +333,18 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
     }
     let mut axes_nodes = Vec::new();
     let mut legend_nodes = Vec::new();
+    let mut annotation_nodes = Vec::new();
     for child in children(root)? {
         match string(child, "type", "")? {
             "axes" => axes_nodes.push(child),
             "scribe.legend" | "legend" => legend_nodes.push(child),
+            "scribe.scribeoverlay" => {
+                for ann in children(child)? {
+                    annotation_nodes.push(ann);
+                }
+            }
+            "scribe.line" | "scribe.arrow" | "scribe.doublearrow" | "scribe.textarrow"
+            | "scribe.rectangle" | "scribe.ellipse" => annotation_nodes.push(child),
             other => return Err(format!("Unsupported FIG graphics object: {other}")),
         }
     }
@@ -321,9 +452,40 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
         .map(color)
         .transpose()?
         .unwrap_or([255; 3]);
+    figure.visible = match string(props, "Visible", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG Visible must be on or off".into()),
+    };
+    figure.units = crate::plot::FigureUnits::parse(string(props, "Units", "pixels")?)?;
+    if let Some(pos) = props.get("Position") {
+        if pos.len() != 4 {
+            return Err("FIG figure Position must contain four numbers".into());
+        }
+        let raw = [
+            pos.number(0).ok_or("Invalid FIG figure Position")?,
+            pos.number(1).ok_or("Invalid FIG figure Position")?,
+            pos.number(2).ok_or("Invalid FIG figure Position")?,
+            pos.number(3).ok_or("Invalid FIG figure Position")?,
+        ];
+        figure.position = figure.units.rect_to_pixels(raw);
+    }
+    figure.resize = match string(props, "Resize", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG Resize must be on or off".into()),
+    };
+    figure.number_title = match string(props, "NumberTitle", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG NumberTitle must be on or off".into()),
+    };
+    figure.window_state = crate::plot::WindowState::parse(string(props, "WindowState", "normal")?)?;
+    for ann_node in annotation_nodes {
+        figure.add_annotation(decode_fig_annotation(ann_node)?)?;
+    }
     if positioned {
         figure.layout = Some(crate::plot::Layout {
-            active: positions[active],
             others: positions
                 .iter()
                 .enumerate()
@@ -333,8 +495,7 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
                     axes: Default::default(),
                 })
                 .collect(),
-            tiled: None,
-            title: String::new(),
+            ..crate::plot::Layout::plain(positions[active])
         });
         figure.validate()?; // Reject invalid geometry before sample allocation.
         figure.layout.as_mut().unwrap().others.clear();
@@ -343,18 +504,35 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
     let mut series = 0;
     let mut bars = 0;
     for (i, axes) in axes_nodes.into_iter().enumerate() {
-        let (visible, labels, location, legend_colors) = if let Some(legend) = legends[i] {
+        let (
+            visible,
+            labels,
+            location,
+            legend_colors,
+            legend_orientation,
+            legend_box,
+            legend_num_columns,
+            legend_interpreter,
+        ) = if let Some(legend) = legends[i] {
             let p = object(field(legend, "properties")?)?;
-            if !string(p, "Orientation", "vertical")?.eq_ignore_ascii_case("vertical")
-                || scalar(p, "NumColumns", 1.)? != 1.
-            {
-                return Err(
-                    "FIG legend import currently requires vertical single-column layout".into(),
-                );
-            }
-            if !string(p, "Box", "on")?.eq_ignore_ascii_case("on") {
-                return Err("FIG legend Box off is not supported".into());
-            }
+            let orientation =
+                crate::plot::LegendOrientation::parse(string(p, "Orientation", "vertical")?)?;
+            let box_style = crate::plot::LegendBox::parse(string(p, "Box", "on")?)?;
+            let num_columns = if p.contains_key("NumColumns") {
+                let cols = scalar(p, "NumColumns", 1.)?;
+                if !cols.is_finite()
+                    || cols.fract() != 0.
+                    || cols < 1.
+                    || cols > crate::plot::MAX_SERIES as f64
+                {
+                    return Err("FIG legend NumColumns must be an integer in 1..64".into());
+                }
+                Some(cols as usize)
+            } else {
+                None
+            };
+            let interpreter =
+                crate::plot::text_markup::Interpreter::parse(string(p, "Interpreter", "tex")?)?;
             let colors = crate::plot::LegendColors {
                 background: optional_axes_rgb(p, "Color")?,
                 text: optional_axes_rgb(p, "TextColor")?,
@@ -383,9 +561,22 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
                 Some(labels),
                 crate::plot::LegendLocation::parse(string(p, "Location", "northeast")?)?,
                 colors,
+                orientation,
+                box_style,
+                num_columns,
+                interpreter,
             )
         } else {
-            (false, None, crate::plot::LegendLocation::default(), None)
+            (
+                false,
+                None,
+                crate::plot::LegendLocation::default(),
+                None,
+                crate::plot::LegendOrientation::default(),
+                crate::plot::LegendBox::default(),
+                None,
+                crate::plot::text_markup::Interpreter::default(),
+            )
         };
         let mut decoded = decode_axes(
             axes,
@@ -397,6 +588,10 @@ pub(super) fn decode_matlab_figure(bytes: &[u8]) -> Result<Figure> {
             10000 - bars,
         )?;
         decoded.legend_location = location;
+        decoded.extras.legend_orientation = legend_orientation;
+        decoded.extras.legend_box = legend_box;
+        decoded.extras.legend_num_columns = legend_num_columns;
+        decoded.extras.legend_interpreter = legend_interpreter;
         if let Some(colors) = legend_colors {
             decoded.colors.get_or_insert_with(Default::default).legend = Some(colors);
         }
@@ -631,11 +826,16 @@ fn decode_axes(
     remaining_bars: usize,
 ) -> Result<Figure> {
     let props = object(field(axes, "properties")?)?;
-    if let Some(view) = props.get("View")
-        && (view.number(0) != Some(0.) || view.number(1) != Some(90.))
-    {
-        return Err("Only 2-D FIG axes are supported".into());
-    }
+    let view = if let Some(view) = props.get("View") {
+        let az = view.number(0).ok_or("Invalid FIG View")?;
+        let el = view.number(1).ok_or("Invalid FIG View")?;
+        if !az.is_finite() || !el.is_finite() {
+            return Err("FIG View angles must be finite".into());
+        }
+        [az, el]
+    } else {
+        crate::plot::view3d::VIEW_2D
+    };
     for key in ["XDir", "YDir"] {
         if string(props, key, "normal")? != "normal" {
             return Err("Reversed FIG axes are not supported".into());
@@ -651,8 +851,8 @@ fn decode_axes(
         "off" => Ok(false),
         _ => Err("FIG grid visibility must be on or off".to_owned()),
     };
-    // These explicit properties affect rendered grids but have no corresponding
-    // native model yet. Do not silently discard a supplied style, even if hidden.
+    // Minor grids are modeled (default style); an explicit minor-grid style is
+    // not, so it is never silently discarded, even if hidden.
     for key in [
         "MinorGridColor",
         "MinorGridAlpha",
@@ -665,22 +865,29 @@ fn decode_axes(
             ));
         }
     }
-    for key in ["XMinorGrid", "YMinorGrid"] {
-        if grid(key)? {
-            return Err(format!(
-                "Enabled FIG {key} is not supported; minor grids are not represented"
-            ));
-        }
-    }
+    let minor_grid = [
+        grid("XMinorGrid")?,
+        grid("YMinorGrid")?,
+        grid("ZMinorGrid")?,
+    ];
+    // An absent Box keeps the historical outline (files written before Box was
+    // stored; MATLAB omits its own default 'off').
+    let box_outline = match string(props, "Box", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG Box must be on or off".into()),
+    };
     let mut colors = crate::plot::AxesColors {
         grid: optional_grid_style(props)?,
         background: optional_axes_rgb(props, "Color")?,
         x: optional_axes_rgb(props, "XColor")?,
         y: optional_axes_rgb(props, "YColor")?,
+        z: optional_axes_rgb(props, "ZColor")?,
         ..Default::default()
     };
     let xgrid = grid("XGrid")?;
     let ygrid = grid("YGrid")?;
+    let zgrid = grid("ZGrid")?;
     if colors.grid.is_none() && ((xgrid && colors.x.is_some()) || (ygrid && colors.y.is_some())) {
         return Err("FIG ruler RGB with visible grids requires complete explicit grid color/alpha/modes; historical defaults are not inferred".into());
     }
@@ -692,28 +899,42 @@ fn decode_axes(
             yscale: scale("YScale")?,
             xlim: limits(props, "XLim")?,
             ylim: limits(props, "YLim")?,
+            zlim: limits(props, "ZLim")?,
             hold: string(props, "NextPlot", "replace")? == "add",
             xgrid,
             ygrid,
+            zgrid,
+            view,
+            box_outline,
+            minor_grid,
             legend,
             ..Default::default()
         },
         layout: None,
         textboxes: Vec::new(),
+        annotations: Vec::new(),
         name: String::new(),
         color: [255; 3],
         appearance: None,
         invert_hardcopy: None,
+        ..Figure::default()
     };
+    decode_fig_axes_extras(props, &mut f.axes)?;
     let children = children(axes)?;
     let special = field(axes, "special")?;
     if !matches!(special, Value::Number { .. }) {
         return Err("Invalid FIG label references".into());
     }
     let mut text_indices = Vec::new();
-    for (i, label) in [&mut f.axes.title, &mut f.axes.xlabel, &mut f.axes.ylabel]
-        .into_iter()
-        .enumerate()
+    for (i, label) in [
+        &mut f.axes.title,
+        &mut f.axes.xlabel,
+        &mut f.axes.ylabel,
+        &mut f.axes.zlabel,
+        &mut f.axes.extras.subtitle.string,
+    ]
+    .into_iter()
+    .enumerate()
     {
         let index = special.number(i).unwrap_or(0.);
         if index == 0. {
@@ -729,14 +950,35 @@ fn decode_axes(
             return Err("Invalid FIG label object".into());
         }
         let p = object(field(text, "properties")?)?;
-        *label = string(p, "String", "")?.to_owned();
+        let (text_val, text_source) = decode_fig_label_string(p)?;
+        *label = text_val;
+        let interpreter =
+            crate::plot::text_markup::Interpreter::parse(string(p, "Interpreter", "tex")?)?;
         let rgb = optional_axes_rgb(p, "Color")?;
+        text_indices.push(index);
+        if i == 4 {
+            f.axes.extras.subtitle.string_lines = text_source;
+            f.axes.extras.subtitle.interpreter = interpreter;
+            f.axes.extras.subtitle.color = rgb;
+            f.axes.extras.subtitle.font_size = p
+                .contains_key("FontSize")
+                .then(|| scalar(p, "FontSize", 0.))
+                .transpose()?;
+            f.axes.extras.subtitle.bold = match string(p, "FontWeight", "normal")? {
+                "normal" => false,
+                "bold" => true,
+                _ => return Err("FIG subtitle FontWeight must be normal or bold".into()),
+            };
+            continue;
+        }
+        f.axes.extras.label_lines[i] = text_source;
+        f.axes.extras.label_interpreters[i] = interpreter;
         match i {
             0 => colors.title = rgb,
             1 => colors.xlabel = rgb,
-            _ => colors.ylabel = rgb,
+            2 => colors.ylabel = rgb,
+            _ => colors.z = colors.z.or(rgb),
         }
-        text_indices.push(index);
     }
     if colors != crate::plot::AxesColors::default() {
         f.axes.colors = Some(colors);
@@ -746,12 +988,24 @@ fn decode_axes(
         if kind == "text" && text_indices.contains(&index) || kind == "specgraph.baseline" {
             continue;
         }
-        if kind == "text" && special.number(3) == Some(index as f64 + 1.) {
-            let p = object(field(node, "properties")?)?;
-            if string(p, "String", "")?.is_empty() {
-                continue;
+        if matches!(
+            kind,
+            "matlab.graphics.chart.decoration.ConstantLine" | "constantline"
+        ) {
+            let cl = decode_fig_constant_line(node)?;
+            if f.axes.extras.constant_lines.len() >= crate::plot::MAX_CONSTANT_LINES {
+                return Err("FIG axes exceeds 256 constant line objects".into());
             }
-            return Err("Nonempty FIG z-axis labels require 3-D support".into());
+            f.axes.extras.constant_lines.push(cl);
+            continue;
+        }
+        if kind == "rectangle" {
+            let rect = decode_fig_rectangle(node)?;
+            if f.axes.extras.rectangles.len() >= crate::plot::MAX_RECTANGLES {
+                return Err("FIG axes exceeds 256 rectangle objects".into());
+            }
+            f.axes.extras.rectangles.push(rect);
+            continue;
         }
         let plot_kind = match kind {
             "graph2d.lineseries" | "line" => PlotKind::Line,
@@ -765,11 +1019,9 @@ fn decode_axes(
             "off" => false,
             _ => return Err("Invalid FIG visibility".into()),
         };
-        if p.get("ZData")
-            .is_some_and(|v| !matches!(v, Value::Number { count: 0, .. }))
-        {
-            return Err("3-D FIG series are not supported".into());
-        }
+        let z_data = p
+            .get("ZData")
+            .filter(|v| !matches!(v, Value::Number { count: 0, .. }));
         let x = field(p, "XData")?;
         let y = field(p, "YData")?;
         if !matches!(x, Value::Number { .. }) || !matches!(y, Value::Number { .. }) {
@@ -799,6 +1051,18 @@ fn decode_axes(
             })
             .collect::<Result<Vec<_>>>()?;
         let mut series = Series::new(points, plot_kind);
+        if let Some(z) = z_data {
+            if !matches!(z, Value::Number { .. }) || z.len() != x.len() {
+                return Err("FIG ZData must match XData/YData length".into());
+            }
+            let zv = (0..z.len())
+                .map(|i| {
+                    z.number(i)
+                        .ok_or_else(|| "Unsupported FIG ZData".to_owned())
+                })
+                .collect::<Result<Vec<_>>>()?;
+            series.z = zv.into();
+        }
         // This legacy importer does not reconstruct MATLAB BaseLine properties.
         // Preserve its established fill-only Bar appearance explicitly.
         series.bar_baseline_visible = false;
@@ -808,6 +1072,7 @@ fn decode_axes(
             series.line_width = Some(width);
         }
         series.visible = visible;
+        series.legend_hidden = legend_hidden_hint(p)?;
         series.label = string(p, "DisplayName", "")?.to_owned();
         series.color = COLORS[f.series.len() % COLORS.len()];
         series.explicit_color = true;
@@ -869,6 +1134,7 @@ fn decode_axes(
                 }
                 series.marker_filled = true;
             }
+            apply_scatter_style_hint(p, &mut series)?;
         } else if plot_kind == PlotKind::Scatter {
             series.markers = true;
             series.color = color(field(p, "CData")?)?;
@@ -973,6 +1239,7 @@ fn decode_axes(
             });
         }
     }
+    crate::engine::plot_properties::refresh_scatter_clim(&mut f.axes);
     f.validate()?;
     Ok(f)
 }
@@ -1038,6 +1305,12 @@ pub fn matlab_figure_export_restriction_with_theme(
     figure: &Figure,
     _host: crate::plot::BaseTheme,
 ) -> Option<&'static str> {
+    if figure
+        .all_axes()
+        .any(|(_, axes)| !axes.extras.volumes.is_empty())
+    {
+        return Some("volshow objects are saved only in .mrfig");
+    }
     if figure.empty_layout() {
         return Some("MATLAB FIG export requires at least one axes");
     }
@@ -1124,8 +1397,15 @@ fn encode_static_legend<'a>(
         ("String", mat::legend_text_cells(&labels)?),
         ("Location", mat::text("northeast")),
         ("Visible", mat::text("on")),
-        ("Interpreter", mat::text("none")),
-        ("Orientation", mat::text("vertical")),
+        (
+            "Interpreter",
+            mat::text(axes.extras.legend_interpreter.as_str()),
+        ),
+        (
+            "Orientation",
+            mat::text(axes.extras.legend_orientation.name()),
+        ),
+        ("Box", mat::text(axes.extras.legend_box.name())),
         (
             "ApplicationData",
             mat::structure(
@@ -1134,6 +1414,9 @@ fn encode_static_legend<'a>(
             ),
         ),
     ];
+    if let Some(cols) = axes.extras.legend_num_columns {
+        properties.push(("NumColumns", num(&[cols as f64])));
+    }
     let colors = axes.legend_colors();
     let resolved = colors.resolved(appearance);
     for (name, supplied, fallback) in [
@@ -1207,8 +1490,40 @@ pub(super) fn encode_matlab_figure_with_theme(
     if let Some(legend) = &legend {
         root_children.push(encode_static_legend(&figure.axes, legend, appearance)?);
     }
+    if !figure.annotations.is_empty() {
+        let mut ann_children = Vec::with_capacity(figure.annotations.len());
+        for ann in &figure.annotations {
+            ann_children.push(encode_fig_annotation(ann, next_handle)?);
+            next_handle += 1.;
+        }
+        let overlay_handle = next_handle;
+        root_children.push(node(
+            "scribe.scribeoverlay",
+            overlay_handle,
+            vec![("Visible", mat::text("on"))],
+            ann_children,
+            &[],
+        ));
+    }
     let mut props = vec![
-        ("Visible", mat::text("off")),
+        (
+            "Visible",
+            mat::text(if figure.visible { "on" } else { "off" }),
+        ),
+        ("Units", mat::text(figure.units.as_str())),
+        (
+            "Position",
+            num(&figure.units.rect_from_pixels(figure.position)),
+        ),
+        (
+            "Resize",
+            mat::text(if figure.resize { "on" } else { "off" }),
+        ),
+        (
+            "NumberTitle",
+            mat::text(if figure.number_title { "on" } else { "off" }),
+        ),
+        ("WindowState", mat::text(figure.window_state.as_str())),
         (
             "Color",
             num(&appearance.canvas.map(|c| f64::from(c) / 255.)),
@@ -1304,6 +1619,9 @@ fn encode_axes<'a>(
             ("DisplayName", mat::text(&s.label)),
             ("Visible", mat::text(if s.visible { "on" } else { "off" })),
         ];
+        if !s.z.is_empty() {
+            props.push(("ZData", mat::numbers(s.z.iter().copied())));
+        }
         let mut userdata = Vec::new();
         if s.line_width.is_none() {
             userdata.push((
@@ -1337,6 +1655,47 @@ fn encode_axes<'a>(
                 ),
             ));
         }
+        if s.kind == PlotKind::Scatter && s.has_scatter_style() {
+            let mut fields = vec![
+                ("Version", num(&[1.])),
+                ("MarkerFaceColor", encode_marker_color(s.marker_face_color)),
+                ("MarkerEdgeColor", encode_marker_color(s.marker_edge_color)),
+            ];
+            if let Some(sizes) = &s.marker_sizes {
+                fields.push(("SizeData", mat::numbers(sizes.iter().copied())));
+            }
+            match &s.scatter_cdata {
+                Some(crate::plot::ScatterCData::Rgb(rgbs)) => {
+                    fields.push((
+                        "CDataRgb",
+                        mat::numbers(rgbs.as_flattened().iter().map(|&v| f64::from(v) / 255.)),
+                    ));
+                }
+                Some(crate::plot::ScatterCData::Indexed(vals)) => {
+                    fields.push(("CDataIndexed", mat::numbers(vals.iter().copied())));
+                }
+                None => {}
+            }
+            if let Some(a) = s.marker_face_alpha {
+                fields.push(("MarkerFaceAlpha", num(&[a])));
+            }
+            if let Some(a) = s.marker_edge_alpha {
+                fields.push(("MarkerEdgeAlpha", num(&[a])));
+            }
+            userdata.push(("MatRustScatter", mat::structure("", fields)));
+        }
+        if s.legend_hidden {
+            userdata.push((
+                "MatRustLegend",
+                mat::structure(
+                    "",
+                    vec![
+                        ("Version", num(&[1.])),
+                        ("IconDisplayStyle", mat::text("off")),
+                    ],
+                ),
+            ));
+        }
         if !userdata.is_empty() {
             props.push(("UserData", mat::structure("", userdata)));
         }
@@ -1359,7 +1718,15 @@ fn encode_axes<'a>(
         children.push(node("graph2d.lineseries", *next_handle, props, vec![], &[]));
         *next_handle += 1.;
     }
-    let mut special = [0.; 4];
+    for cl in &figure.extras.constant_lines {
+        children.push(encode_fig_constant_line(cl, *next_handle));
+        *next_handle += 1.;
+    }
+    for rect in &figure.extras.rectangles {
+        children.push(encode_fig_rectangle(rect, *next_handle));
+        *next_handle += 1.;
+    }
+    let mut special = vec![0.; 4];
     let mut colors = figure.colors.unwrap_or_default();
     let grid = fig_grid_projection(figure, appearance);
     if appearance.theme == crate::plot::BaseTheme::Dark {
@@ -1378,16 +1745,31 @@ fn encode_axes<'a>(
     }
     // Light Auto ruler modes keep absent RGB. Dark snapshots above are explicit,
     // with their effective label colors captured before introducing ruler RGB.
-    let label_colors = [colors.title, colors.xlabel, colors.ylabel];
-    for (i, label) in [&figure.title, &figure.xlabel, &figure.ylabel]
-        .into_iter()
-        .enumerate()
+    let label_colors = [colors.title, colors.xlabel, colors.ylabel, colors.z];
+    for (i, label) in [
+        &figure.title,
+        &figure.xlabel,
+        &figure.ylabel,
+        &figure.zlabel,
+    ]
+    .into_iter()
+    .enumerate()
     {
-        if !label.is_empty() || label_colors[i].is_some() {
-            let mut text_properties = vec![
-                ("String", mat::text(label)),
-                ("Interpreter", mat::text("none")),
-            ];
+        if !label.is_empty() || label_colors[i].is_some() || figure.extras.label_lines[i].is_some()
+        {
+            use crate::plot::text_markup::Interpreter;
+            let source = figure.extras.label_lines[i].as_ref();
+            let interpreter = figure.extras.label_interpreters[i];
+            // Preserve the historical literal FIG bytes for plain scalar labels.
+            let wire_interpreter = if interpreter == Interpreter::Tex
+                && source.is_none()
+                && !label.contains(['\\', '{', '}', '_', '^'])
+            {
+                Interpreter::None
+            } else {
+                interpreter
+            };
+            let mut text_properties = encode_fig_label_properties(label, source, wire_interpreter)?;
             if let Some(rgb) = label_colors[i] {
                 text_properties.push(("Color", num(&rgb)));
             }
@@ -1395,6 +1777,28 @@ fn encode_axes<'a>(
             *next_handle += 1.;
             special[i] = children.len() as f64;
         }
+    }
+    let subtitle = &figure.extras.subtitle;
+    if !subtitle.is_default() {
+        let mut props = encode_fig_label_properties(
+            &subtitle.string,
+            subtitle.string_lines.as_ref(),
+            subtitle.interpreter,
+        )?;
+        if let Some(rgb) = subtitle.color {
+            props.push(("Color", num(&rgb)));
+        }
+        if let Some(size) = subtitle.font_size {
+            props.push(("FontSize", num(&[size])));
+        }
+        props.push((
+            "FontWeight",
+            mat::text(if subtitle.bold { "bold" } else { "normal" }),
+        ));
+        children.push(node("text", *next_handle, props, vec![], &[]));
+        *next_handle += 1.;
+        // Subtitle is an optional fifth label, following title and X/Y/Z labels.
+        special.push(children.len() as f64);
     }
     let (x, y) = figure.bounds();
     let mut props = vec![
@@ -1422,16 +1826,62 @@ fn encode_axes<'a>(
             "NextPlot",
             mat::text(if figure.hold { "add" } else { "replace" }),
         ),
-        ("View", num(&[0., 90.])),
+        ("View", num(&figure.view)),
     ];
+    // Grid commands set ZGrid in 2-D too. Only write the Z grid alongside
+    // actual Z-axis data or configuration, so it cannot imply a new ZLim.
+    if figure.is_3d() || figure.zlim.is_some() || !figure.zlabel.is_empty() || figure.minor_grid[2]
+    {
+        let z_bounds = figure.zlim.unwrap_or_else(|| {
+            let mut min_z = f64::INFINITY;
+            let mut max_z = f64::NEG_INFINITY;
+            for s in &figure.series {
+                for &zv in s.z.iter() {
+                    if zv.is_finite() {
+                        min_z = min_z.min(zv);
+                        max_z = max_z.max(zv);
+                    }
+                }
+            }
+            if min_z.is_finite() && max_z.is_finite() {
+                if min_z < max_z {
+                    [min_z, max_z]
+                } else {
+                    [min_z - 1., max_z + 1.]
+                }
+            } else {
+                [0., 1.]
+            }
+        });
+        props.push(("ZLim", num(&z_bounds)));
+        props.push(("ZGrid", mat::text(if figure.zgrid { "on" } else { "off" })));
+        if figure.minor_grid[2] {
+            props.push(("ZMinorGrid", mat::text("on")));
+        }
+    }
     for (property, rgb) in [
         ("Color", colors.background),
         ("XColor", colors.x),
         ("YColor", colors.y),
+        ("ZColor", colors.z),
     ] {
         if let Some(rgb) = rgb {
             props.push((property, num(&rgb)));
         }
+    }
+    encode_fig_axes_extras(figure, &mut props)?;
+    // Only non-default states, so default files keep their historical bytes;
+    // the reader takes an absent Box as on and absent minor grids as off.
+    for (property, on) in [
+        ("XMinorGrid", figure.minor_grid[0]),
+        ("YMinorGrid", figure.minor_grid[1]),
+    ] {
+        if on {
+            props.push((property, mat::text("on")));
+        }
+    }
+    if !figure.box_outline {
+        props.push(("Box", mat::text("off")));
     }
     if let Some(position) = position {
         props.push(("Units", mat::text("normalized")));
@@ -1452,6 +1902,665 @@ fn encode_axes<'a>(
         props.push(("LegendPeerHandle", num(&[plan.handle])));
     }
     Ok(node("axes", handle, props, children, &special))
+}
+
+fn line_pattern_str(pattern: LinePattern) -> &'static str {
+    match pattern {
+        LinePattern::Solid => "-",
+        LinePattern::None => "none",
+        LinePattern::Dashed => "--",
+        LinePattern::Dotted => ":",
+        LinePattern::DashDot => "-.",
+    }
+}
+
+fn parse_line_pattern_str(style: &str) -> Result<LinePattern> {
+    match style {
+        "-" => Ok(LinePattern::Solid),
+        "none" => Ok(LinePattern::None),
+        "--" => Ok(LinePattern::Dashed),
+        ":" => Ok(LinePattern::Dotted),
+        "-." => Ok(LinePattern::DashDot),
+        _ => Err("Unsupported FIG line style".into()),
+    }
+}
+
+fn encode_fig_annotation(
+    ann: &crate::plot::Annotation,
+    handle: f64,
+) -> Result<Vec<(&'static str, mat::Encoded<'static>)>> {
+    use crate::plot::AnnotationKind;
+    let kind = match ann.kind {
+        AnnotationKind::Line => "scribe.line",
+        AnnotationKind::Arrow => "scribe.arrow",
+        AnnotationKind::DoubleArrow => "scribe.doublearrow",
+        AnnotationKind::TextArrow => "scribe.textarrow",
+        AnnotationKind::Rectangle => "scribe.rectangle",
+        AnnotationKind::Ellipse => "scribe.ellipse",
+    };
+    let mut props = vec![
+        ("Position", num(&ann.position)),
+        ("Color", num(&ann.color.map(|c| f64::from(c) / 255.))),
+        (
+            "EdgeColor",
+            if ann.edge_none {
+                mat::text("none")
+            } else {
+                num(&ann.color.map(|c| f64::from(c) / 255.))
+            },
+        ),
+        ("LineWidth", num(&[ann.line_width])),
+        ("LineStyle", mat::text(line_pattern_str(ann.pattern))),
+        ("HeadStyle", mat::text(ann.head_style.name())),
+        ("HeadLength", num(&[ann.head_length])),
+        ("HeadWidth", num(&[ann.head_width])),
+        ("String", mat::text(&ann.text)),
+        ("FontSize", num(&[ann.font_size])),
+        (
+            "FaceColor",
+            ann.face_color.map_or_else(
+                || mat::text("none"),
+                |c| num(&c.map(|v| f64::from(v) / 255.)),
+            ),
+        ),
+        ("FaceAlpha", num(&[ann.face_alpha])),
+        ("Visible", mat::text(if ann.visible { "on" } else { "off" })),
+    ];
+    let _ = &mut props;
+    Ok(node(kind, handle, props, vec![], &[]))
+}
+
+fn decode_fig_annotation(ann_node: &Fields<'_>) -> Result<crate::plot::Annotation> {
+    use crate::plot::{Annotation, AnnotationHeadStyle, AnnotationKind};
+    let kind = match string(ann_node, "type", "")? {
+        "scribe.line" => AnnotationKind::Line,
+        "scribe.arrow" => AnnotationKind::Arrow,
+        "scribe.doublearrow" => AnnotationKind::DoubleArrow,
+        "scribe.textarrow" => AnnotationKind::TextArrow,
+        "scribe.rectangle" => AnnotationKind::Rectangle,
+        "scribe.ellipse" => AnnotationKind::Ellipse,
+        other => return Err(format!("Unsupported FIG annotation type: {other}")),
+    };
+    let p = object(field(ann_node, "properties")?)?;
+    let pos_val = field(p, "Position")?;
+    if pos_val.len() != 4 {
+        return Err("FIG annotation Position must contain four numbers".into());
+    }
+    let position = [
+        pos_val.number(0).ok_or("Invalid FIG annotation Position")?,
+        pos_val.number(1).ok_or("Invalid FIG annotation Position")?,
+        pos_val.number(2).ok_or("Invalid FIG annotation Position")?,
+        pos_val.number(3).ok_or("Invalid FIG annotation Position")?,
+    ];
+    let mut ann = if kind.is_box() {
+        Annotation::new_box(kind, position)?
+    } else {
+        Annotation::new_line(
+            kind,
+            [position[0], position[0] + position[2]],
+            [position[1], position[1] + position[3]],
+        )?
+    };
+    if let Some(c) = p.get("Color").filter(|v| v.text().is_none()) {
+        ann.color = color(c)?;
+    }
+    if let Some(edge) = p.get("EdgeColor") {
+        if edge.text().is_some_and(|t| t.eq_ignore_ascii_case("none")) {
+            ann.edge_none = true;
+        } else {
+            ann.color = color(edge)?;
+            ann.edge_none = false;
+        }
+    }
+    ann.line_width = scalar(p, "LineWidth", ann.line_width)?;
+    ann.pattern = parse_line_pattern_str(string(p, "LineStyle", "-")?)?;
+    ann.head_style = match string(p, "HeadStyle", "vback2")?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "vback2" => AnnotationHeadStyle::VBack2,
+        "plain" => AnnotationHeadStyle::Plain,
+        "none" => AnnotationHeadStyle::None,
+        _ => return Err("Unsupported FIG annotation HeadStyle".into()),
+    };
+    ann.head_length = scalar(p, "HeadLength", ann.head_length)?;
+    ann.head_width = scalar(p, "HeadWidth", ann.head_width)?;
+    ann.text = string(p, "String", "")?.to_owned();
+    ann.font_size = scalar(p, "FontSize", ann.font_size)?;
+    if let Some(face) = p.get("FaceColor") {
+        ann.face_color = if face.text().is_some_and(|t| t.eq_ignore_ascii_case("none")) {
+            None
+        } else {
+            Some(color(face)?)
+        };
+    }
+    ann.face_alpha = scalar(p, "FaceAlpha", ann.face_alpha)?;
+    ann.visible = match string(p, "Visible", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG annotation Visible must be on or off".into()),
+    };
+    ann.validate()?;
+    Ok(ann)
+}
+
+fn encode_fig_constant_line(
+    cl: &crate::plot::ConstantLineObject,
+    handle: f64,
+) -> Vec<(&'static str, mat::Encoded<'static>)> {
+    let mut props = vec![
+        ("InterceptAxis", mat::text(cl.axis.as_str())),
+        ("Value", num(&[cl.value])),
+        ("LineStyle", mat::text(line_pattern_str(cl.pattern))),
+        ("LineWidth", num(&[cl.line_width])),
+        ("Alpha", num(&[cl.alpha])),
+        ("Label", mat::text(&cl.label)),
+        (
+            "LabelHorizontalAlignment",
+            mat::text(cl.label_h_align.as_str()),
+        ),
+        (
+            "LabelVerticalAlignment",
+            mat::text(cl.label_v_align.as_str()),
+        ),
+        ("DisplayName", mat::text(&cl.display_name)),
+        ("Visible", mat::text(if cl.visible { "on" } else { "off" })),
+    ];
+    if let Some(rgb) = cl.color {
+        props.push(("Color", num(&rgb)));
+    }
+    node(
+        "matlab.graphics.chart.decoration.ConstantLine",
+        handle,
+        props,
+        vec![],
+        &[],
+    )
+}
+
+fn decode_fig_constant_line(cl_node: &Fields<'_>) -> Result<crate::plot::ConstantLineObject> {
+    use crate::plot::{ConstantLineHAlign, ConstantLineObject, ConstantLineVAlign, InterceptAxis};
+    let p = object(field(cl_node, "properties")?)?;
+    let axis = match string(p, "InterceptAxis", "x")?
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "x" => InterceptAxis::X,
+        "y" => InterceptAxis::Y,
+        _ => return Err("FIG ConstantLine InterceptAxis must be x or y".into()),
+    };
+    let value = scalar(p, "Value", f64::NAN)?;
+    let mut cl = ConstantLineObject::new(axis, value);
+    cl.color = optional_axes_rgb(p, "Color")?;
+    cl.pattern = parse_line_pattern_str(string(p, "LineStyle", "-")?)?;
+    cl.line_width = scalar(p, "LineWidth", cl.line_width)?;
+    cl.alpha = scalar(p, "Alpha", cl.alpha)?;
+    cl.label = string(p, "Label", "")?.to_owned();
+    cl.label_h_align = ConstantLineHAlign::parse(string(p, "LabelHorizontalAlignment", "right")?)?;
+    cl.label_v_align = ConstantLineVAlign::parse(string(p, "LabelVerticalAlignment", "top")?)?;
+    cl.display_name = string(p, "DisplayName", "")?.to_owned();
+    cl.visible = match string(p, "Visible", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG ConstantLine Visible must be on or off".into()),
+    };
+    cl.validate()?;
+    Ok(cl)
+}
+
+fn encode_fig_rectangle(
+    rect: &crate::plot::RectangleObject,
+    handle: f64,
+) -> Vec<(&'static str, mat::Encoded<'static>)> {
+    let props = vec![
+        ("Position", num(&rect.position)),
+        ("Curvature", num(&rect.curvature)),
+        (
+            "FaceColor",
+            rect.face_color
+                .map_or_else(|| mat::text("none"), |rgb| num(&rgb)),
+        ),
+        (
+            "EdgeColor",
+            rect.edge_color
+                .map_or_else(|| mat::text("none"), |rgb| num(&rgb)),
+        ),
+        ("LineWidth", num(&[rect.line_width])),
+        ("LineStyle", mat::text(line_pattern_str(rect.pattern))),
+        (
+            "Visible",
+            mat::text(if rect.visible { "on" } else { "off" }),
+        ),
+    ];
+    node("rectangle", handle, props, vec![], &[])
+}
+
+fn decode_fig_rectangle(rect_node: &Fields<'_>) -> Result<crate::plot::RectangleObject> {
+    let p = object(field(rect_node, "properties")?)?;
+    let mut rect = crate::plot::RectangleObject::new();
+    let pos = field(p, "Position")?;
+    if pos.len() != 4 {
+        return Err("FIG rectangle Position must contain four numbers".into());
+    }
+    rect.position = [
+        pos.number(0).ok_or("Invalid FIG rectangle Position")?,
+        pos.number(1).ok_or("Invalid FIG rectangle Position")?,
+        pos.number(2).ok_or("Invalid FIG rectangle Position")?,
+        pos.number(3).ok_or("Invalid FIG rectangle Position")?,
+    ];
+    if let Some(curv) = p.get("Curvature") {
+        let cx = curv.number(0).ok_or("Invalid FIG rectangle Curvature")?;
+        let cy = curv.number(1).unwrap_or(cx);
+        rect.curvature = [cx, cy];
+    }
+    if let Some(face) = p.get("FaceColor") {
+        rect.face_color = if face.text().is_some_and(|t| t.eq_ignore_ascii_case("none")) {
+            None
+        } else {
+            Some(color(face)?.map(|c| f64::from(c) / 255.))
+        };
+    }
+    if let Some(edge) = p.get("EdgeColor") {
+        rect.edge_color = if edge.text().is_some_and(|t| t.eq_ignore_ascii_case("none")) {
+            None
+        } else {
+            Some(color(edge)?.map(|c| f64::from(c) / 255.))
+        };
+    }
+    rect.line_width = scalar(p, "LineWidth", rect.line_width)?;
+    rect.pattern = parse_line_pattern_str(string(p, "LineStyle", "-")?)?;
+    rect.visible = match string(p, "Visible", "on")? {
+        "on" => true,
+        "off" => false,
+        _ => return Err("FIG rectangle Visible must be on or off".into()),
+    };
+    rect.validate()?;
+    Ok(rect)
+}
+
+fn encode_fig_label_properties<'a>(
+    label: &'a str,
+    source: Option<&'a crate::plot::text_markup::TextSource>,
+    interpreter: crate::plot::text_markup::Interpreter,
+) -> Result<Vec<(&'static str, mat::Encoded<'a>)>> {
+    use crate::plot::text_markup::TextSource;
+    let mut props = Vec::new();
+    match source {
+        Some(TextSource::Cell(lines)) if !lines.is_empty() => {
+            let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+            props.push((
+                "String",
+                mat::text_cells(&refs, "FIG label line exceeds 4096 UTF-8 bytes")?,
+            ));
+        }
+        _ => props.push(("String", mat::text(label))),
+    }
+    props.push(("Interpreter", mat::text(interpreter.as_str())));
+    match source {
+        Some(TextSource::Strings { rows, cols, values }) => {
+            let present: Vec<f64> = values
+                .iter()
+                .map(|v| if v.is_some() { 1. } else { 0. })
+                .collect();
+            let strs: Vec<&str> = values.iter().map(|v| v.as_deref().unwrap_or("")).collect();
+            props.push((
+                "UserData",
+                mat::structure(
+                    "",
+                    vec![(
+                        "MatRustTextSource",
+                        mat::structure(
+                            "",
+                            vec![
+                                ("Kind", mat::text("strings")),
+                                ("Rows", num(&[*rows as f64])),
+                                ("Cols", num(&[*cols as f64])),
+                                ("Present", mat::numbers(present.into_iter())),
+                                (
+                                    "Values",
+                                    mat::text_cells(
+                                        &strs,
+                                        "FIG label string exceeds 4096 UTF-8 bytes",
+                                    )?,
+                                ),
+                            ],
+                        ),
+                    )],
+                ),
+            ));
+        }
+        Some(TextSource::Character { rows, cols, units }) => {
+            props.push((
+                "UserData",
+                mat::structure(
+                    "",
+                    vec![(
+                        "MatRustTextSource",
+                        mat::structure(
+                            "",
+                            vec![
+                                ("Kind", mat::text("character")),
+                                ("Rows", num(&[*rows as f64])),
+                                ("Cols", num(&[*cols as f64])),
+                                ("Units", mat::numbers(units.iter().map(|&u| f64::from(u)))),
+                            ],
+                        ),
+                    )],
+                ),
+            ));
+        }
+        _ => {}
+    }
+    Ok(props)
+}
+
+fn decode_fig_label_string(
+    p: &Fields<'_>,
+) -> Result<(String, Option<crate::plot::text_markup::TextSource>)> {
+    use crate::plot::text_markup::TextSource;
+    let mut source = None;
+    let text = match p.get("String") {
+        None => String::new(),
+        Some(Value::Text(s)) => s.clone(),
+        Some(Value::Cell(items)) => {
+            let lines: Vec<String> = items
+                .iter()
+                .map(|v| {
+                    v.text()
+                        .map(str::to_owned)
+                        .ok_or_else(|| "Unsupported FIG label cell entry".to_owned())
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let joined = lines.join("\n");
+            source = Some(TextSource::Cell(lines));
+            joined
+        }
+        _ => return Err("Unsupported FIG label String".into()),
+    };
+    if let Some(ud) = p
+        .get("UserData")
+        .and_then(Value::structs)
+        .and_then(|s| s.first())
+        && let Some(ts) = ud
+            .get("MatRustTextSource")
+            .and_then(Value::structs)
+            .and_then(|s| s.first())
+    {
+        let kind = string(ts, "Kind", "")?;
+        let rows = scalar(ts, "Rows", 0.)? as usize;
+        let cols = scalar(ts, "Cols", 0.)? as usize;
+        match kind {
+            "strings" => {
+                let present = field(ts, "Present")?;
+                let values_cell = match field(ts, "Values")? {
+                    Value::Cell(c) => c,
+                    _ => return Err("Invalid FIG MatRustTextSource Values".into()),
+                };
+                if present.len() != values_cell.len() {
+                    return Err("Invalid FIG MatRustTextSource length".into());
+                }
+                let values = (0..values_cell.len())
+                    .map(|i| {
+                        if present.number(i).unwrap_or(0.) == 0. {
+                            Ok(None)
+                        } else {
+                            values_cell[i]
+                                .text()
+                                .map(|s| Some(s.to_owned()))
+                                .ok_or_else(|| "Invalid FIG MatRustTextSource entry".to_owned())
+                        }
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                source = Some(TextSource::Strings { rows, cols, values });
+            }
+            "character" => {
+                let units_val = field(ts, "Units")?;
+                let units = (0..units_val.len())
+                    .map(|i| {
+                        units_val
+                            .number(i)
+                            .map(|v| v as u16)
+                            .ok_or_else(|| "Invalid FIG MatRustTextSource unit".to_owned())
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                source = Some(TextSource::Character { rows, cols, units });
+            }
+            _ => return Err("Unsupported FIG MatRustTextSource kind".into()),
+        }
+    }
+    Ok((text, source))
+}
+
+fn encode_fig_axes_extras<'a>(
+    axes: &'a crate::plot::Axes,
+    props: &mut Vec<(&'static str, mat::Encoded<'a>)>,
+) -> Result<()> {
+    if axes.extras.layer.is_top() {
+        props.push(("Layer", mat::text(axes.extras.layer.as_str())));
+    }
+    if let Some(cmap) = &axes.extras.colormap {
+        let rows = cmap.len();
+        let mut flat = Vec::with_capacity(rows * 3);
+        for c in 0..3 {
+            for row in cmap.iter() {
+                flat.push(row[c]);
+            }
+        }
+        props.push(("Colormap", mat::matrix(rows, 3, flat)));
+    }
+    if let Some(clim) = axes.extras.clim {
+        props.push(("CLim", num(&clim)));
+        props.push(("CLimMode", mat::text("manual")));
+    }
+    for (axis, tick_key, label_key, rot_key) in [
+        (0, "XTick", "XTickLabel", "XTickLabelRotation"),
+        (1, "YTick", "YTickLabel", "YTickLabelRotation"),
+        (2, "ZTick", "ZTickLabel", "ZTickLabelRotation"),
+    ] {
+        let ruler = &axes.extras.rulers[axis];
+        if let Some(ticks) = &ruler.ticks {
+            props.push((tick_key, mat::numbers(ticks.iter().copied())));
+        }
+        if let Some(labels) = &ruler.tick_labels {
+            let refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+            props.push((
+                label_key,
+                mat::text_cells(&refs, "FIG tick label exceeds 4096 UTF-8 bytes")?,
+            ));
+        }
+        if ruler.tick_label_rotation != 0. {
+            props.push((rot_key, num(&[ruler.tick_label_rotation])));
+        }
+    }
+    if axes.extras.tick_label_interpreter != crate::plot::text_markup::Interpreter::Tex {
+        props.push((
+            "TickLabelInterpreter",
+            mat::text(axes.extras.tick_label_interpreter.as_str()),
+        ));
+    }
+    let needs_ruler_meta = axes
+        .extras
+        .rulers
+        .iter()
+        .any(|r| !r.kind.is_numeric() || r.tick_label_format.is_some() || r.exponent != 0);
+    if needs_ruler_meta {
+        let mut ruler_structs = Vec::with_capacity(3);
+        for (key, ruler) in [
+            ("X", &axes.extras.rulers[0]),
+            ("Y", &axes.extras.rulers[1]),
+            ("Z", &axes.extras.rulers[2]),
+        ] {
+            let mut fields = vec![
+                ("Kind", mat::text(ruler.kind.kind_word())),
+                ("Exponent", num(&[f64::from(ruler.exponent)])),
+            ];
+            if let Some(fmt) = &ruler.tick_label_format {
+                fields.push(("TickLabelFormat", mat::text(fmt)));
+            }
+            match &ruler.kind {
+                crate::plot::RulerKind::Numeric => {}
+                crate::plot::RulerKind::Datetime { utc, format } => {
+                    fields.push(("Utc", num(&[if *utc { 1. } else { 0. }])));
+                    fields.push(("Format", mat::text(format)));
+                }
+                crate::plot::RulerKind::Duration { format, unit_ms } => {
+                    fields.push(("Format", mat::text(format)));
+                    fields.push(("UnitMs", num(&[*unit_ms])));
+                }
+                crate::plot::RulerKind::Categorical {
+                    categories,
+                    ordinal,
+                } => {
+                    let refs: Vec<&str> = categories.iter().map(String::as_str).collect();
+                    fields.push((
+                        "Categories",
+                        mat::text_cells(&refs, "FIG category name exceeds 4096 UTF-8 bytes")?,
+                    ));
+                    fields.push(("Ordinal", num(&[if *ordinal { 1. } else { 0. }])));
+                }
+            }
+            ruler_structs.push((key, mat::structure("", fields)));
+        }
+        props.push((
+            "UserData",
+            mat::structure(
+                "",
+                vec![("MatRustRulers", mat::structure("", ruler_structs))],
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn decode_fig_axes_extras(props: &Fields<'_>, axes: &mut crate::plot::Axes) -> Result<()> {
+    axes.extras.layer = crate::plot::AxesLayer::parse(string(props, "Layer", "bottom")?)?;
+    if let Some(cmap_val) = props.get("Colormap") {
+        let len = cmap_val.len();
+        if len == 0 || !len.is_multiple_of(3) {
+            return Err("FIG Colormap must be an Nx3 matrix with 1..4096 rows".into());
+        }
+        let rows = len / 3;
+        if rows > crate::plot::MAX_COLORMAP_ROWS {
+            return Err("FIG Colormap must be an Nx3 matrix with 1..4096 rows".into());
+        }
+        let mut cmap = Vec::with_capacity(rows);
+        for r in 0..rows {
+            let rgb = [
+                cmap_val.number(r).ok_or("Invalid FIG Colormap")?,
+                cmap_val.number(rows + r).ok_or("Invalid FIG Colormap")?,
+                cmap_val
+                    .number(2 * rows + r)
+                    .ok_or("Invalid FIG Colormap")?,
+            ];
+            if rgb
+                .iter()
+                .any(|v| !v.is_finite() || !(0. ..=1.).contains(v))
+            {
+                return Err("FIG Colormap values must be finite in 0..1".into());
+            }
+            cmap.push(rgb);
+        }
+        axes.extras.colormap = Some(std::sync::Arc::new(cmap));
+    }
+    if let Some(clim) = limits(props, "CLim")? {
+        if clim[0] >= clim[1] {
+            return Err("FIG CLim must be strictly increasing".into());
+        }
+        axes.extras.clim = Some(clim);
+    }
+    for (axis, tick_key, label_key, rot_key) in [
+        (0, "XTick", "XTickLabel", "XTickLabelRotation"),
+        (1, "YTick", "YTickLabel", "YTickLabelRotation"),
+        (2, "ZTick", "ZTickLabel", "ZTickLabelRotation"),
+    ] {
+        if let Some(ticks_val) = props.get(tick_key) {
+            let mut ticks = Vec::with_capacity(ticks_val.len());
+            for i in 0..ticks_val.len() {
+                ticks.push(ticks_val.number(i).ok_or("Invalid FIG ticks")?);
+            }
+            axes.extras.rulers[axis].ticks = Some(ticks);
+        }
+        if let Some(labels_val) = props.get(label_key) {
+            let labels = match labels_val {
+                Value::Cell(items) => items
+                    .iter()
+                    .map(|v| {
+                        v.text()
+                            .map(str::to_owned)
+                            .ok_or_else(|| "Invalid FIG tick label".to_owned())
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+                Value::Text(s) => vec![s.clone()],
+                _ => return Err("Unsupported FIG tick labels".into()),
+            };
+            axes.extras.rulers[axis].tick_labels = Some(labels);
+        }
+        if props.contains_key(rot_key) {
+            axes.extras.rulers[axis].tick_label_rotation = scalar(props, rot_key, 0.)?;
+        }
+    }
+    axes.extras.tick_label_interpreter = crate::plot::text_markup::Interpreter::parse(string(
+        props,
+        "TickLabelInterpreter",
+        "tex",
+    )?)?;
+    if let Some(ud) = props
+        .get("UserData")
+        .and_then(Value::structs)
+        .and_then(|s| s.first())
+        && let Some(rulers) = ud
+            .get("MatRustRulers")
+            .and_then(Value::structs)
+            .and_then(|s| s.first())
+    {
+        for (axis, key) in [(0, "X"), (1, "Y"), (2, "Z")] {
+            let Some(r) = rulers
+                .get(key)
+                .and_then(Value::structs)
+                .and_then(|s| s.first())
+            else {
+                continue;
+            };
+            axes.extras.rulers[axis].exponent = scalar(r, "Exponent", 0.)? as i32;
+            if r.contains_key("TickLabelFormat") {
+                axes.extras.rulers[axis].tick_label_format =
+                    Some(string(r, "TickLabelFormat", "")?.to_owned());
+            }
+            axes.extras.rulers[axis].kind = match string(r, "Kind", "numeric")? {
+                "numeric" => crate::plot::RulerKind::Numeric,
+                "datetime" => crate::plot::RulerKind::Datetime {
+                    utc: scalar(r, "Utc", 0.)? != 0.,
+                    format: string(r, "Format", "")?.to_owned(),
+                },
+                "duration" => crate::plot::RulerKind::Duration {
+                    format: string(r, "Format", "")?.to_owned(),
+                    unit_ms: scalar(r, "UnitMs", 1_000.)?,
+                },
+                "categorical" => {
+                    let categories = match r.get("Categories") {
+                        Some(Value::Cell(items)) => items
+                            .iter()
+                            .map(|v| {
+                                v.text()
+                                    .map(str::to_owned)
+                                    .ok_or_else(|| "Invalid FIG category".to_owned())
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                        _ => Vec::new(),
+                    };
+                    crate::plot::RulerKind::Categorical {
+                        categories,
+                        ordinal: scalar(r, "Ordinal", 0.)? != 0.,
+                    }
+                }
+                other => return Err(format!("Unsupported FIG ruler kind: {other}")),
+            };
+        }
+    }
+    for ruler in &axes.extras.rulers {
+        ruler.validate()?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1558,7 +2667,7 @@ mod layout_tests {
     }
 
     #[test]
-    fn extended_fig_locations_preserve_solved_axes_and_reject_unsupported_legend_layout() {
+    fn extended_fig_locations_preserve_solved_axes_and_validate_legend_layout() {
         // Synthetic hierarchy mutations exercise public-property validation;
         // they are not claimed as newly generated MATLAB-origin fixtures.
         let inner = [0.38, 0.35, 0.24, 0.3];
@@ -1627,10 +2736,33 @@ mod layout_tests {
                 assert!((actual - expected).abs() < 1e-12);
             }
         }
+        for (name, orientation, columns) in [
+            ("horizontal", crate::plot::LegendOrientation::Horizontal, 1),
+            ("vertical", crate::plot::LegendOrientation::Vertical, 2),
+        ] {
+            let figure = make(
+                "eastoutside",
+                name,
+                columns as f64,
+                "outerposition",
+                "outerposition",
+            )
+            .unwrap();
+            assert_eq!(figure.extras.legend_orientation, orientation);
+            assert_eq!(figure.extras.legend_num_columns, Some(columns));
+            assert!(figure.placement.unwrap().imported_solved);
+            for (actual, expected) in figure.resolved_axes_positions().unwrap()[0]
+                .1
+                .into_iter()
+                .zip(inner)
+            {
+                assert!((actual - expected).abs() < 1e-12);
+            }
+        }
         assert!(
             make(
                 "eastoutside",
-                "horizontal",
+                "diagonal",
                 1.,
                 "outerposition",
                 "outerposition"
@@ -1641,7 +2773,7 @@ mod layout_tests {
             make(
                 "eastoutside",
                 "vertical",
-                2.,
+                0.,
                 "outerposition",
                 "outerposition"
             )
@@ -1847,11 +2979,35 @@ mod width_serialization_tests {
         engine.execute("semilogx([1 10 100],[1 2 4],'r--o');hold on;plot([1 10 100],[3 4 6],'b:');title('Rust figure');xlabel('Time');ylabel('Amplitude');axis([1 100 0 8]);grid on;").unwrap();
         // This exact historical width-only comparison retains the legacy canvas policy.
         engine.figure.as_mut().unwrap().appearance = None;
+        assert!(engine.figure.as_ref().unwrap().zgrid);
         let bytes = encode_matlab_figure(engine.figure.as_ref().unwrap()).unwrap();
         let legacy = include_bytes!("../../tests/fixtures/fig/legacy-writer-lines.fig");
         assert_eq!(&bytes[..128], &legacy[..128]);
         let mut actual = mat::hierarchy(&bytes[128..], mat::Endian::Little).unwrap();
         let expected = mat::hierarchy(&legacy[128..], mat::Endian::Little).unwrap();
+        let Value::Struct(roots) = &mut actual else {
+            panic!("expected FIG root structure");
+        };
+        let Value::Struct(properties) = roots[0].get_mut("properties").unwrap() else {
+            panic!("expected FIG figure properties");
+        };
+        let properties = &mut properties[0];
+        for (key, value) in [
+            ("Units", "pixels"),
+            ("Resize", "on"),
+            ("NumberTitle", "on"),
+            ("WindowState", "normal"),
+        ] {
+            assert_eq!(properties.remove(key).unwrap().text(), Some(value));
+        }
+        let position = properties.remove("Position").unwrap();
+        assert_eq!(position.len(), 4);
+        assert_eq!(
+            std::array::from_fn(|i| position.number(i).unwrap()),
+            [100., 100., 960., 560.]
+        );
+        assert_eq!(properties["Visible"].text(), Some("on"));
+        properties.insert("Visible".into(), Value::Text("off".into()));
         fn strip_widths(value: &mut Value<'_>) -> usize {
             match value {
                 Value::Struct(items) => items

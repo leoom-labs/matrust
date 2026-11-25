@@ -38,7 +38,6 @@ fn unsupported_real_consumers_reject_complex_storage_without_output_or_figure_ch
         // Complex powers and sin are supported (tests/fn_core.rs); so are
         // trapz, filter and filtfilt (tests/fn_cplx3.rs).
         for source in [
-            "R=Z<1;",
             "R=~Z;",
             "R=logical(Z);",
             "R=isnan(Z);",

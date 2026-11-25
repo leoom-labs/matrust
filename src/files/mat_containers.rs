@@ -97,7 +97,27 @@ fn decode(
     if let Some(reason) = &info.unavailable {
         return Err(reason.clone());
     }
-    if info.class != "cell" {
+    if matches!(info.class.as_str(), "sparse" | "logical sparse") {
+        // Sparse cell element (class 5): its storage comes from the stored
+        // entries, which inspection counts without keeping them.
+        let mut left = remaining;
+        let value = if materialize {
+            let array = super::sparse::read_array(&mut reader, &mut left, info, None, cancel)?;
+            budget.charge(array.bytes(), 0)?;
+            Some(array)
+        } else {
+            let nnz = super::sparse::inspect(&mut reader, &mut left, info, true, cancel)?;
+            let logical = info.class == "logical sparse";
+            let bytes = super::sparse::decoded_bytes(nnz, info.dimensions[1], logical)
+                .and_then(|n| usize::try_from(n).ok())
+                .ok_or("Sparse cell element storage overflow")?;
+            budget.charge(bytes, 0)?;
+            None
+        };
+        skip(reader, left, cancel)?;
+        return Ok(value);
+    }
+    if !matches!(info.class.as_str(), "cell" | "struct") {
         let bytes = usize::try_from(info.storage_bytes().ok_or("Unknown child storage size")?)
             .map_err(|_| "Child storage overflow")?;
         budget.charge(bytes, 0)?;
@@ -120,11 +140,60 @@ fn decode(
     if rows > MAX_SLOTS || cols > MAX_SLOTS || count > MAX_SLOTS {
         return Err("Cell dimensions exceed 65536 slots".into());
     }
+    let mut remaining = remaining;
+    let names = if info.class == "struct" {
+        let (kind, width, used) = super::small_element(&mut reader, 4)?;
+        remaining = remaining
+            .checked_sub(used)
+            .ok_or("Truncated MAT struct metadata")?;
+        if kind != 5 || width.len() != 4 {
+            return Err("Invalid MAT struct field-name length".into());
+        }
+        let width = u32le(&width) as usize;
+        if !(1..=64).contains(&width) {
+            return Err("Invalid MAT struct field-name length".into());
+        }
+        let (kind, fields, used) =
+            super::small_element(&mut reader, 64 * crate::struct_array::MAX_FIELDS)?;
+        remaining = remaining
+            .checked_sub(used)
+            .ok_or("Truncated MAT struct field names")?;
+        if kind != 1
+            || fields.len() % width != 0
+            || fields.len() / width > crate::struct_array::MAX_FIELDS
+        {
+            return Err("Invalid MAT struct field names".into());
+        }
+        let mut names = Vec::new();
+        for field in fields.chunks_exact(width) {
+            let end = field
+                .iter()
+                .position(|&b| b == 0)
+                .ok_or("Unterminated MAT struct field name")?;
+            let name = std::str::from_utf8(&field[..end])
+                .map_err(|_| "Invalid MAT struct field name")?
+                .to_owned();
+            if !crate::files::valid_name(&name) || names.contains(&name) {
+                return Err("Invalid or duplicate MAT struct field name".into());
+            }
+            names.push(name);
+        }
+        budget.charge(names.iter().map(String::len).sum(), 0)?;
+        Some(names)
+    } else {
+        None
+    };
+    let elements = count;
+    let count = if let Some(names) = &names {
+        crate::StructArray::slot_total(count, names.len())?
+    } else {
+        count
+    };
     budget.charge(
         count
             .checked_mul(crate::containers::SLOT)
             .ok_or("Cell metadata overflow")?,
-        count,
+        count.max(elements),
     )?;
     let mut slots = Vec::new();
     if materialize {
@@ -132,8 +201,7 @@ fn decode(
             .try_reserve_exact(count)
             .map_err(|_| "Cannot allocate cell slots")?;
     }
-    let mut remaining = remaining;
-    for _ in 0..count {
+    for index in 0..count {
         check_cancel(cancel)?;
         if remaining < 8 {
             return Err("Missing MAT cell child".into());
@@ -160,7 +228,11 @@ fn decode(
             materialize,
             budget,
             cancel,
-        )?;
+        )
+        .map_err(|e| match &names {
+            Some(names) => format!("{}: {e}", names[index % names.len()]),
+            None => e,
+        })?;
         if child.limit() != 0 {
             return Err("Unconsumed MAT cell child bytes".into());
         }
@@ -174,7 +246,11 @@ fn decode(
     }
     check_cancel(cancel)?;
     if materialize {
-        CellArray::from_shared(rows, cols, slots, cancel).map(|a| Some(a.into()))
+        if let Some(names) = names {
+            crate::StructArray::from_slots(rows, cols, names, slots, cancel).map(|a| Some(a.into()))
+        } else {
+            CellArray::from_shared(rows, cols, slots, cancel).map(|a| Some(a.into()))
+        }
     } else {
         Ok(None)
     }
@@ -187,9 +263,13 @@ fn read_char(
     cancel: &AtomicBool,
 ) -> Result<Array> {
     check_cancel(cancel)?;
-    let count = info.dimensions[0]
-        .checked_mul(info.dimensions[1])
+    let count = info
+        .dimensions
+        .iter()
+        .try_fold(1usize, |n, &d| n.checked_mul(d))
         .ok_or("Character dimensions overflow")?;
+    let rows = info.dimensions[0];
+    let cols = crate::files::checked_dimension_product(&info.dimensions[1..])?;
     if count > crate::script_containers::MAX_CHARACTER_UNITS || remaining < 8 {
         return Err("Invalid bounded character extent".into());
     }
@@ -233,11 +313,7 @@ fn read_char(
     }
     let row = if kind == 16 {
         let text = std::str::from_utf8(&input).map_err(|_| "Invalid UTF-8 MAT character data")?;
-        CharacterRow::from_text(text, cancel)?.reshape(
-            info.dimensions[0],
-            info.dimensions[1],
-            cancel,
-        )?
+        CharacterRow::from_text(text, cancel)?.reshape(rows, cols, cancel)?
     } else {
         let mut units = Vec::new();
         units
@@ -249,13 +325,13 @@ fn read_char(
             }
             units.push(u16::from_le_bytes([pair[0], pair[1]]));
         }
-        CharacterRow::from_column_major(info.dimensions[0], info.dimensions[1], units, cancel)?
+        CharacterRow::from_column_major(rows, cols, units, cancel)?
     };
-    if row.len() != count || (row.rows(), row.cols()) != (info.dimensions[0], info.dimensions[1]) {
+    if row.len() != count || (row.rows(), row.cols()) != (rows, cols) {
         return Err("Character UTF-16 dimensions do not match stored shape".into());
     }
     check_cancel(cancel)?;
-    Ok(row.into())
+    Ok(row.with_dims(&info.dimensions)?.into())
 }
 
 #[cfg(test)]

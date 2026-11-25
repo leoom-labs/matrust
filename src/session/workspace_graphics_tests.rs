@@ -300,15 +300,57 @@ fn identity_index_rejects_ambiguous_addresses_and_cancels_without_sample_work() 
     let _reset = Reset;
     let cancel = AtomicBool::new(false);
     let (_, figures, _) = fixture();
-    let samples = figures.figures[0].figure.series[0].points.clone();
+    let figure = &figures.figures[0].figure;
+    let samples = figure.series[0].points.clone();
     let got = index(&figures, &cancel).unwrap();
-    assert_eq!(got.len(), 3);
-    assert!((samples).same_storage(&figures.figures[0].figure.series[0].points));
+    let position = figure.active_position();
+    let expected = [
+        (&figure.identity, Location::Figure {}),
+        (&figure.axes.identity, Location::Axes { position }),
+        (
+            &figure.series[0].identity,
+            Location::Series { position, index: 0 },
+        ),
+        (
+            &figure.extras.ruler_identities[0],
+            Location::NumericRuler { position, axis: 0 },
+        ),
+        (
+            &figure.extras.ruler_identities[1],
+            Location::NumericRuler { position, axis: 1 },
+        ),
+        (
+            &figure.extras.ruler_identities[2],
+            Location::NumericRuler { position, axis: 2 },
+        ),
+    ];
+    assert_eq!(got.len(), expected.len());
+    for (identity, location) in expected {
+        let (address, stored) = &got[&identity.recovery_key()];
+        assert_eq!(
+            *address,
+            Address {
+                figure: 3,
+                location
+            }
+        );
+        assert!(stored.same_object(identity));
+    }
+    assert!(samples.same_storage(&figure.series[0].points));
     let mut duplicate = figures.clone();
     duplicate.figures.push(duplicate.figures[0].clone());
     assert!(index(&duplicate, &cancel).is_err());
+    let mut duplicate = figures.clone();
+    let rulers = &mut duplicate.figures[0].figure.axes.extras.ruler_identities;
+    rulers[1] = rulers[0].clone();
+    assert!(
+        index(&duplicate, &cancel)
+            .unwrap_err()
+            .contains("Ambiguous graphics identity")
+    );
     let mut oversized = figures.clone();
-    oversized.figures[0].figure.series = vec![oversized.figures[0].figure.series[0].clone(); 65];
+    oversized.figures[0].figure.series =
+        vec![oversized.figures[0].figure.series[0].clone(); MAX_PLOT_SERIES + 1];
     assert!(index(&oversized, &cancel).is_err());
     STOP_AFTER.with(|s| s.set(Some(2)));
     assert!(index(&figures, &cancel).is_err());

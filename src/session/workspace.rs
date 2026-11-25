@@ -26,7 +26,7 @@ pub struct Manifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub graph: Option<graph::Graph>,
     pub entries: BTreeMap<String, Reference>,
-    /// Variables left out of the checkpoint because they hold a struct.
+    /// Variables left out of the checkpoint because they hold a struct or string.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skipped: Vec<String>,
     #[serde(skip)]
@@ -120,7 +120,7 @@ impl Manifest {
             names.push_str(&format!(" and {} more", self.skipped.len() - SHOWN));
         }
         Some(format!(
-            "Not recovered (structs are not supported in recovery yet): {names}"
+            "Not recovered (tables, structs, strings, sparse and some other types are not supported in recovery yet): {names}"
         ))
     }
     fn validate(&self) -> Result<()> {
@@ -456,7 +456,16 @@ impl WeakArray {
             Array::Logical(a) => Self::Logical(Arc::downgrade(&a.data)),
             Array::Complex(a) => Self::Complex(Arc::downgrade(&a.storage)),
             Array::Character(a) => Self::Character(a.weak_storage()),
-            Array::Cell(_) | Array::Graphics(_) | Array::Struct(_) | Array::Handle(_) => {
+            Array::Str(_)
+            | Array::Cell(_)
+            | Array::Graphics(_)
+            | Array::Struct(_)
+            | Array::Handle(_)
+            | Array::Categorical(_)
+            | Array::Datetime(_)
+            | Array::Duration(_)
+            | Array::Table(_)
+            | Array::Sparse(_) => {
                 unreachable!("stage preflights supported persistence types")
             }
         }
@@ -628,7 +637,16 @@ impl Store {
                         .iter()
                         .flat_map(|v| v.re.to_le_bytes().into_iter().chain(v.im.to_le_bytes()))
                         .collect(),
-                    Array::Cell(_) | Array::Graphics(_) | Array::Struct(_) | Array::Handle(_) => {
+                    Array::Str(_)
+                    | Array::Cell(_)
+                    | Array::Graphics(_)
+                    | Array::Struct(_)
+                    | Array::Handle(_)
+                    | Array::Categorical(_)
+                    | Array::Datetime(_)
+                    | Array::Duration(_)
+                    | Array::Table(_)
+                    | Array::Sparse(_) => {
                         unreachable!("stage preflight")
                     }
                 };
@@ -702,7 +720,16 @@ impl Store {
                             write(&buffer[..chunk.len() * 16])?;
                         }
                     }
-                    Array::Cell(_) | Array::Graphics(_) | Array::Struct(_) | Array::Handle(_) => {
+                    Array::Str(_)
+                    | Array::Categorical(_)
+                    | Array::Datetime(_)
+                    | Array::Duration(_)
+                    | Array::Table(_)
+                    | Array::Cell(_)
+                    | Array::Graphics(_)
+                    | Array::Struct(_)
+                    | Array::Handle(_)
+                    | Array::Sparse(_) => {
                         unreachable!("stage preflight")
                     }
                 }

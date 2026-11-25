@@ -15,11 +15,18 @@ pub use baseline::{
 };
 pub mod coordinates;
 mod patch;
+pub use patch::{IndexedColor, IndexedPatch};
 mod points;
 pub use points::{PointFace, PointIter, SeriesPoints, WeakSeriesPoints};
+mod annotation;
 mod textbox;
+pub use annotation::{
+    Annotation, AnnotationHeadStyle, AnnotationKind, MAX_ANNOTATION_BYTES, MAX_ANNOTATIONS,
+};
 pub use patch::{
-    ClippedFace, MAX_PATCH_FACES, PatchFaces, clip_face_edge, clip_patch_face, patch_screen_point,
+    ClippedFace, FaceStyle, FaceStyles, MAX_INTERP_BANDS, MAX_INTERP_SERIES_BANDS, MAX_PATCH_FACES,
+    MAX_PATCH_OBJECT_FACES, PatchFaces, VertexCData, clip_face_edge, clip_patch_face,
+    interp_band_limit, interp_triangle_bands, patch_screen_point,
 };
 pub use textbox::{MAX_TEXTBOX_BYTES, MAX_TEXTBOXES, TextAlign, TextBox};
 mod complex_data;
@@ -32,8 +39,8 @@ pub(crate) use legend_state::LegendMetadata;
 pub use legend_state::LegendState;
 mod legend_best;
 mod legend_layout;
-pub use layout::{Layout, Panel, Position};
-pub use legend::LegendLocation;
+pub use layout::{AxisLink, Layout, Panel, Position, TilePadding, TileSpacing};
+pub use legend::{LegendBox, LegendLocation, LegendOrientation};
 pub use legend_best::{
     LEGEND_PROBE_LIMIT, LegendBestCache, LegendBestPrepared, LegendBestResult, LegendBestView,
     best_legend_location,
@@ -49,18 +56,80 @@ mod marker;
 mod sample;
 mod series_palette;
 mod stamp;
-pub use marker::{MarkerShape, validate_marker_size};
+pub use marker::{
+    MarkerColor, MarkerShape, ScatterCData, validate_alpha, validate_marker_area,
+    validate_marker_size,
+};
 pub use series_palette::{AutoPalette, PaletteCycle, PaletteVersion};
 pub(crate) use stamp::SnapshotStamp;
+pub mod colormap;
+mod graphics_extras;
+mod image;
+pub mod markup_layout;
+pub mod slice_viewer;
 mod svg;
-pub use axis::{AxisScale, AxisTransform};
+pub mod text_markup;
+pub mod time_axes;
+pub mod view3d;
+pub(crate) mod volume;
+pub use axis::{AxisScale, AxisTransform, MAX_MINOR_TICKS, MINOR_GRID_ALPHA, minor_ticks};
 pub use canvas::Canvas;
+pub use graphics_extras::{
+    AxesExtras, AxesLayer, AxisRuler, Colorbar, ColorbarLocation, ConstantLineHAlign,
+    ConstantLineObject, ConstantLineVAlign, InterceptAxis, LabelStyle, MAX_COLOR_ORDER_ROWS,
+    MAX_COLORMAP_ROWS, MAX_CONSTANT_LINES, MAX_RECTANGLES, MAX_TEXT_BYTES, MAX_TEXTS, MAX_TICKS,
+    RectangleObject, RulerKind, Subtitle, TextObject, TickDir, VerticalAlign, YyAxis,
+    default_color_order, horizontal_name, parse_horizontal, validate_font_size,
+    validate_tick_labels, validate_tick_length, validate_ticks,
+};
+pub use image::{
+    ImageDataClass, ImageMapping, ImageObject, MAX_IMAGE_PIXELS, base64, direct_colormap_index,
+    encode_png, encode_png_rgba, screen_raster,
+};
 pub use sample::{SampleHit, SampleQuery};
+pub use slice_viewer::{OrthosliceViewerObject, SliceDirection, SliceViewerObject};
+pub use volume::{
+    DEFAULT_ISOSURFACE_COLOR, MAX_VOLUME_VOXELS, MAX_VOLUMES, OverlayDataClass,
+    OverlayRenderingStyle, OverlayVolume, RenderingStyle, VolumeObject,
+    default_alphamap as default_volume_alphamap, default_colormap as default_volume_colormap,
+    default_overlay_alphamap, default_overlay_colormap, display_render_size,
+    projected_display_bounds, render_volume, render_volume_cancellable, render_volume_with_step,
+};
 /// Axis transforms paired with their two data-coordinate bounds.
 pub type DisplayAxesBounds = ([AxisTransform; 2], ([f64; 2], [f64; 2]));
 
+// Legacy limits for specialized chart, recipe and interchange formats.
 pub const MAX_SERIES: usize = 64;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum AxesDataChild {
+    Series(usize),
+    Volume(usize),
+}
+
+/// Data children in public Children order (topmost first).
+pub(crate) fn axes_data_children(axes: &Axes) -> Vec<AxesDataChild> {
+    let mut children: Vec<_> = (0..axes.series.len())
+        .rev()
+        .map(AxesDataChild::Series)
+        .collect();
+    if !axes.extras.volumes.is_empty() {
+        children.extend((0..axes.extras.volumes.len()).map(AxesDataChild::Volume));
+        children.sort_by_key(|child| {
+            std::cmp::Reverse(match *child {
+                AxesDataChild::Series(i) => axes.series[i].identity.creation_order(),
+                AxesDataChild::Volume(i) => axes.extras.volumes[i].stack_order.creation_order(),
+            })
+        });
+    }
+    children
+}
 pub const MAX_POINTS: usize = 1_000_000;
+// Short traces also allocate series records and their shared storage headers.
+// Allow one point-budget's worth of scalar elements for that overhead.
+const SERIES_METADATA_ELEMENTS: usize =
+    (std::mem::size_of::<Series>() + 64).div_ceil(std::mem::size_of::<f64>());
+pub const MAX_PLOT_SERIES: usize = MAX_POINTS / SERIES_METADATA_ELEMENTS;
 pub const COLORS: [[u8; 3]; 7] = [
     [0, 114, 189],
     [217, 83, 25],
@@ -92,6 +161,41 @@ pub enum LinePattern {
     DashDot = 3,
     None = 4,
 }
+impl LinePattern {
+    /// Dash and gap lengths in logical pixels, matching SVG `stroke-dasharray`.
+    pub fn dash_gap(self) -> Option<(&'static [f32], &'static [f32])> {
+        match self {
+            Self::Dashed => Some((&[8.], &[5.])),
+            Self::Dotted => Some((&[2.], &[4.])),
+            Self::DashDot => Some((&[8., 2.], &[4., 4.])),
+            Self::Solid | Self::None => None,
+        }
+    }
+    /// SVG `stroke-dasharray` attribute value, if patterned.
+    pub fn svg_dasharray(self) -> Option<&'static str> {
+        match self {
+            Self::Dashed => Some("8 5"),
+            Self::Dotted => Some("2 4"),
+            Self::DashDot => Some("8 4 2 4"),
+            Self::Solid | Self::None => None,
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BarLayout {
+    #[default]
+    Grouped,
+    Stacked,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FaceColorMode {
+    #[default]
+    Color,
+    Flat,
+    None,
+}
 #[derive(Clone, Debug)]
 pub struct Series {
     /// Process-local identity; cloned snapshots retain it, decoded objects do not.
@@ -103,6 +207,14 @@ pub struct Series {
     pub bar_baseline_visible: bool,
     pub points: SeriesPoints,
     pub patch: Option<PatchFaces>,
+    pub indexed_patch: Option<patch::IndexedPatch>,
+    /// Scalar CData of a contourslice patch. Its geometry is an open polyline.
+    pub slice_contour_level: Option<f64>,
+    /// Scalar CData of a fill/patch series when mapped through axes CLim and colormap.
+    pub patch_cdata: Option<f64>,
+    /// Per-vertex scalar CData of a fill drawn with FaceColor 'interp'
+    /// (face_color_mode Flat). None for every other series.
+    pub patch_vertex_cdata: Option<patch::VertexCData>,
     /// None retains the historical automatic stem baseline.
     pub base_value: Option<f64>,
     /// Independent constant Bar/Patch outline. None preserves historical fill-only appearance.
@@ -123,7 +235,50 @@ pub struct Series {
     pub visible: bool,
     pub bar_width: f64,
     pub bar_offset: f64,
+    pub bar_layout: BarLayout,
+    pub bar_relative_width: Option<f64>,
+    pub bar_group_width: Option<f64>,
+    pub bar_group_id: Option<crate::ObjectIdentity>,
+    pub face_color_mode: FaceColorMode,
+    /// Third coordinate of a 3-D line or scatter (`plot3`, `scatter3`): empty for
+    /// a 2-D series, else one value per point. Shared, so figure snapshots
+    /// never copy it.
+    pub z: std::sync::Arc<[f64]>,
+    /// Never a legend member (MATLAB `Annotation.LegendInformation.IconDisplayStyle`
+    /// 'off'): chart helpers such as error-bar segments or a polar grid.
+    pub legend_hidden: bool,
+    /// Per-face fill colours of a Patch series (surf/mesh), one per face; None
+    /// keeps the single series colour.
+    pub face_colors: Option<std::sync::Arc<[[u8; 3]]>>,
+    /// Per-face edge colours of a Patch series (EdgeColor 'flat'/'interp'), one
+    /// per face; drawn instead of `face_edge_color` when present.
+    pub face_edge_colors: Option<std::sync::Arc<[[u8; 3]]>>,
+    /// Patch fill opacity in 0..=1 (FaceAlpha); 0 draws no fill (FaceColor
+    /// 'none'). None is opaque.
+    pub face_alpha: Option<f64>,
+    /// True when Patch FaceColor was explicitly set to `'none'`.
+    pub face_color_none: bool,
+    /// Patch edge opacity in 0..=1 (EdgeAlpha). None is opaque.
+    pub edge_alpha: Option<f64>,
+    /// Display copy only (never saved): the per-face draw style of a merged,
+    /// depth-sorted list of several surfaces' faces (see view3d).
+    pub face_styles: Option<std::sync::Arc<FaceStyles>>,
+    /// Per-point marker area in points^2 for Scatter (`SizeData` when non-scalar).
+    pub marker_sizes: Option<std::sync::Arc<[f64]>>,
+    /// Per-point colour data for Scatter (`CData` when non-scalar).
+    pub scatter_cdata: Option<ScatterCData>,
+    /// Scatter MarkerFaceColor policy; Default preserves legacy `marker_filled`.
+    pub marker_face_color: MarkerColor,
+    /// Scatter MarkerEdgeColor policy; Default is Flat.
+    pub marker_edge_color: MarkerColor,
+    /// Scatter MarkerFaceAlpha in 0..=1; None is 1.0 (opaque).
+    pub marker_face_alpha: Option<f64>,
+    /// Scatter MarkerEdgeAlpha in 0..=1; None is 1.0 (opaque).
+    pub marker_edge_alpha: Option<f64>,
 }
+/// Display coordinates plus optional original point indices for decimated scatter series.
+pub type IndexedDisplayPoints = (Vec<[f64; 2]>, Option<Vec<usize>>);
+
 impl Series {
     pub fn new(points: Vec<[f64; 2]>, kind: PlotKind) -> Self {
         Self::with_points(points.into(), kind)
@@ -137,6 +292,10 @@ impl Series {
             bar_baseline_visible: kind == PlotKind::Bar,
             points,
             patch: None,
+            indexed_patch: None,
+            slice_contour_level: None,
+            patch_cdata: None,
+            patch_vertex_cdata: None,
             base_value: None,
             face_edge_color: None,
             label: String::new(),
@@ -153,12 +312,40 @@ impl Series {
             visible: true,
             bar_width: 0.8,
             bar_offset: 0.,
+            bar_layout: BarLayout::Grouped,
+            bar_relative_width: None,
+            bar_group_width: None,
+            bar_group_id: None,
+            face_color_mode: FaceColorMode::Color,
+            z: std::sync::Arc::from([]),
+            legend_hidden: false,
+            face_colors: None,
+            face_edge_colors: None,
+            face_alpha: None,
+            face_color_none: false,
+            edge_alpha: None,
+            face_styles: None,
+            marker_sizes: None,
+            scatter_cdata: None,
+            marker_face_color: MarkerColor::Default,
+            marker_edge_color: MarkerColor::Default,
+            marker_face_alpha: None,
+            marker_edge_alpha: None,
         }
+    }
+    /// True when this series carries z data (`plot3`, `scatter3`).
+    pub fn is_3d(&self) -> bool {
+        !self.z.is_empty()
     }
     /// Checked resource accounting. Full model validation additionally checks
     /// style, face geometry and identities before publication.
     pub fn geometry_cost(&self) -> Result<coordinates::GeometryCost> {
         match (&self.points, self.kind, self.patch) {
+            (SeriesPoints::Dense(points), PlotKind::Patch, None)
+                if self.slice_contour_level.is_some() =>
+            {
+                coordinates::GeometryCost::ordinary(points)
+            }
             (SeriesPoints::Patch(points), PlotKind::Patch, Some(faces))
                 if points.corners_per_face() == faces.vertices_per_face() =>
             {
@@ -168,7 +355,13 @@ impl Series {
                 Err("Stored Patch coordinates require matching Patch topology".into())
             }
             (SeriesPoints::Dense(points), PlotKind::Patch, Some(faces)) => {
-                coordinates::GeometryCost::dense_faces(points, faces.vertices_per_face())
+                let expanded =
+                    coordinates::GeometryCost::dense_faces(points, faces.vertices_per_face())?;
+                if let Some(mesh) = &self.indexed_patch {
+                    mesh.geometry_cost(expanded, self.z.len())
+                } else {
+                    Ok(expanded)
+                }
             }
             (_, PlotKind::Patch, None) | (_, _, Some(_)) => {
                 Err("Patch geometry and series kind disagree".into())
@@ -195,6 +388,22 @@ impl Series {
             .is_some_and(|v| !v.is_finite() || self.kind != PlotKind::Stem)
         {
             return Err("BaseValue must be finite and belongs only to a stem series".into());
+        }
+        Ok(())
+    }
+    /// z data belongs to lines and scatters only, one value per point.
+    pub fn validate_z(&self) -> Result<()> {
+        if self.z.is_empty() {
+            return Ok(());
+        }
+        if !matches!(
+            self.kind,
+            PlotKind::Line | PlotKind::Scatter | PlotKind::Patch
+        ) {
+            return Err("ZData belongs only to line, scatter and surface series".into());
+        }
+        if self.z.len() != self.points.len() {
+            return Err("ZData must have one value per XData/YData point".into());
         }
         Ok(())
     }
@@ -242,9 +451,11 @@ impl Series {
                 self.markers = true;
                 has_marker = true;
                 self.marker_filled = c == '.';
-                if c != 'o' && c != '.' {
-                    self.marker_shape = Some(MarkerShape::parse(&c.to_string())?);
-                }
+                self.marker_shape = if c == 'o' || c == '.' {
+                    None
+                } else {
+                    Some(MarkerShape::parse(&c.to_string())?)
+                };
                 continue;
             }
             let color =
@@ -269,7 +480,7 @@ impl Series {
             self.explicit_color = true;
             has_color = true;
         }
-        if self.markers && !has_line && self.kind == PlotKind::Line {
+        if has_marker && !has_line && self.kind == PlotKind::Line {
             self.kind = PlotKind::Scatter;
         }
         Ok(())
@@ -294,6 +505,15 @@ impl Series {
         cancel: &std::sync::atomic::AtomicBool,
     ) -> Result<Vec<[f64; 2]>> {
         self.display_points_axes_checked(max_points, axes, &|| display_check(cancel))
+    }
+    /// Same display geometry plus original point indices when a Scatter series is decimated.
+    pub fn display_points_axes_indexed_cancellable(
+        &self,
+        max_points: usize,
+        axes: [AxisTransform; 2],
+        cancel: &std::sync::atomic::AtomicBool,
+    ) -> Result<IndexedDisplayPoints> {
+        self.display_points_axes_indexed_checked(max_points, axes, &|| display_check(cancel))
     }
     /// Only complete, admitted face shapes enter the fixed-scratch traversal.
     /// Invalid public model combinations keep the preexisting scalar behavior.
@@ -347,9 +567,18 @@ impl Series {
         axes: [AxisTransform; 2],
         check: &impl Fn() -> Result<()>,
     ) -> Result<Vec<[f64; 2]>> {
+        self.display_points_axes_indexed_checked(max_points, axes, check)
+            .map(|(points, _)| points)
+    }
+    fn display_points_axes_indexed_checked(
+        &self,
+        max_points: usize,
+        axes: [AxisTransform; 2],
+        check: &impl Fn() -> Result<()>,
+    ) -> Result<IndexedDisplayPoints> {
         check()?;
         if !self.visible {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         }
         if self.kind == PlotKind::Patch {
             if let Some(width) = self.complete_patch_width() {
@@ -365,7 +594,7 @@ impl Series {
                     });
                 })?;
                 check()?;
-                return Ok(output);
+                return Ok((output, None));
             }
             let output: Vec<_> = self
                 .points
@@ -383,14 +612,14 @@ impl Series {
                 })
                 .collect::<Result<_>>()?;
             check()?;
-            return Ok(output);
+            return Ok((output, None));
         }
         let budget = match self.kind {
             PlotKind::Stairs => max_points.max(18).div_ceil(2),
             PlotKind::Stem => max_points.max(18) / 3,
             _ => max_points,
         };
-        let mut result = self.display_points_filtered(
+        let (mut result, indices) = self.display_points_filtered(
             budget,
             |p| axes[0].accepts(p[0]) && axes[1].accepts(p[1]),
             check,
@@ -428,7 +657,30 @@ impl Series {
             _ => result,
         };
         check()?;
-        Ok(output)
+        Ok((output, indices))
+    }
+
+    /// Original point indices retained when `display_points_axes` decimates
+    /// this Scatter series.
+    pub fn scatter_decimated_indices(
+        &self,
+        max_points: usize,
+        axes: [AxisTransform; 2],
+    ) -> Vec<usize> {
+        let Some(points) = self.points.dense() else {
+            return (0..self.points.len()).collect();
+        };
+        let max_points = max_points.max(6);
+        if points.len() <= max_points {
+            return (0..points.len()).collect();
+        }
+        scatter_decimate_indices(
+            points,
+            max_points,
+            |p| axes[0].accepts(p[0]) && axes[1].accepts(p[1]),
+            &|| Ok(()),
+        )
+        .expect("Infallible scatter index decimation")
     }
 
     fn display_points_filtered(
@@ -436,7 +688,7 @@ impl Series {
         max_points: usize,
         valid: impl Fn(&[f64; 2]) -> bool,
         check: &impl Fn() -> Result<()>,
-    ) -> Result<Vec<[f64; 2]>> {
+    ) -> Result<IndexedDisplayPoints> {
         let points = self
             .points
             .dense()
@@ -449,93 +701,155 @@ impl Series {
                 output.extend_from_slice(chunk);
             }
             check()?;
-            return Ok(output);
+            return Ok((output, None));
         }
         if matches!(self.kind, PlotKind::Scatter | PlotKind::Stem) {
-            let mut initial = 0;
-            for (i, p) in points.iter().enumerate() {
-                if i.is_multiple_of(4096) {
-                    check()?;
-                }
-                if valid(p) {
-                    initial = i;
-                    break;
-                }
-            }
-            let mut extremes = [initial; 4];
-            for (i, p) in points.iter().enumerate() {
-                if i.is_multiple_of(4096) {
-                    check()?;
-                }
-                if valid(p) {
-                    for axis in 0..2 {
-                        if p[axis] < points[extremes[2 * axis]][axis] {
-                            extremes[2 * axis] = i;
-                        }
-                        if p[axis] > points[extremes[2 * axis + 1]][axis] {
-                            extremes[2 * axis + 1] = i;
-                        }
-                    }
-                }
-            }
-            let mut indexes = vec![0, points.len() - 1];
-            indexes.extend(extremes);
-            if max_points > 6 {
-                indexes.extend((0..points.len()).step_by(points.len().div_ceil(max_points - 6)));
-            }
-            indexes.sort_unstable();
-            indexes.dedup();
-            check()?;
-            return Ok(indexes.into_iter().map(|i| points[i]).collect());
+            let indexes = scatter_decimate_indices(points, max_points, valid, check)?;
+            let decimated = indexes.iter().map(|&i| points[i]).collect();
+            let kept_indices = (self.kind == PlotKind::Scatter).then_some(indexes);
+            return Ok((decimated, kept_indices));
         }
-        let bucket_size = points.len().div_ceil(max_points / 6);
-        let mut result = Vec::with_capacity(max_points);
-        for bucket in points.chunks(bucket_size) {
-            let mut gap = false;
-            for (i, p) in bucket.iter().enumerate() {
-                if i.is_multiple_of(4096) {
-                    check()?;
-                }
-                if !valid(p) {
-                    gap = true;
-                    break;
-                }
+        // Min/max decimation runs per maximal valid run, so a NaN gap only
+        // separates runs and never wipes the samples around it (quiver
+        // arrows, contour pieces and grids are many short NaN-separated runs).
+        // Each run gets a budget share proportional to its length; runs of at
+        // most 6 samples are kept whole, so heavily segmented geometry may
+        // exceed `max_points` but never its own sample count.
+        let mut runs = Vec::new();
+        let mut start = None;
+        for (i, p) in points.iter().enumerate() {
+            if i.is_multiple_of(4096) {
+                check()?;
             }
-            if gap {
+            match (valid(p), start) {
+                (true, None) => start = Some(i),
+                (false, Some(s)) => {
+                    runs.push(s..i);
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(s) = start {
+            runs.push(s..points.len());
+        }
+        let valid_total: usize = runs.iter().map(|r| r.len()).sum();
+        let available = max_points.saturating_sub(runs.len().saturating_sub(1));
+        let mut result = Vec::with_capacity(max_points);
+        // Samples handled since the last cancellation checkpoint.
+        let mut scanned = 0;
+        for (index, run) in runs.into_iter().enumerate() {
+            if index > 0 {
                 result.push([f64::NAN, f64::NAN]);
+            }
+            let run = &points[run];
+            // u128: `available * len` overflows usize on 32-bit (wasm) targets.
+            let share =
+                (available as u128 * run.len() as u128 / valid_total.max(1) as u128) as usize;
+            if run.len() <= share.max(6) {
+                result.extend_from_slice(run);
+                scanned += run.len() + 1;
+                if scanned >= 4096 {
+                    check()?;
+                    scanned = 0;
+                }
                 continue;
             }
-            let (mut min, mut max, mut xmin, mut xmax) = (0, 0, 0, 0);
-            for i in 1..bucket.len() {
-                if i.is_multiple_of(4096) {
-                    check()?;
+            decimate_run(run, share.max(6), check, &mut scanned, &mut result)?;
+        }
+        check()?;
+        Ok((result, None))
+    }
+}
+
+fn scatter_decimate_indices(
+    points: &[[f64; 2]],
+    max_points: usize,
+    valid: impl Fn(&[f64; 2]) -> bool,
+    check: &impl Fn() -> Result<()>,
+) -> Result<Vec<usize>> {
+    let mut initial = 0;
+    for (i, p) in points.iter().enumerate() {
+        if i.is_multiple_of(4096) {
+            check()?;
+        }
+        if valid(p) {
+            initial = i;
+            break;
+        }
+    }
+    let mut extremes = [initial; 4];
+    for (i, p) in points.iter().enumerate() {
+        if i.is_multiple_of(4096) {
+            check()?;
+        }
+        if valid(p) {
+            for axis in 0..2 {
+                if p[axis] < points[extremes[2 * axis]][axis] {
+                    extremes[2 * axis] = i;
                 }
-                if bucket[i][1] < bucket[min][1] {
-                    min = i;
-                }
-                if bucket[i][1] > bucket[max][1] {
-                    max = i;
-                }
-                if bucket[i][0] < bucket[xmin][0] {
-                    xmin = i;
-                }
-                if bucket[i][0] > bucket[xmax][0] {
-                    xmax = i;
-                }
-            }
-            let mut indexes = [0, min, max, xmin, xmax, bucket.len() - 1];
-            indexes.sort_unstable();
-            let mut previous = None;
-            for i in indexes {
-                if previous != Some(i) {
-                    result.push(bucket[i]);
-                    previous = Some(i);
+                if p[axis] > points[extremes[2 * axis + 1]][axis] {
+                    extremes[2 * axis + 1] = i;
                 }
             }
         }
-        check()?;
-        Ok(result)
     }
+    let mut indexes = vec![0, points.len() - 1];
+    indexes.extend(extremes);
+    if max_points > 6 {
+        indexes.extend((0..points.len()).step_by(points.len().div_ceil(max_points - 6)));
+    }
+    indexes.sort_unstable();
+    indexes.dedup();
+    check()?;
+    Ok(indexes)
+}
+
+/// Min/max decimation of one gap-free run into at most `max_points` samples:
+/// each bucket keeps its first, last and x/y extreme samples in order.
+fn decimate_run(
+    run: &[[f64; 2]],
+    max_points: usize,
+    check: &impl Fn() -> Result<()>,
+    scanned: &mut usize,
+    result: &mut Vec<[f64; 2]>,
+) -> Result<()> {
+    let bucket_size = run.len().div_ceil(max_points / 6);
+    for bucket in run.chunks(bucket_size) {
+        *scanned += bucket.len();
+        if *scanned >= 4096 {
+            check()?;
+            *scanned = 0;
+        }
+        let (mut min, mut max, mut xmin, mut xmax) = (0, 0, 0, 0);
+        for i in 1..bucket.len() {
+            if i.is_multiple_of(4096) {
+                check()?;
+            }
+            if bucket[i][1] < bucket[min][1] {
+                min = i;
+            }
+            if bucket[i][1] > bucket[max][1] {
+                max = i;
+            }
+            if bucket[i][0] < bucket[xmin][0] {
+                xmin = i;
+            }
+            if bucket[i][0] > bucket[xmax][0] {
+                xmax = i;
+            }
+        }
+        let mut indexes = [0, min, max, xmin, xmax, bucket.len() - 1];
+        indexes.sort_unstable();
+        let mut previous = None;
+        for i in indexes {
+            if previous != Some(i) {
+                result.push(bucket[i]);
+                previous = Some(i);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Horizontal hold followed by a vertical transition at the next x coordinate.
@@ -594,6 +908,27 @@ pub struct Axes {
     pub ylim: Option<[f64; 2]>,
     pub xscale: AxisScale,
     pub yscale: AxisScale,
+    /// Text objects, colorbar, colormap and the right y-axis (not serialized).
+    pub extras: AxesExtras,
+    /// Charts drawn on their own grid (pie, polarplot, heatmap) hide the
+    /// Cartesian tick labels. Not persisted; false for every other plot.
+    pub ticks_hidden: bool,
+    /// Azimuth and elevation in degrees (MATLAB `View`); [0, 90] is the 2-D view.
+    pub view: [f64; 2],
+    pub zlim: Option<[f64; 2]>,
+    pub zlabel: String,
+    pub zgrid: bool,
+    /// MATLAB `Box`: the full axes outline (2-D: all four edges; 3-D: the
+    /// back-plane outline, BoxStyle 'back'). `box off` keeps the left and
+    /// bottom axis lines (3-D: the three axis lines). True keeps the
+    /// historical full frame (MATLAB `plot` sets Box on in a fresh axes).
+    pub box_outline: bool,
+    /// MATLAB `XMinorGrid`, `YMinorGrid`, `ZMinorGrid`: dotted lines at the
+    /// minor tick positions (`minor_ticks`).
+    pub minor_grid: [bool; 3],
+    /// Set only on a projected 3-D display copy (`plot::view3d`): renderers
+    /// then draw no 2-D frame, ticks, tick labels or grid. Not persisted.
+    pub frame_hidden: bool,
 }
 impl Default for Axes {
     fn default() -> Self {
@@ -618,10 +953,43 @@ impl Default for Axes {
             ylim: None,
             xscale: AxisScale::Linear,
             yscale: AxisScale::Linear,
+            extras: AxesExtras::default(),
+            ticks_hidden: false,
+            view: view3d::VIEW_2D,
+            zlim: None,
+            zlabel: String::new(),
+            zgrid: false,
+            box_outline: true,
+            minor_grid: [false; 3],
+            frame_hidden: false,
         }
     }
 }
 impl Axes {
+    pub fn color_limits(&self) -> [f64; 2] {
+        // One CLim path: explicit CLim, else the span of every colour-mapped
+        // source (scatter and indexed patch CData and contourslice levels), else [0 1].
+        if let Some(limits) = self.extras.clim {
+            return limits;
+        }
+        let levels = self.series.iter().filter_map(|s| s.slice_contour_level);
+        let mut range = self
+            .extras
+            .automatic_color_limits()
+            .unwrap_or([f64::INFINITY, f64::NEG_INFINITY]);
+        // Without contourslice levels the extras path decides alone, so
+        // indexed CData limits stay exact (no automatic rounding).
+        let mut any = false;
+        for level in levels {
+            range = [range[0].min(level), range[1].max(level)];
+            any = true;
+        }
+        if !any {
+            return self.extras.color_limits();
+        }
+        automatic_limits(range, AxisTransform::default())
+    }
+
     pub fn geometry_ledger(&self) -> Result<coordinates::GeometryLedger> {
         geometry_ledger(self.series.iter())
     }
@@ -630,11 +998,9 @@ impl Axes {
     /// Equal coordinates in a newly allocated series are a different snapshot.
     pub fn same_snapshot(&self, other: &Self) -> bool {
         self.same_metadata(other)
-            && self
-                .series
-                .iter()
-                .zip(&other.series)
-                .all(|(a, b)| a.points.same_storage(&b.points))
+            && self.series.iter().zip(&other.series).all(|(a, b)| {
+                a.points.same_storage(&b.points) && std::sync::Arc::ptr_eq(&a.z, &b.z)
+            })
     }
     /// Bounded comparison of axes/series styling, labels and layout requests.
     /// Sample identities and contents are deliberately excluded.
@@ -657,11 +1023,24 @@ impl Axes {
             && self.ylim == other.ylim
             && self.xscale == other.xscale
             && self.yscale == other.yscale
+            && self.extras == other.extras
+            && self.ticks_hidden == other.ticks_hidden
+            && self.view == other.view
+            && self.zlim == other.zlim
+            && self.zlabel == other.zlabel
+            // 2-D files do not store zgrid (it reopens as the x grid) and a 2-D view never draws it.
+            && (self.zgrid == other.zgrid || !view3d::is_3d(self.view))
+            && self.box_outline == other.box_outline
+            && self.minor_grid == other.minor_grid
+            && self.frame_hidden == other.frame_hidden
             && self.series.len() == other.series.len()
             && self.series.iter().zip(&other.series).all(|(a, b)| {
                 a.label == b.label
                     && a.kind == b.kind
                     && a.patch == b.patch
+                    && a.slice_contour_level == b.slice_contour_level
+                    && a.patch_cdata == b.patch_cdata
+                    && a.patch_vertex_cdata == b.patch_vertex_cdata
                     && a.bar_baseline_visible == b.bar_baseline_visible
                     && a.base_value == b.base_value
                     && a.face_edge_color == b.face_edge_color
@@ -677,6 +1056,22 @@ impl Axes {
                     && a.visible == b.visible
                     && a.bar_width == b.bar_width
                     && a.bar_offset == b.bar_offset
+                    && a.bar_layout == b.bar_layout
+                    && a.face_color_mode == b.face_color_mode
+                    && a.legend_hidden == b.legend_hidden
+                    && a.z.is_empty() == b.z.is_empty()
+                    && a.face_colors == b.face_colors
+                    && a.face_edge_colors == b.face_edge_colors
+                    && a.face_alpha == b.face_alpha
+                    && a.face_color_none == b.face_color_none
+                    && a.edge_alpha == b.edge_alpha
+                    && a.face_styles == b.face_styles
+                    && a.marker_sizes == b.marker_sizes
+                    && a.scatter_cdata == b.scatter_cdata
+                    && a.marker_face_color == b.marker_face_color
+                    && a.marker_edge_color == b.marker_edge_color
+                    && a.marker_face_alpha == b.marker_face_alpha
+                    && a.marker_edge_alpha == b.marker_edge_alpha
             })
     }
     pub fn point_count(&self) -> usize {
@@ -693,11 +1088,12 @@ impl Axes {
             placement.validate()?;
         }
         self.geometry_ledger()?;
+        self.extras.validate()?;
         self.validate_legend_state()?;
         self.validate_baselines()?;
         for (scale, limits) in [(self.xscale, self.xlim), (self.yscale, self.ylim)] {
             if let Some(limits) = limits {
-                scale.validate_limits(limits)?;
+                scale.validate_axis_limits(limits)?;
             }
         }
         for s in &self.series {
@@ -711,6 +1107,7 @@ impl Axes {
             if let Some(width) = s.line_width {
                 validate_line_width(width)?;
             }
+            s.validate_scatter()?;
             if !s.bar_width.is_finite() || s.bar_width <= 0. || !s.bar_offset.is_finite() {
                 return Err("Invalid series geometry".into());
             }
@@ -725,6 +1122,11 @@ impl Axes {
             if s.label.len() > 4096 {
                 return Err("Series label exceeds 4096 bytes".into());
             }
+            s.validate_z()?;
+        }
+        view3d::validate_view(self.view)?;
+        if let Some(limits) = self.zlim {
+            validate_axis_limits(limits)?;
         }
         if self.yscale == AxisScale::Log && self.series.iter().any(|s| s.base_value.is_some()) {
             let axis = self.axis_transforms()[1];
@@ -738,7 +1140,7 @@ impl Axes {
                 );
             }
         }
-        if [&self.title, &self.xlabel, &self.ylabel]
+        if [&self.title, &self.xlabel, &self.ylabel, &self.zlabel]
             .iter()
             .any(|s| s.len() > 4096)
         {
@@ -752,6 +1154,7 @@ impl Axes {
             s.validate_patch()?;
             s.validate_face_edge()?;
             s.validate_base_value()?;
+            s.validate_z()?;
         }
         geometry_ledger(self.series.iter().chain(&series))?;
         if self
@@ -768,6 +1171,8 @@ impl Axes {
         if let Some(cycle) = cycle {
             cycle.validate()?;
         }
+        // Automatic dataN labels count legend-eligible series only.
+        let mut shown = self.series.iter().filter(|s| !s.legend_hidden).count();
         for (i, s) in series.iter_mut().enumerate() {
             let index = self.series.len() + i;
             let retained_palette = s.auto_palette.is_some();
@@ -779,8 +1184,11 @@ impl Axes {
                 // from explicit provenance, not baked into the document on paint.
                 s.color = COLORS[index % COLORS.len()];
             }
-            if s.label.is_empty() {
-                s.label = format!("data{}", index + 1);
+            if !s.legend_hidden {
+                shown += 1;
+                if s.label.is_empty() {
+                    s.label = format!("data{shown}");
+                }
             }
         }
         let baseline_join = self.prepare_bar_baseline_join(&mut series)?;
@@ -800,9 +1208,12 @@ impl Axes {
         if let Some(state) = &mut self.legend_state
             && state.auto_update
         {
-            state
-                .members
-                .extend(series.iter().map(|s| s.identity.clone()));
+            state.members.extend(
+                series
+                    .iter()
+                    .filter(|s| !s.legend_hidden)
+                    .map(|s| s.identity.clone()),
+            );
         }
         self.palette_cycle = cycle;
         self.series.extend(series);
@@ -833,6 +1244,134 @@ impl Axes {
         let bounds = self.bounds_with_axes_checked(axes, &check)?;
         Ok((axes, bounds))
     }
+    /// Compute `[base, top]` y coordinates for a Bar series point, accounting for stacked layout.
+    pub fn bar_y_span(
+        &self,
+        series_index: usize,
+        point_index: usize,
+        y_axis: AxisTransform,
+    ) -> Result<Option<[f64; 2]>> {
+        let s = &self.series[series_index];
+        let Some([x_val, y_val]) = s.points.get(point_index) else {
+            return Ok(None);
+        };
+        if !y_val.is_finite() {
+            return Ok(None);
+        }
+        let series_base = self.render_baseline(series_index, y_axis)?;
+        if s.bar_layout != BarLayout::Stacked {
+            return Ok(Some([series_base, y_val]));
+        }
+        let mut pos_sum = 0.;
+        let mut neg_sum = 0.;
+        for prev in self.series[..series_index].iter() {
+            let same_group = match (&s.bar_group_id, &prev.bar_group_id) {
+                (Some(a), Some(b)) => a.same_object(b),
+                (None, None) => prev.baseline_identity.same_object(&s.baseline_identity),
+                _ => false,
+            };
+            if !prev.visible
+                || prev.kind != PlotKind::Bar
+                || prev.bar_layout != BarLayout::Stacked
+                || !same_group
+            {
+                continue;
+            }
+            let prev_y = prev
+                .points
+                .get(point_index)
+                .filter(|p| (p[0] - x_val).abs() <= 1e-12)
+                .map(|p| p[1])
+                .or_else(|| {
+                    prev.points
+                        .iter()
+                        .find(|p| (p[0] - x_val).abs() <= 1e-12)
+                        .map(|p| p[1])
+                });
+            if let Some(py) = prev_y
+                && py.is_finite()
+            {
+                if py >= 0. {
+                    pos_sum += py;
+                } else {
+                    neg_sum += py;
+                }
+            }
+        }
+        let base = if y_val >= 0. {
+            series_base + pos_sum
+        } else {
+            series_base + neg_sum
+        };
+        Ok(Some([base, base + y_val]))
+    }
+
+    /// Re-lay all Bar series sharing `bar_group_id` (or `baseline_identity` for legacy figures) with `series[index]`.
+    pub fn relayout_bar_group(&mut self, index: usize) -> Result<()> {
+        let target_group = self.series[index].bar_group_id.clone();
+        let target_id = self.series[index].baseline_identity.clone();
+        let layout = self.series[index].bar_layout;
+        let members: Vec<usize> = self
+            .series
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| {
+                s.kind == PlotKind::Bar
+                    && match (&target_group, &s.bar_group_id) {
+                        (Some(a), Some(b)) => a.same_object(b),
+                        (None, None) => s.baseline_identity.same_object(&target_id),
+                        _ => false,
+                    }
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let count = members.len();
+        if count == 0 {
+            return Ok(());
+        }
+        for (column, member_idx) in members.into_iter().enumerate() {
+            let s = &mut self.series[member_idx];
+            s.bar_layout = layout;
+            let mut previous = None;
+            let mut spacing = None::<f64>;
+            for p in s.points.iter() {
+                if let Some(x) = previous {
+                    let delta = p[0] - x;
+                    spacing = Some(spacing.map_or(delta, |old| old.min(delta)));
+                }
+                previous = Some(p[0]);
+            }
+            let spacing = spacing.unwrap_or(1.);
+            let rel_w = s.bar_relative_width.unwrap_or(0.8);
+            match layout {
+                BarLayout::Stacked => {
+                    s.bar_width = spacing * rel_w;
+                    s.bar_offset = 0.;
+                }
+                BarLayout::Grouped => {
+                    if count == 1 && s.bar_group_width.is_none() {
+                        s.bar_width = spacing * rel_w;
+                        s.bar_offset = 0.;
+                    } else {
+                        let group_w = s.bar_group_width.unwrap_or(0.8);
+                        let pitch = spacing * group_w / count as f64;
+                        s.bar_width =
+                            if s.bar_relative_width.is_some() || s.bar_group_width.is_some() {
+                                pitch * rel_w
+                            } else {
+                                pitch
+                            };
+                        s.bar_offset = (column as f64 - (count as f64 - 1.) / 2.) * pitch;
+                    }
+                }
+            }
+            if !s.bar_width.is_finite() || s.bar_width <= 0. || !s.bar_offset.is_finite() {
+                return Err("Bar spacing cannot be represented".into());
+            }
+        }
+        Ok(())
+    }
+
     fn bounds_with_axes_checked(
         &self,
         axes: [AxisTransform; 2],
@@ -876,15 +1415,67 @@ impl Axes {
                     };
                     x[0] = x[0].min(if axes[0].accepts(lo) { lo } else { a });
                     x[1] = x[1].max(if axes[0].accepts(hi) { hi } else { a });
-                    y[0] = y[0].min(b);
-                    y[1] = y[1].max(b);
-                    if let Some(baseline) = baseline
-                        && axes[1].accepts(baseline)
-                    {
-                        y[0] = y[0].min(baseline);
-                        y[1] = y[1].max(baseline);
+                    if s.kind == PlotKind::Bar && s.bar_layout == BarLayout::Stacked {
+                        if let Some([base_y, top_y]) = self.bar_y_span(series_index, i, axes[1])? {
+                            if axes[1].accepts(base_y) {
+                                y[0] = y[0].min(base_y);
+                                y[1] = y[1].max(base_y);
+                            }
+                            if axes[1].accepts(top_y) {
+                                y[0] = y[0].min(top_y);
+                                y[1] = y[1].max(top_y);
+                            }
+                        }
+                    } else {
+                        y[0] = y[0].min(b);
+                        y[1] = y[1].max(b);
+                        if let Some(baseline) = baseline
+                            && axes[1].accepts(baseline)
+                        {
+                            y[0] = y[0].min(baseline);
+                            y[1] = y[1].max(baseline);
+                        }
                     }
                 }
+            }
+        }
+        for image in self.extras.images.iter().filter(|i| i.visible) {
+            let (ix, iy) = image.extent();
+            x = [x[0].min(ix[0]), x[1].max(ix[1])];
+            y = [y[0].min(iy[0]), y[1].max(iy[1])];
+        }
+        for volume in self.extras.volumes.iter().filter(|v| v.visible) {
+            let (vx, vy, _) = volume.extent();
+            x = [x[0].min(vx[0]), x[1].max(vx[1])];
+            y = [y[0].min(vy[0]), y[1].max(vy[1])];
+        }
+        for line in self
+            .extras
+            .constant_lines
+            .iter()
+            .filter(|l| l.visible && l.pattern != LinePattern::None)
+        {
+            match line.axis {
+                InterceptAxis::X if axes[0].accepts(line.value) => {
+                    x[0] = x[0].min(line.value);
+                    x[1] = x[1].max(line.value);
+                }
+                InterceptAxis::Y if axes[1].accepts(line.value) => {
+                    y[0] = y[0].min(line.value);
+                    y[1] = y[1].max(line.value);
+                }
+                _ => {}
+            }
+        }
+        for rect in self.extras.rectangles.iter().filter(|r| r.visible) {
+            let [rx, ry, rw, rh] = rect.position;
+            if axes[0].accepts(rx) && axes[0].accepts(rx + rw) {
+                x[0] = x[0].min(rx);
+                x[1] = x[1].max(rx + rw);
+            }
+            if axes[1].accepts(ry) && axes[1].accepts(ry + rh) {
+                y[0] = y[0].min(ry);
+                y[1] = y[1].max(ry + rh);
             }
         }
         // Independent visible baseline records affect y bounds, never x extents.
@@ -896,34 +1487,10 @@ impl Axes {
                 y[1] = y[1].max(value);
             }
         }
-        fn expand(mut range: [f64; 2], axis: AxisTransform) -> [f64; 2] {
-            if axis.scale == AxisScale::Log {
-                if !range.iter().all(|x| x.is_finite()) {
-                    return if axis.negative {
-                        [-10., -1.]
-                    } else {
-                        [1., 10.]
-                    };
-                }
-                if axis.forward(range[0]) == axis.forward(range[1]) {
-                    let center = axis.forward(range[0]);
-                    return [axis.inverse(center - 0.5), axis.inverse(center + 0.5)];
-                }
-                return range;
-            }
-            if !range.iter().all(|v| v.is_finite()) {
-                return [0., 1.];
-            }
-            if range[0] == range[1] {
-                let d = (range[0].abs() * 0.05).max(0.5);
-                range = [(range[0] - d).max(-f64::MAX), (range[1] + d).min(f64::MAX)];
-            }
-            range
-        }
         check()?;
         Ok((
-            self.xlim.unwrap_or_else(|| expand(x, axes[0])),
-            self.ylim.unwrap_or_else(|| expand(y, axes[1])),
+            resolve_limits(self.xlim, x, axes[0]),
+            resolve_limits(self.ylim, y, axes[1]),
         ))
     }
     pub fn axis_transforms(&self) -> [AxisTransform; 2] {
@@ -955,7 +1522,9 @@ impl Axes {
             if axes[axis].scale != AxisScale::Log {
                 continue;
             }
-            if let Some(range) = limits {
+            if let Some(range) = limits
+                && range.iter().all(|v| v.is_finite())
+            {
                 axes[axis].negative = range[1] < 0.;
                 continue;
             }
@@ -981,6 +1550,31 @@ impl Axes {
         Ok(axes)
     }
 }
+/// Automatic limits from a data range: the shared x/y (and 3-D z) rule.
+pub(crate) fn automatic_limits(mut range: [f64; 2], axis: AxisTransform) -> [f64; 2] {
+    if axis.scale == AxisScale::Log {
+        if !range.iter().all(|x| x.is_finite()) {
+            return if axis.negative {
+                [-10., -1.]
+            } else {
+                [1., 10.]
+            };
+        }
+        if axis.forward(range[0]) == axis.forward(range[1]) {
+            let center = axis.forward(range[0]);
+            return [axis.inverse(center - 0.5), axis.inverse(center + 0.5)];
+        }
+        return range;
+    }
+    if !range.iter().all(|v| v.is_finite()) {
+        return [0., 1.];
+    }
+    if range[0] == range[1] {
+        let d = (range[0].abs() * 0.05).max(0.5);
+        range = [(range[0] - d).max(-f64::MAX), (range[1] + d).min(f64::MAX)];
+    }
+    range
+}
 pub fn validate_line_width(width: f64) -> Result<()> {
     if !width.is_finite() || !(0.1..=50.).contains(&width) {
         return Err("Line width must be 0.1..50 points".into());
@@ -992,6 +1586,244 @@ pub fn validate_limits(v: [f64; 2]) -> Result<()> {
         Err("Axis limits must be finite and increasing".into())
     } else {
         Ok(())
+    }
+}
+pub fn validate_axis_limits(v: [f64; 2]) -> Result<()> {
+    if v[0].is_nan()
+        || v[1].is_nan()
+        || v[0] == f64::INFINITY
+        || v[1] == f64::NEG_INFINITY
+        || v[0] >= v[1]
+    {
+        Err("Axis limits must be increasing (with -inf/inf allowed for auto ends)".into())
+    } else {
+        Ok(())
+    }
+}
+pub(crate) fn resolve_limits(
+    manual: Option<[f64; 2]>,
+    data_range: [f64; 2],
+    axis: AxisTransform,
+) -> [f64; 2] {
+    match manual {
+        None => automatic_limits(data_range, axis),
+        Some([lo, hi]) if lo.is_finite() && hi.is_finite() => [lo, hi],
+        Some([lo, hi]) => {
+            let auto = automatic_limits(data_range, axis);
+            let r_lo = if lo.is_finite() { lo } else { auto[0] };
+            let r_hi = if hi.is_finite() { hi } else { auto[1] };
+            if r_lo < r_hi {
+                [r_lo, r_hi]
+            } else if lo.is_finite() {
+                let d = (lo.abs() * 0.05).max(0.5);
+                [lo, (lo + d).min(f64::MAX)]
+            } else {
+                let d = (hi.abs() * 0.05).max(0.5);
+                [(hi - d).max(-f64::MAX), hi]
+            }
+        }
+    }
+}
+
+pub(crate) fn manual_tick_step(ticks: &[f64]) -> f64 {
+    let gap = ticks
+        .windows(2)
+        .map(|w| (w[1] - w[0]).abs())
+        .fold(f64::INFINITY, f64::min);
+    if !gap.is_finite() || gap <= 0. {
+        return 1.;
+    }
+    let mut decimals = (-gap.log10().floor()).clamp(0., 8.) as i32;
+    while decimals < 8 {
+        let factor = 10f64.powi(decimals);
+        if ticks
+            .iter()
+            .all(|v| (v * factor - (v * factor).round()).abs() < 1e-8)
+        {
+            break;
+        }
+        decimals += 1;
+    }
+    10f64.powi(-decimals)
+}
+
+impl Axes {
+    /// Effective tick values and step for `axis` (0 = X, 1 = Y, 2 = Z).
+    pub fn effective_ticks(&self, axis: usize) -> (Vec<f64>, f64) {
+        if let Some(manual) = &self.extras.rulers[axis].ticks {
+            let step = if manual.len() >= 2 {
+                manual_tick_step(manual)
+            } else {
+                1.
+            };
+            return (manual.clone(), step);
+        }
+        if axis == 0
+            && let Some(leaves) = &self.extras.leaf_ticks
+        {
+            return ((1..=leaves.len()).map(|i| i as f64).collect(), 1.);
+        }
+        let range = match axis {
+            0 => self.bounds().0,
+            1 => self.bounds().1,
+            _ => self.zbounds(),
+        };
+        match &self.extras.rulers[axis].kind {
+            RulerKind::Datetime { .. } => {
+                let (ticks, step, _) = time_axes::datetime_ticks(range);
+                return (ticks, step);
+            }
+            RulerKind::Duration { format, unit_ms } => {
+                let fmt = self.extras.rulers[axis]
+                    .tick_label_format
+                    .as_deref()
+                    .unwrap_or(if format.is_empty() {
+                        crate::duration_array::DEFAULT_FORMAT
+                    } else {
+                        format
+                    });
+                return time_axes::duration_ticks(range, *unit_ms, fmt);
+            }
+            RulerKind::Categorical { categories, .. } => {
+                return ((1..=categories.len()).map(|i| i as f64).collect(), 1.);
+            }
+            RulerKind::Numeric => {}
+        }
+        let transform = if axis < 2 {
+            self.axis_transforms()[axis]
+        } else {
+            AxisTransform::default()
+        };
+        if transform.scale == AxisScale::Log {
+            (
+                transform
+                    .ticks(range.map(|v| transform.forward(v)))
+                    .into_iter()
+                    .map(|v| transform.inverse(v))
+                    .collect(),
+                0.,
+            )
+        } else {
+            svg::ticks(range)
+        }
+    }
+
+    /// Effective tick labels for `axis` (0 = X, 1 = Y, 2 = Z) matching `effective_ticks`.
+    pub fn effective_tick_labels(&self, axis: usize) -> Vec<String> {
+        let (ticks, step) = self.effective_ticks(axis);
+        let ruler = &self.extras.rulers[axis];
+        if let Some(labels) = &ruler.tick_labels {
+            return (0..ticks.len())
+                .map(|i| labels.get(i).cloned().unwrap_or_default())
+                .collect();
+        }
+        if axis == 0
+            && let Some(leaves) = &self.extras.leaf_ticks
+        {
+            return ticks
+                .iter()
+                .map(|v| {
+                    if *v >= 1. && v.fract() == 0. {
+                        leaves.get(*v as usize - 1).cloned().unwrap_or_default()
+                    } else {
+                        String::new()
+                    }
+                })
+                .collect();
+        }
+        let transform = if axis < 2 {
+            self.axis_transforms()[axis]
+        } else {
+            AxisTransform::default()
+        };
+        ticks
+            .into_iter()
+            .map(|v| self.format_tick_label(axis, v, step, transform))
+            .collect()
+    }
+
+    /// Format one automatic tick value for `axis`, applying Exponent and TickLabelFormat.
+    pub fn format_tick_label(
+        &self,
+        axis: usize,
+        value: f64,
+        step: f64,
+        transform: AxisTransform,
+    ) -> String {
+        let ruler = &self.extras.rulers[axis];
+        match &ruler.kind {
+            RulerKind::Datetime { format, .. } => {
+                let fmt = if let Some(explicit) = &ruler.tick_label_format {
+                    explicit.as_str()
+                } else {
+                    let range = match axis {
+                        0 => self.bounds().0,
+                        1 => self.bounds().1,
+                        _ => self.zbounds(),
+                    };
+                    let (_, _, auto_fmt) = time_axes::datetime_ticks(range);
+                    if auto_fmt == crate::datetime_array::DEFAULT_DATE_FORMAT && !format.is_empty()
+                    {
+                        format.as_str()
+                    } else {
+                        auto_fmt
+                    }
+                };
+                return time_axes::format_datetime_tick(value, fmt);
+            }
+            RulerKind::Duration { format, unit_ms } => {
+                let fmt = ruler
+                    .tick_label_format
+                    .as_deref()
+                    .unwrap_or(if format.is_empty() {
+                        crate::duration_array::DEFAULT_FORMAT
+                    } else {
+                        format
+                    });
+                return time_axes::format_duration_tick(value, *unit_ms, fmt);
+            }
+            RulerKind::Categorical { categories, .. } => {
+                return if value >= 1. && value.fract() == 0. {
+                    categories
+                        .get(value as usize - 1)
+                        .cloned()
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+            }
+            RulerKind::Numeric => {}
+        }
+        let scale_pow = if ruler.exponent != 0 {
+            10f64.powi(ruler.exponent)
+        } else {
+            1.
+        };
+        let scaled = if ruler.exponent != 0 && scale_pow.is_finite() && scale_pow != 0. {
+            value / scale_pow
+        } else {
+            value
+        };
+        let scaled_step = if ruler.exponent != 0 && scale_pow.is_finite() && scale_pow != 0. {
+            step / scale_pow
+        } else {
+            step
+        };
+        if let Some(fmt) = &ruler.tick_label_format
+            && let Ok(text) = crate::engine::text_format::format_items(
+                "TickLabelFormat",
+                &fmt.replace("\\%", "%%"),
+                &[crate::engine::text_format::Item::Num(scaled)],
+                &std::sync::atomic::AtomicBool::new(false),
+            )
+        {
+            return text;
+        }
+        if transform.scale == AxisScale::Log {
+            transform.label(transform.forward(scaled))
+        } else {
+            svg::tick_text(scaled, scaled_step)
+        }
     }
 }
 
@@ -1015,13 +1847,19 @@ pub fn series_from_matrices(x: Option<&Matrix>, y: &Matrix, kind: PlotKind) -> R
     }
     let mut transpose = false;
     let mut transpose_x = false;
-    let (count, len) = if vector(y) {
+    let scalar_x_row_y =
+        kind == PlotKind::Bar && x.is_some_and(|x| x.len() == 1) && y.rows() == 1 && y.cols() > 1;
+    let (count, len) = if scalar_x_row_y {
+        (y.cols(), 1)
+    } else if vector(y) {
         (1, y.len())
     } else {
         (y.cols(), y.rows())
     };
     let (count, len) = if let Some(x) = x {
-        if vector(x) {
+        if scalar_x_row_y {
+            (count, len)
+        } else if vector(x) {
             if x.len() == len {
                 (count, len)
             } else if !vector(y) && x.len() == y.cols() {
@@ -1048,9 +1886,13 @@ pub fn series_from_matrices(x: Option<&Matrix>, y: &Matrix, kind: PlotKind) -> R
     {
         return Err("Plot exceeds point or bar limit".into());
     }
-    if count > MAX_SERIES || (kind == PlotKind::Bar && len > 10000) {
-        return Err("Plot exceeds 64 series or 10000 bars per series".into());
+    if count > MAX_PLOT_SERIES {
+        return Err("Plot exceeds series storage budget".into());
     }
+    if matches!(kind, PlotKind::Bar | PlotKind::Stem) && count > MAX_SERIES {
+        return Err("Bar and stem plots support up to 64 chart series".into());
+    }
+    let bar_group_id = (kind == PlotKind::Bar).then(crate::ObjectIdentity::default);
     let build = |c| -> Result<Series> {
         let points: Vec<_> = (0..len)
             .map(|r| {
@@ -1063,7 +1905,9 @@ pub fn series_from_matrices(x: Option<&Matrix>, y: &Matrix, kind: PlotKind) -> R
                         m.get(r, c)
                     }
                 });
-                let b = if vector(y) {
+                let b = if scalar_x_row_y {
+                    y.get(0, c)
+                } else if vector(y) {
                     y.data()[r]
                 } else if transpose {
                     y.get(c, r)
@@ -1074,6 +1918,7 @@ pub fn series_from_matrices(x: Option<&Matrix>, y: &Matrix, kind: PlotKind) -> R
             })
             .collect();
         let mut s = Series::new(points, kind);
+        s.bar_group_id = bar_group_id.clone();
         if kind == PlotKind::Bar {
             if s.points.iter().any(|p| !p[0].is_finite())
                 || s.points
@@ -1105,6 +1950,138 @@ pub fn series_from_matrices(x: Option<&Matrix>, y: &Matrix, kind: PlotKind) -> R
     }
 }
 
+/// Default figure `[left bottom width height]` in pixels.
+pub const DEFAULT_FIGURE_POSITION: [f64; 4] = [100.0, 100.0, 960.0, 560.0];
+
+/// Coordinate units for `Figure.Position` / `OuterPosition` / `InnerPosition`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FigureUnits {
+    #[default]
+    Pixels,
+    Normalized,
+    Inches,
+    Centimeters,
+    Points,
+    Characters,
+}
+
+impl FigureUnits {
+    pub const SCREEN_SIZE: [f64; 2] = [1920.0, 1080.0];
+    pub const DPI: f64 = 96.0;
+    pub const CHAR_CELL_PX: [f64; 2] = [5.0, 13.0];
+
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "pixels" => Ok(Self::Pixels),
+            "normalized" => Ok(Self::Normalized),
+            "inches" => Ok(Self::Inches),
+            "centimeters" => Ok(Self::Centimeters),
+            "points" => Ok(Self::Points),
+            "characters" => Ok(Self::Characters),
+            _ => Err(
+                "Units supports 'pixels', 'normalized', 'inches', 'centimeters', 'points' or 'characters'"
+                    .into(),
+            ),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pixels => "pixels",
+            Self::Normalized => "normalized",
+            Self::Inches => "inches",
+            Self::Centimeters => "centimeters",
+            Self::Points => "points",
+            Self::Characters => "characters",
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::Pixels
+    }
+
+    pub fn rect_from_pixels(self, px: [f64; 4]) -> [f64; 4] {
+        match self {
+            Self::Pixels => px,
+            Self::Normalized => [
+                px[0] / Self::SCREEN_SIZE[0],
+                px[1] / Self::SCREEN_SIZE[1],
+                px[2] / Self::SCREEN_SIZE[0],
+                px[3] / Self::SCREEN_SIZE[1],
+            ],
+            Self::Inches => px.map(|v| v / Self::DPI),
+            Self::Centimeters => px.map(|v| v * 2.54 / Self::DPI),
+            Self::Points => px.map(|v| v * 72.0 / Self::DPI),
+            Self::Characters => [
+                px[0] / Self::CHAR_CELL_PX[0],
+                px[1] / Self::CHAR_CELL_PX[1],
+                px[2] / Self::CHAR_CELL_PX[0],
+                px[3] / Self::CHAR_CELL_PX[1],
+            ],
+        }
+    }
+
+    pub fn rect_to_pixels(self, val: [f64; 4]) -> [f64; 4] {
+        match self {
+            Self::Pixels => val,
+            Self::Normalized => [
+                val[0] * Self::SCREEN_SIZE[0],
+                val[1] * Self::SCREEN_SIZE[1],
+                val[2] * Self::SCREEN_SIZE[0],
+                val[3] * Self::SCREEN_SIZE[1],
+            ],
+            Self::Inches => val.map(|v| v * Self::DPI),
+            Self::Centimeters => val.map(|v| v * Self::DPI / 2.54),
+            Self::Points => val.map(|v| v * Self::DPI / 72.0),
+            Self::Characters => [
+                val[0] * Self::CHAR_CELL_PX[0],
+                val[1] * Self::CHAR_CELL_PX[1],
+                val[2] * Self::CHAR_CELL_PX[0],
+                val[3] * Self::CHAR_CELL_PX[1],
+            ],
+        }
+    }
+}
+
+/// Window presentation state for `Figure.WindowState`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WindowState {
+    #[default]
+    Normal,
+    Minimized,
+    Maximized,
+    Fullscreen,
+}
+
+impl WindowState {
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "normal" => Ok(Self::Normal),
+            "minimized" => Ok(Self::Minimized),
+            "maximized" => Ok(Self::Maximized),
+            "fullscreen" => Ok(Self::Fullscreen),
+            _ => Err(
+                "WindowState supports 'normal', 'minimized', 'maximized' or 'fullscreen'".into(),
+            ),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Minimized => "minimized",
+            Self::Maximized => "maximized",
+            Self::Fullscreen => "fullscreen",
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == Self::Normal
+    }
+}
+
 /// A figure owns an active axes and optional non-overlapping subplot axes.
 /// Dereferencing addresses the active axes for existing numerical clients.
 #[derive(Clone, Debug)]
@@ -1114,6 +2091,7 @@ pub struct Figure {
     pub axes: Axes,
     pub layout: Option<Layout>,
     pub textboxes: Vec<TextBox>,
+    pub annotations: Vec<Annotation>,
     pub name: String,
     /// None preserves legacy fixed Light/manual appearance.
     pub appearance: Option<FigureAppearance>,
@@ -1121,6 +2099,24 @@ pub struct Figure {
     pub invert_hardcopy: Option<bool>,
     /// Manual canvas RGB. Use set_canvas_color to record explicit assignments.
     pub color: [u8; 3],
+    /// Figure-level alphamap (independent of VolumeObject.Alphamap).
+    pub alphamap: Option<std::sync::Arc<Vec<f64>>>,
+    /// `sliceViewer` objects owned by this figure.
+    pub slice_viewers: Vec<SliceViewerObject>,
+    /// `orthosliceViewer` objects owned by this figure.
+    pub orthoslice_viewers: Vec<OrthosliceViewerObject>,
+    /// Window `[left bottom width height]` stored in pixels.
+    pub position: [f64; 4],
+    /// Active units for `Position`, `InnerPosition` and `OuterPosition`.
+    pub units: FigureUnits,
+    /// Whether the window title includes `"Figure n: "`.
+    pub number_title: bool,
+    /// Whether the figure window is visible on desktop.
+    pub visible: bool,
+    /// Whether the figure window is user-resizable.
+    pub resize: bool,
+    /// Window presentation state.
+    pub window_state: WindowState,
 }
 impl Default for Figure {
     fn default() -> Self {
@@ -1132,11 +2128,29 @@ impl Default for Figure {
             },
             layout: None,
             textboxes: Vec::new(),
+            annotations: Vec::new(),
             name: String::new(),
             appearance: Some(FigureAppearance::default()),
             invert_hardcopy: None,
             color: [255; 3],
+            alphamap: None,
+            slice_viewers: Vec::new(),
+            orthoslice_viewers: Vec::new(),
+            position: DEFAULT_FIGURE_POSITION,
+            units: FigureUnits::default(),
+            number_title: true,
+            visible: true,
+            resize: true,
+            window_state: WindowState::default(),
         }
+    }
+}
+impl Figure {
+    /// Figure alphamap, defaulting to a 64-element linear ramp [0, 1].
+    pub fn effective_alphamap(&self) -> std::sync::Arc<Vec<f64>> {
+        self.alphamap
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(default_volume_alphamap(64)))
     }
 }
 impl std::ops::Deref for Figure {
@@ -1195,25 +2209,111 @@ impl Figure {
                 .zip(other.all_axes())
                 .all(|((_, a), (_, b))| a.same_snapshot(b))
     }
+    pub fn position_pixels(&self) -> [f64; 4] {
+        self.position
+    }
+
+    pub fn position_in_units(&self) -> [f64; 4] {
+        self.units.rect_from_pixels(self.position)
+    }
+
+    pub fn set_position_in_units(&mut self, pos: [f64; 4]) -> Result<()> {
+        let px = self.units.rect_to_pixels(pos);
+        if !px.iter().all(|v| v.is_finite()) || px[2] <= 0.0 || px[3] <= 0.0 {
+            return Err("Figure Position must be [left bottom width height] with finite values and positive width and height".into());
+        }
+        self.position = px;
+        Ok(())
+    }
+
+    pub fn export_svg_size(&self) -> [f64; 2] {
+        [
+            self.position[2].clamp(64.0, 8192.0),
+            self.position[3].clamp(64.0, 8192.0),
+        ]
+    }
+
+    pub fn export_size_pixels(&self) -> [u32; 2] {
+        let [w, h] = self.export_svg_size();
+        [w.round() as u32, h.round() as u32]
+    }
+
     pub(crate) fn same_metadata(&self, other: &Self) -> bool {
         self.name == other.name
             && self.color == other.color
             && self.appearance == other.appearance
             && self.invert_hardcopy == other.invert_hardcopy
+            && self.position == other.position
+            && self.units == other.units
+            && self.number_title == other.number_title
+            && self.visible == other.visible
+            && self.resize == other.resize
+            && self.window_state == other.window_state
             && self.textboxes == other.textboxes
-            && self.layout.as_ref().map(|l| (l.active, l.tiled, &l.title))
-                == other.layout.as_ref().map(|l| (l.active, l.tiled, &l.title))
+            && self.annotations == other.annotations
+            && self.layout.as_ref().map(|l| {
+                (
+                    l.active,
+                    l.tiled,
+                    &l.title,
+                    l.title_style,
+                    &l.subtitle,
+                    &l.xlabel,
+                    &l.ylabel,
+                    l.label_styles,
+                    &l.text_interpreters,
+                    &l.text_lines,
+                    l.tile_spacing,
+                    l.padding,
+                )
+            }) == other.layout.as_ref().map(|l| {
+                (
+                    l.active,
+                    l.tiled,
+                    &l.title,
+                    l.title_style,
+                    &l.subtitle,
+                    &l.xlabel,
+                    &l.ylabel,
+                    l.label_styles,
+                    &l.text_interpreters,
+                    &l.text_lines,
+                    l.tile_spacing,
+                    l.padding,
+                )
+            })
             && self.all_axes().count() == other.all_axes().count()
             && self
                 .all_axes()
                 .zip(other.all_axes())
                 .all(|((p, a), (q, b))| p == q && a.same_metadata(b))
+            && self.slice_viewers.len() == other.slice_viewers.len()
+            && self
+                .slice_viewers
+                .iter()
+                .zip(&other.slice_viewers)
+                .all(|(a, b)| a.same_metadata(b))
+            && self.orthoslice_viewers.len() == other.orthoslice_viewers.len()
+            && self
+                .orthoslice_viewers
+                .iter()
+                .zip(&other.orthoslice_viewers)
+                .all(|(a, b)| a.same_metadata(b))
     }
     pub fn validate(&self) -> Result<()> {
         if self.name.len() > 4096 {
             return Err("Figure Name exceeds 4096 UTF-8 bytes".into());
         }
+        if !self.position.iter().all(|v| v.is_finite())
+            || self.position[2] <= 0.0
+            || self.position[3] <= 0.0
+        {
+            return Err(
+                "Figure Position must have finite values and positive width and height".into(),
+            );
+        }
         textbox::validate_textboxes(&self.textboxes)?;
+        annotation::validate_annotations(&self.annotations)?;
         if let Some(layout) = &self.layout {
             layout.validate()?;
         }
@@ -1221,8 +2321,8 @@ impl Figure {
             return Err("Empty tiled layout contains hidden axes data".into());
         }
         self.geometry_ledger()?;
-        let mut identities = Vec::with_capacity(1 + 32 + MAX_SERIES + textbox::MAX_TEXTBOXES);
-        identities.push(&self.identity);
+        let mut identities = std::collections::HashSet::new();
+        identities.insert(self.identity.recovery_key());
         for (_, axes) in self.all_axes() {
             if axes.baselines.len() > MAX_BASELINES {
                 return Err("Axes exceeds 64 baseline objects".into());
@@ -1232,23 +2332,29 @@ impl Figure {
                 .chain(axes.legend_state.iter().map(|s| &s.identity))
                 .chain(axes.baselines.iter().map(|b| &b.identity))
             {
-                if identities.iter().any(|previous| previous.same_object(id)) {
+                if !identities.insert(id.recovery_key()) {
                     return Err("A graphics object identity appears twice in one figure".into());
                 }
-                identities.push(id);
             }
         }
-        for textbox in &self.textboxes {
-            if identities
-                .iter()
-                .any(|previous| previous.same_object(&textbox.identity))
-            {
+        for id in self
+            .textboxes
+            .iter()
+            .map(|t| &t.identity)
+            .chain(self.annotations.iter().map(|a| &a.identity))
+        {
+            if !identities.insert(id.recovery_key()) {
                 return Err("A graphics object identity appears twice in one figure".into());
             }
-            identities.push(&textbox.identity);
         }
         for (_, axes) in self.all_axes() {
             axes.validate()?;
+        }
+        for sv in &self.slice_viewers {
+            sv.validate()?;
+        }
+        for ov in &self.orthoslice_viewers {
+            ov.validate()?;
         }
         if self
             .all_axes()

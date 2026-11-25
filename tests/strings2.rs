@@ -380,6 +380,18 @@ fn str2num_parses_literals_without_evaluating_code() {
     assert!(err("r = str2num(5);").contains("Requires string or character array input."));
 }
 
+/// MathWorks isspace: "recognizes all Unicode whitespace characters".
+/// char(160) is NO-BREAK SPACE; char(8192) is EN QUAD. Both are whitespace.
+#[test]
+fn review_1111_isspace_recognizes_unicode_whitespace() {
+    assert_eq!(v("isspace(char(160))"), "logical1x1 true");
+    assert_eq!(
+        v("isspace(char([9 65 160 8192]))"),
+        "logical1x4 [true false true true]"
+    );
+    assert_eq!(v("isstrprop(char(160),'wspace')"), "logical1x1 true");
+}
+
 #[test]
 fn character_classes() {
     assert_eq!(
@@ -692,8 +704,7 @@ fn reference_conversions_and_classes() {
 
 /// Reference cases with known behavior differences in MatRust.
 const REFERENCE_DIFFERENCES: &[&str] = &[
-    "a30", "a31", "a44", "a49", "a50", "b06", "b20", "b33", "c19", "d18", "e04", "f01", "h11",
-    "h17",
+    "a30", "a31", "a44", "a49", "a50", "b06", "b20", "b33", "c19", "d18", "e04", "f01", "h17",
 ];
 
 /// Every other reference case gives the reference's value.

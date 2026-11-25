@@ -1,0 +1,3 @@
+z = 1.2 max coefficient error = 2.2639198e-72
+z = 2.0 max coefficient error = 2.1931723e-72
+z = 4.0 max coefficient error = 1.2026728e-72

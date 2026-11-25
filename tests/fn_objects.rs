@@ -779,3 +779,310 @@ fn round4_handle_stays_alive_while_arguments_remove_its_variable() {
     );
     let _ = result;
 }
+
+#[test]
+fn optional_struct_validator_runs_before_struct_expand() {
+    // Verified 7/2 case: validated struct optional accepts struct('fh', 7) before struct expansion.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); addOptional(p,'state',struct(),@isstruct); addParameter(p,'mode',0); \
+         parse(p,struct('fh',7),'mode',2); r=p.Results; fh=r.state.fh; m=r.mode; \
+         nd=numel(p.UsingDefaults); nu=numel(fieldnames(p.Unmatched));",
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            number(&e, "fh"),
+            number(&e, "m"),
+            number(&e, "nd"),
+            number(&e, "nu")
+        ),
+        (7., 2., 0., 0.)
+    );
+
+    // Control 1: without the optional registration, 'fh' is rejected as an unknown parameter.
+    let mut e = Engine::default();
+    let err = e
+        .execute("p=inputParser(); addParameter(p,'mode',0); parse(p,struct('fh',7),'mode',2);")
+        .unwrap_err();
+    assert!(err.contains("fh"), "{err}");
+
+    // Control 2: rejected struct falls back to named-field expansion and records UsingDefaults.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); addOptional(p,'state',0,@isnumeric); addParameter(p,'mode',0); \
+         parse(p,struct('mode',5)); st=p.Results.state; m=p.Results.mode; \
+         nd=numel(p.UsingDefaults); d1=p.UsingDefaults{1};",
+    )
+    .unwrap();
+    assert_eq!(
+        (number(&e, "st"), number(&e, "m"), number(&e, "nd")),
+        (0., 5., 1.)
+    );
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+
+    // Validator runs once per decision (accepted and rejected) with side effects preserved.
+    let mut e = Engine::default();
+    e.execute(
+        "c=containers.Map({'n'},{0}); \
+         p=inputParser(); addOptional(p,'state',0,@(v) count_check(c,v)); addParameter(p,'mode',0); \
+         parse(p,struct('mode',5)); n_rej=c('n'); m_rej=p.Results.mode; \
+         p2=inputParser(); addOptional(p2,'state',struct(),@(v) count_isstruct(c,v)); addParameter(p2,'mode',0); \
+         parse(p2,struct('fh',7),'mode',2); n_acc=c('n'); fh_acc=p2.Results.state.fh; m_acc=p2.Results.mode; \
+         function ok=count_check(c,v), c('n')=c('n')+1; ok=isnumeric(v); end; \
+         function ok=count_isstruct(c,v), c('n')=c('n')+1; ok=isstruct(v); end",
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            number(&e, "n_rej"),
+            number(&e, "m_rej"),
+            number(&e, "n_acc"),
+            number(&e, "fh_acc"),
+            number(&e, "m_acc"),
+        ),
+        (1., 5., 2., 7., 2.)
+    );
+}
+
+#[test]
+fn optional_struct_unmatched_struct_expand_and_reuse() {
+    // KeepUnmatched=true vs unknown-field error when validator rejects a struct.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); p.KeepUnmatched=true; \
+         addOptional(p,'state',0,@isnumeric); addParameter(p,'mode',0); \
+         parse(p,struct('fh',7,'mode',5)); \
+         st=p.Results.state; m=p.Results.mode; ufh=p.Unmatched.fh; d1=p.UsingDefaults{1};",
+    )
+    .unwrap();
+    assert_eq!(
+        (number(&e, "st"), number(&e, "m"), number(&e, "ufh")),
+        (0., 5., 7.)
+    );
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+
+    let mut e = Engine::default();
+    let err = e
+        .execute(
+            "p=inputParser(); addOptional(p,'state',0,@isnumeric); addParameter(p,'mode',0); \
+             parse(p,struct('fh',7,'mode',5));",
+        )
+        .unwrap_err();
+    assert!(err.contains("fh"), "{err}");
+
+    // StructExpand=false does not expand rejected structs and still validates accepted ones.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); p.StructExpand=false; \
+         addOptional(p,'state',struct(),@isstruct); addParameter(p,'mode',0); \
+         parse(p,struct('fh',7),'mode',2); fh=p.Results.state.fh; m=p.Results.mode;",
+    )
+    .unwrap();
+    assert_eq!((number(&e, "fh"), number(&e, "m")), (7., 2.));
+
+    let mut e = Engine::default();
+    let err = e
+        .execute(
+            "p=inputParser(); p.StructExpand=false; \
+             addOptional(p,'state',0,@isnumeric); addParameter(p,'mode',0); \
+             parse(p,struct('mode',5));",
+        )
+        .unwrap_err();
+    assert!(err.contains("state"), "{err}");
+
+    // Unvalidated optional retains struct-expand behavior (not widened).
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); addOptional(p,'state',struct()); addParameter(p,'mode',0); \
+         parse(p,struct('mode',5)); m=p.Results.mode; d1=p.UsingDefaults{1};",
+    )
+    .unwrap();
+    assert_eq!(number(&e, "m"), 5.);
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+    let err = e.execute("parse(p,struct('fh',7),'mode',2);").unwrap_err();
+    assert!(err.contains("fh"), "{err}");
+
+    // Same parser used twice with different shapes leaves no stale state.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); p.KeepUnmatched=true; \
+         addOptional(p,'state',struct(),@(s) isstruct(s) && isfield(s,'fh')); \
+         addParameter(p,'mode',0); \
+         parse(p,struct('fh',7),'mode',2,'extra',9); \
+         fh1=p.Results.state.fh; m1=p.Results.mode; nd1=numel(p.UsingDefaults); u1=p.Unmatched.extra; \
+         parse(p,struct('mode',5)); \
+         has_fh2=isfield(p.Results.state,'fh'); m2=p.Results.mode; d2=p.UsingDefaults{1}; nu2=numel(fieldnames(p.Unmatched));",
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            number(&e, "fh1"),
+            number(&e, "m1"),
+            number(&e, "nd1"),
+            number(&e, "u1")
+        ),
+        (7., 2., 0., 9.)
+    );
+    assert_eq!(
+        (number(&e, "has_fh2"), number(&e, "m2"), number(&e, "nu2")),
+        (0., 5., 0.)
+    );
+    assert_eq!(text_of(&e, "d2").as_deref(), Some("state"));
+}
+
+#[test]
+fn optional_struct_thrown_validator_is_not_expanded() {
+    // A thrown validator must not become the successful [0, 5] expansion.
+    let mut e = Engine::default();
+    let err = e
+        .execute(
+            "p=inputParser(); addOptional(p,'state',0,@(x) error('deliberate-validation-error')); \
+             addParameter(p,'mode',1); parse(p,struct('mode',5));",
+        )
+        .unwrap_err();
+    assert!(err.contains("deliberate-validation-error"), "{err}");
+    assert!(err.contains("The value of 'state' is invalid"), "{err}");
+
+    // Explicit false, same shape, still expands to [0, 5].
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); addOptional(p,'state',0,@isnumeric); addParameter(p,'mode',1); \
+         parse(p,struct('mode',5)); st=p.Results.state; m=p.Results.mode; \
+         nd=numel(p.UsingDefaults); d1=p.UsingDefaults{1}; nu=numel(fieldnames(p.Unmatched));",
+    )
+    .unwrap();
+    assert_eq!(
+        (
+            number(&e, "st"),
+            number(&e, "m"),
+            number(&e, "nd"),
+            number(&e, "nu")
+        ),
+        (0., 5., 1., 0.)
+    );
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+
+    // Failed parse commits nothing. A later parse of the same parser still works.
+    let mut e = Engine::default();
+    e.execute(
+        "p=inputParser(); addOptional(p,'state',0,@(x) error('deliberate-validation-error')); \
+         addParameter(p,'mode',1); \
+         threw=0; msg=''; id=''; \
+         try, parse(p,struct('mode',5)); catch err, threw=1; msg=err.message; id=err.identifier; end; \
+         nr=numel(fieldnames(p.Results)); nd=numel(p.UsingDefaults); nu=numel(fieldnames(p.Unmatched)); \
+         parse(p); st=p.Results.state; m=p.Results.mode; nd2=numel(p.UsingDefaults); \
+         d1=p.UsingDefaults{1}; d2=p.UsingDefaults{2}; nu2=numel(fieldnames(p.Unmatched));",
+    )
+    .unwrap();
+    assert_eq!(number(&e, "threw"), 1.);
+    let msg = text_of(&e, "msg").unwrap_or_default();
+    assert!(msg.contains("deliberate-validation-error"), "{msg}");
+    assert!(msg.contains("The value of 'state' is invalid"), "{msg}");
+    assert!(
+        text_of(&e, "id")
+            .unwrap_or_default()
+            .contains("ArgumentFailedValidation"),
+        "{}",
+        text_of(&e, "id").unwrap_or_default()
+    );
+    assert_eq!(
+        (number(&e, "nr"), number(&e, "nd"), number(&e, "nu")),
+        (0., 0., 0.)
+    );
+    assert_eq!(
+        (
+            number(&e, "st"),
+            number(&e, "m"),
+            number(&e, "nd2"),
+            number(&e, "nu2")
+        ),
+        (0., 1., 2., 0.)
+    );
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+    assert_eq!(text_of(&e, "d2").as_deref(), Some("mode"));
+
+    // One invocation. False still expands; a later throw leaves Results and Unmatched.
+    let mut e = Engine::default();
+    e.execute(
+        "c=containers.Map({'n','throw'},{0,1}); \
+         p=inputParser(); p.KeepUnmatched=true; \
+         addOptional(p,'state',0,@(v) gate(c,v)); addParameter(p,'mode',1); \
+         threw=0; msg=''; \
+         try, parse(p,struct('mode',5)); catch err, threw=1; msg=err.message; end; \
+         n1=c('n'); nr1=numel(fieldnames(p.Results)); nd1=numel(p.UsingDefaults); \
+         nu1=numel(fieldnames(p.Unmatched)); \
+         c('throw')=0; parse(p,struct('mode',5)); \
+         n2=c('n'); st=p.Results.state; m=p.Results.mode; d1=p.UsingDefaults{1}; \
+         nu2=numel(fieldnames(p.Unmatched)); \
+         c('throw')=1; threw2=0; msg2=''; \
+         try, parse(p,struct('extra',9,'mode',3)); catch err, threw2=1; msg2=err.message; end; \
+         n3=c('n'); st_keep=p.Results.state; m_keep=p.Results.mode; d_keep=p.UsingDefaults{1}; \
+         nu_keep=numel(fieldnames(p.Unmatched)); has_extra=isfield(p.Unmatched,'extra'); \
+         c('throw')=0; parse(p,struct('extra',9,'mode',3)); \
+         n4=c('n'); st3=p.Results.state; m3=p.Results.mode; u3=p.Unmatched.extra; \
+         d3=p.UsingDefaults{1}; \
+         function ok=gate(c,v), c('n')=c('n')+1; if c('throw'), error('deliberate-validation-error'); end; ok=isnumeric(v); end",
+    )
+    .unwrap();
+    let msg = text_of(&e, "msg").unwrap_or_default();
+    let msg2 = text_of(&e, "msg2").unwrap_or_default();
+    assert!(msg.contains("deliberate-validation-error"), "{msg}");
+    assert!(msg2.contains("deliberate-validation-error"), "{msg2}");
+    assert_eq!(
+        (
+            number(&e, "threw"),
+            number(&e, "n1"),
+            number(&e, "nr1"),
+            number(&e, "nd1"),
+            number(&e, "nu1")
+        ),
+        (1., 1., 0., 0., 0.)
+    );
+    assert_eq!(
+        (
+            number(&e, "n2"),
+            number(&e, "st"),
+            number(&e, "m"),
+            number(&e, "nu2")
+        ),
+        (2., 0., 5., 0.)
+    );
+    assert_eq!(text_of(&e, "d1").as_deref(), Some("state"));
+    assert_eq!(
+        (
+            number(&e, "threw2"),
+            number(&e, "n3"),
+            number(&e, "st_keep"),
+            number(&e, "m_keep"),
+            number(&e, "nu_keep"),
+            number(&e, "has_extra"),
+        ),
+        (1., 3., 0., 5., 0., 0.)
+    );
+    assert_eq!(text_of(&e, "d_keep").as_deref(), Some("state"));
+    assert_eq!(
+        (
+            number(&e, "n4"),
+            number(&e, "st3"),
+            number(&e, "m3"),
+            number(&e, "u3")
+        ),
+        (4., 0., 3., 9.)
+    );
+    assert_eq!(text_of(&e, "d3").as_deref(), Some("state"));
+
+    // A validator that succeeds without a return value still accepts the struct, once.
+    let mut e = Engine::default();
+    e.execute(
+        "global noreturn_n; noreturn_n=0; \
+         p=inputParser(); addOptional(p,'state',struct(),@noreturn); addParameter(p,'mode',0); \
+         parse(p,struct('fh',7),'mode',2); fh=p.Results.state.fh; m=p.Results.mode; n=noreturn_n; \
+         function noreturn(v), global noreturn_n; noreturn_n=noreturn_n+1; end",
+    )
+    .unwrap();
+    assert_eq!(
+        (number(&e, "fh"), number(&e, "m"), number(&e, "n")),
+        (7., 2., 1.)
+    );
+}

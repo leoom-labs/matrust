@@ -155,7 +155,7 @@ fn fixed_rgb_updates_are_atomic_keep_identity_and_invalidate_metadata_without_co
     engine.execute("plot([-0 1],[2 3]);a=gca;").unwrap();
     let original = engine.figure.clone().unwrap();
     let stamp = SnapshotStamp::new(&original);
-    engine.execute("set(a,'Color',[1 1 1],'XColor',[-0 0.15 1],'YColor',[0.2 0.4 0.6]);title(a,'','Color',[0.125 0.25 0.5]);xlabel(a,'Time','Interpreter','none','Color',[1 0 0]);ylabel(a,'Value','Color',[0 1 0]);").unwrap();
+    engine.execute("set(a,'Color',[1 1 1],'XColor',[-0 0.15 1],'YColor',[0.2 0.4 0.6]);title(a,'','Color',[0.125 0.25 0.5],'Interpreter','tex');xlabel(a,'Time','Interpreter','none','Color',[1 0 0]);ylabel(a,'Value','Color',[0 1 0]);").unwrap();
     let fixed = engine.figure.clone().unwrap();
     assert!(!stamp.matches(&fixed));
     assert!(fixed.identity.same_object(&original.identity));
@@ -169,9 +169,13 @@ fn fixed_rgb_updates_are_atomic_keep_identity_and_invalidate_metadata_without_co
         fixed.colors.unwrap().x.unwrap()[0].to_bits(),
         (-0.0_f64).to_bits()
     );
+    assert_eq!(
+        fixed.extras.label_interpreters[0],
+        crate::plot::text_markup::Interpreter::Tex
+    );
     for bad in [
         "set(a,'Color',[0 0 0],'YColor',[2 0 0]);",
-        "title(a,'changed','Color',[1 0 0],'Interpreter','tex');",
+        "title(a,'changed','Color',[1 0 0],'Interpreter','invalid');",
         "xlabel(a,'changed','Color','none');",
         "set(a,'XColor',[0 NaN 1]);",
         "set(a,'Color',true(1,4));",

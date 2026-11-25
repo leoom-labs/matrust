@@ -118,7 +118,7 @@ fn unsupported_eps_forms_tight_export_print_and_stale_handles_do_not_publish() {
         "saveas(gcf,'kept.eps','epsc','extra')",
         "saveas(999,'kept.eps','epsc')",
         "exportgraphics(gcf,'kept.eps','ContentType','vector')",
-        "print(gcf,'kept.eps','-depsc')",
+        "print(gcf,'kept.eps','-deps')",
     ] {
         assert!(engine.execute(script).is_err(), "{script}");
         assert_eq!(std::fs::read(&path).unwrap(), b"sentinel", "{script}");

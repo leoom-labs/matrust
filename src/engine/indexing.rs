@@ -162,6 +162,12 @@ impl Engine {
         out: &mut Execution,
     ) -> Result<Value> {
         let (first, step, last) = self.range_operands(start, step, stop, end, out)?;
+        if super::datetime_fns::is_dt(&first)
+            || super::datetime_fns::is_dt(&last)
+            || step.as_ref().is_some_and(super::datetime_fns::is_dt)
+        {
+            return self.dtm_range(first, step, last);
+        }
         if typed_range_operands(&first, step.as_ref(), &last) {
             return self.typed_range(first, step, last);
         }
@@ -204,17 +210,35 @@ impl Engine {
         step: Option<Value>,
         last: Value,
     ) -> Result<(f64, f64, usize, bool)> {
+        if super::datetime_fns::is_dt(&first) || super::datetime_fns::is_dt(&last) {
+            // Ranges, for-loops and concatenation take the datetime path
+            // first; what reaches here is a subscript.
+            return Err(
+                "Subscripts must be numeric; a datetime or duration range cannot index an array"
+                    .into(),
+            );
+        }
         let character = first.is_character()
             || last.is_character()
             || step.as_ref().is_some_and(Value::is_character);
-        let start = first.matrix(&self.cancel)?.as_scalar()?;
-        let stop = last.matrix(&self.cancel)?.as_scalar()?;
-        let step = match step {
-            Some(s) => s.matrix(&self.cancel)?.as_scalar()?,
-            None => 1.0,
-        };
-        if !start.is_finite() || !stop.is_finite() || !step.is_finite() || step == 0.0 {
-            return Err("Range bounds must be finite and step must be nonzero".into());
+        let first_m = first.matrix(&self.cancel)?;
+        let last_m = last.matrix(&self.cancel)?;
+        let step_m = step.map(|s| s.matrix(&self.cancel)).transpose()?;
+        if first_m.is_empty() || last_m.is_empty() || step_m.as_ref().is_some_and(Matrix::is_empty)
+        {
+            return Ok((0.0, 1.0, 0, character));
+        }
+        let start = first_m.data()[0];
+        let stop = last_m.data()[0];
+        let step = step_m.map_or(1.0, |m| m.data()[0]);
+        // Same order as matbuild_colon / Octave 10.3: NaN wins, a zero step is
+        // empty (even with Inf bounds), a backward span is empty, an
+        // indeterminate Inf combination is NaN, and only an infinite count errors.
+        if start.is_nan() || stop.is_nan() || step.is_nan() {
+            return Ok((f64::NAN, 1.0, 1, false));
+        }
+        if step == 0.0 {
+            return Ok((start, step, 0, character));
         }
         let span = (stop - start) / step;
         let count = if span < 0.0 {
@@ -222,6 +246,12 @@ impl Engine {
         } else {
             (span + 4.0 * f64::EPSILON * span.abs().max(1.0)).floor() + 1.0
         };
+        if count.is_nan() {
+            return Ok((f64::NAN, 1.0, 1, false));
+        }
+        if count.is_infinite() {
+            return Err("Maximum variable size allowed by the program is exceeded.".into());
+        }
         if count > MAX_ELEMENTS as f64 {
             return Err("Range exceeds matrix element limit".into());
         }
@@ -246,12 +276,19 @@ impl Engine {
         let mut data = Vec::with_capacity(count);
         for first in (0..count).step_by(CHUNK) {
             self.check_cancel()?;
-            data.extend((first..(first + CHUNK).min(count)).map(|i| start + i as f64 * step));
+            data.extend((first..(first + CHUNK).min(count)).map(|i| {
+                // 1:Inf:2 has one element. 0*Inf is NaN, so the first element is the start.
+                if i == 0 && !step.is_finite() {
+                    start
+                } else {
+                    start + i as f64 * step
+                }
+            }));
         }
         Matrix::from_column_vec(1, count, data)
     }
 
-    fn subscript(
+    pub(super) fn subscript(
         &mut self,
         arg: &Expr,
         bound: usize,
@@ -315,7 +352,8 @@ impl Engine {
             }
             self.range_matrix(start, step, len)?
         } else {
-            match self.eval(arg, bound, out)? {
+            let evaluated = self.eval(arg, bound, out)?;
+            match super::sparse_fns::index_value(self, evaluated)? {
                 Value::Logical(mask) => {
                     let indices = self.mask_indices(&mask, maximum)?;
                     let count = indices.len();
@@ -418,6 +456,26 @@ impl Engine {
         out: &mut Execution,
         container_diagnostics: bool,
     ) -> Result<T> {
+        let mut nd_shape = None;
+        let result = self
+            .index_array_folded(m, args, out, container_diagnostics, &mut nd_shape)?
+            .inherit_class(m);
+        match nd_shape {
+            Some(dims) => result.with_nd_dims(&dims),
+            None => Ok(result),
+        }
+    }
+
+    /// `A(idx)` with an N-D index array takes the index's full shape (folded here,
+    /// restored by the caller); every other result keeps its two-dimensional shape.
+    fn index_array_folded<T: StoredArray>(
+        &mut self,
+        m: &T,
+        args: &[Expr],
+        out: &mut Execution,
+        container_diagnostics: bool,
+        nd_shape: &mut Option<Vec<usize>>,
+    ) -> Result<T> {
         if args.is_empty() || args.len() > 2 {
             return Err("Indexing requires one or two subscripts".into());
         }
@@ -427,6 +485,12 @@ impl Engine {
         } else {
             self.subscript(&args[0], bound, out)?
         };
+        if args.len() == 1
+            && let Indices::Explicit(values) = &rows
+            && values.is_nd()
+        {
+            *nd_shape = Some(values.dims().into_owned());
+        }
         let columns = if args.len() == 2 {
             let (columns, _) = if container_diagnostics {
                 self.cel_subscript(&args[1], m.cols(), m.cols(), out)?
@@ -436,10 +500,15 @@ impl Engine {
             shape = (rows.len(), columns.len());
             Some(columns)
         } else {
-            if !self.colon_subscript(&args[0])
+            // The source-orientation rule is for vector indices; an N-D index keeps its shape.
+            if nd_shape.is_none()
+                && !self.colon_subscript(&args[0])
                 && (m.rows() == 1 || m.cols() == 1)
                 && match &rows {
-                    Indices::Mask(_, vector) | Indices::LogicalStride { vector, .. } => *vector,
+                    // A logical mask selects a vector of hits. The mask's own shape
+                    // does not matter: a vector source keeps its orientation
+                    // (Octave 10.3; MathWorks logical indexing).
+                    Indices::Mask(_, _) | Indices::LogicalStride { .. } => true,
                     _ => shape.0 == 1 || shape.1 == 1,
                 }
             {
@@ -454,13 +523,7 @@ impl Engine {
         let count = T::checked_len(shape.0, shape.1)?;
         // Reject oversized evaluation before allocating the result. eval charges
         // the returned matrix once; this is a preflight, not another charge.
-        if self
-            .evaluated_elements
-            .saturating_add(count * T::BYTES.div_ceil(8))
-            > 32 * 1024 * 1024
-        {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-        }
+        self.preflight_elements(count * T::BYTES.div_ceil(8))?;
         self.check_cancel()?;
         let contiguous = if let Some(columns) = &columns {
             if rows.contiguous() == Some(0) && rows.len() == m.rows() {

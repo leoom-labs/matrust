@@ -1,0 +1,32 @@
+{
+ "source": "hand derivations from the proleptic Gregorian calendar and the Excel 1900 date system; never generated",
+ "cases": [
+  {"code": "char(datetime('2024-01-01 00:00:00.123456789'), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')", "text": "2024-01-01 00:00:00.123456789", "why": "nine fraction digits are read and printed digit for digit"},
+  {"code": "char(datetime('1969-12-31 23:59:59.999999999') + seconds(1e-9), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')", "text": "1970-01-01 00:00:00.000000000", "why": "one nanosecond after the last nanosecond of 1969"},
+  {"code": "char(datetime(9999, 12, 31, 23, 59, 59.999999999), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')", "text": "9999-12-31 23:59:59.999999999", "why": "the last nanosecond of year 9999"},
+  {"code": "char(datetime(9999, 12, 31, 23, 59, 59.999999999) + seconds(1e-9), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')", "text": "10000-01-01 00:00:00.000000000", "why": "carry past year 9999"},
+  {"code": "char(datetime(1, 1, 1, 0, 0, -1), 'yyyy-MM-dd HH:mm:ss')", "text": "0000-12-31 23:59:59", "why": "one second before 0001-01-01 is the last second of year 0"},
+  {"code": "char(datetime(2024, 13, 1), 'yyyy-MM-dd')", "text": "2025-01-01", "why": "month 13 is January of the next year"},
+  {"code": "char(datetime(2024, 0, 1), 'yyyy-MM-dd')", "text": "2023-12-01", "why": "month 0 is December of the year before"},
+  {"code": "char(datetime(2024, -11, 1), 'yyyy-MM-dd')", "text": "2023-01-01", "why": "month -11 is 12 months before January 2024"},
+  {"code": "char(datetime(2024, 25, 0), 'yyyy-MM-dd')", "text": "2025-12-31", "why": "month 25 is January 2026, day 0 the day before"},
+  {"code": "char(datetime(1900, 3, 0), 'yyyy-MM-dd')", "text": "1900-02-28", "why": "1900 is not a leap year (divisible by 100, not by 400)"},
+  {"code": "char(datetime(2000, 3, 0), 'yyyy-MM-dd')", "text": "2000-02-29", "why": "2000 is a leap year (divisible by 400)"},
+  {"code": "char(datetime(2024, 1, 1, 0, 0, 1e9), 'yyyy-MM-dd HH:mm:ss')", "text": "2055-09-09 01:46:40", "why": "1e9 s = 11574 days 1:46:40 after 2024-01-01 (11574 days = 31 years + 251 days)"},
+  {"code": "char(datetime(60, 'ConvertFrom', 'excel'))", "text": "NaT", "why": "Excel serial 60 is 29-Feb-1900, which does not exist"},
+  {"code": "char(datetime(60.5, 'ConvertFrom', 'excel'))", "text": "NaT", "why": "any time on the nonexistent 29-Feb-1900"},
+  {"code": "char(datetime(59.999999, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')", "text": "1900-02-28 23:59:59.913600", "why": "0.999999 day = 86399.9136 s, rounded to the microsecond"},
+  {"code": "exceltime(datetime(1900, 3, 1))", "num": 61, "tol": 0, "why": "the 1900 system counts 29-Feb-1900, so 1-Mar-1900 is 61"},
+  {"code": "exceltime(datetime(1900, 2, 28))", "num": 59, "tol": 0, "why": "31 days of January plus 28 of February"},
+  {"code": "char(datetime('01-Jan-69', 'InputFormat', 'dd-MMM-yy', 'PivotYear', 1950), 'yyyy')", "text": "1969", "why": "pivot 1950: two-digit years fall in 1950..2049"},
+  {"code": "char(datetime('01-Jan-69', 'InputFormat', 'dd-MMM-yy', 'PivotYear', 1970), 'yyyy')", "text": "2069", "why": "pivot 1970: two-digit years fall in 1970..2069"},
+  {"code": "char(datetime('01-Jan-00', 'InputFormat', 'dd-MMM-yy', 'PivotYear', 2000), 'yyyy')", "text": "2000", "why": "the pivot year itself is the first year of the window"},
+  {"code": "char(datetime('Monday 01-Mar-2024', 'InputFormat', 'eeee dd-MMM-yyyy'), 'yyyy-MM-dd eee')", "text": "2024-03-01 Fri", "why": "a day name that disagrees with the date is ignored on input"},
+  {"code": "char(datetime('2024-02-30', 'InputFormat', 'yyyy-MM-dd'))", "text": "NaT", "why": "February 2024 has 29 days"},
+  {"code": "char(datetime(2024, 2, 29) + years(1), 'yyyy-MM-dd HH:mm:ss')", "text": "2025-02-28 05:49:12", "why": "365.2425 days = 365 days 5:49:12"},
+  {"code": "char(datetime(2024, 1, 1) + 0.5, 'yyyy-MM-dd HH:mm:ss')", "text": "2024-01-01 12:00:00", "why": "a double is a number of 24-hour days"},
+  {"code": "juliandate(datetime(-4713, 11, 24, 12, 0, 0))", "num": 0, "tol": 1e-9, "why": "Julian date 0 is noon of 24-Nov-4714 BC = proleptic Gregorian year -4713"},
+  {"code": "posixtime(datetime(1900, 1, 1))", "num": -2208988800, "tol": 0, "why": "70 years, 17 leap days: -(70*365+17)*86400"},
+  {"code": "datenum(datetime(0, 1, 1))", "num": 1, "tol": 0, "why": "datenum day 1 is 1-Jan-0000"}
+ ]
+}

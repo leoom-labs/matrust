@@ -1,0 +1,5 @@
+1 cycles: i=2000 n=2000 count=4002 back=6
+2 holders: k=30 size=1200
+3 delete(g): error
+3 g.delete(): error
+3 still usable: v=1

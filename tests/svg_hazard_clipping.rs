@@ -28,7 +28,19 @@ fn ordinary_svg_matches_preserved_795_bytes_with_explicit_axes_font_size() {
     let new_group = r##"<g font-family="Arial" font-size="16" fill="#242424">"##;
     assert_eq!(historical.matches(old_group).count(), 1);
     assert!(!historical.contains(new_group));
-    let expected = historical.replacen(old_group, new_group, 1);
+    let mut expected = historical.replacen(old_group, new_group, 1);
+    // Y tick labels are now centred on their tick (baseline 4 px lower).
+    for (old_y, new_y) in [
+        ("490", "494"),
+        ("382.5", "386.5"),
+        ("275", "279"),
+        ("167.5", "171.5"),
+        ("60", "64"),
+    ] {
+        let label = |y: &str| format!(r#"<text x="60" y="{y}" text-anchor="end""#);
+        assert_eq!(expected.matches(&label(old_y)).count(), 1);
+        expected = expected.replacen(&label(old_y), &label(new_y), 1);
+    }
     assert_eq!(engine.figure.unwrap().svg(), expected);
 }
 

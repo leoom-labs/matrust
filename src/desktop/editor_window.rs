@@ -260,6 +260,7 @@ impl Workspace {
         self.focus_areas.retire_editor_host();
         self.editor_window.cancel();
         self.editor_window.detached = false;
+        self.editor_window_closed();
         self.editor_window.composing = None;
         self.reset_editor_host();
         self.reset_script_focus_host();
@@ -306,7 +307,10 @@ impl Workspace {
                 ctx.send_viewport_cmd_to(viewport(), egui::ViewportCommand::Focus);
                 ctx.request_repaint();
             }
-            Action::Dock => self.dock_editor_window(ctx),
+            Action::Dock => {
+                self.windows.editor_docked_by_user = true;
+                self.dock_editor_window(ctx);
+            }
             action => {
                 if !self.editor_viewport_allowed(ctx) || !self.editor_window.in_callback {
                     return;
@@ -442,7 +446,9 @@ impl Workspace {
                 Some(Action::Save(true))
             } else if exact(input, ctrl, egui::Key::S) {
                 Some(Action::Save(false))
-            } else if exact(input, ctrl, egui::Key::Enter) {
+            } else if exact(input, ctrl, egui::Key::Enter)
+                || exact(input, egui::Modifiers::NONE, egui::Key::F5)
+            {
                 Some(Action::Run(false))
             } else if exact(input, egui::Modifiers::NONE, egui::Key::F9) {
                 Some(Action::Run(true))
@@ -475,13 +481,12 @@ impl Workspace {
         }
         self.finish_editor_window_reveal(ctx);
         self.editor_window.embedded = ctx.embed_viewports();
+        let placement = self.editor_window_placement();
         ctx.show_viewport_immediate(
             viewport(),
-            egui::ViewportBuilder::default()
-                .with_title("Editor — MatRust")
-                .with_inner_size([1000., 700.])
-                .with_min_inner_size([480., 320.]),
+            app_window::builder("Editor — MatRust", placement, [1000., 700.], [480., 320.]),
             |ui, class| {
+                self.observe_editor_window(ui.ctx());
                 self.editor_window.in_callback = true;
                 self.editor_window.embedded = class == egui::ViewportClass::EmbeddedWindow;
                 self.editor_window_ui(ui);
@@ -492,7 +497,7 @@ impl Workspace {
 
     pub(super) fn editor_window_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        ui.set_style(ctx.global_style());
+        theme::window_root(ui);
         let close_stamp = (
             ctx.viewport_id(),
             ctx.cumulative_frame_nr(),
@@ -514,6 +519,11 @@ impl Workspace {
             // It closes the container, not documents or root confirmations.
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if !ctx.will_discard() {
+                // Separate layout: the X closes the Editor window; the main
+                // window stays the Command Window until the Editor is reopened.
+                if self.separate_windows() {
+                    self.command_only = true;
+                }
                 self.dock_editor_window(&ctx);
             }
             return;

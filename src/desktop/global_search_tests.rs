@@ -294,7 +294,7 @@ mod global_action_search_cases {
         let ctx = egui::Context::default(); let size = egui::vec2(1440., 900.); let mut app = setup(&ctx, size);
         let before = frame_at(&mut app, &ctx, size, vec![]);
         let tab_alpha = |output: &egui::FullOutput| output.shapes.iter().find_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.text() == "Plots" => Some(t.opacity_factor),
+            egui::Shape::Text(t) if t.galley.text() == "Figures" => Some(t.opacity_factor),
             _ => None,
         });
         let closed = tab_alpha(&before).expect("Plots tab");
@@ -307,12 +307,13 @@ mod global_action_search_cases {
             assert!(!output.shapes.iter().any(|s| text_position(&s.shape, gone).is_some()), "{gone}");
         }
         assert_eq!(tab_alpha(&output), Some(closed), "toolbar dimmed behind the palette");
-        // One 560 px card under the launcher; the query field spans it.
+        // One centred 640 px dialog below the launcher; the query field spans it.
         let query = ctx.read_response(global_search::query_id()).unwrap().rect;
         let launcher = app.global_search.anchor_rect().unwrap();
         assert!(query.top() >= launcher.bottom(), "{query:?} / {launcher:?}");
-        let inner = 560. - global_search::card_frame(&ctx).total_margin().sum().x;
+        let inner = 640. - global_search::card_frame(&ctx).total_margin().sum().x;
         assert!((query.width() - inner).abs() < 1.5, "{query:?}");
+        assert!((query.center().x - size.x / 2.).abs() < 2., "centred: {query:?}");
     }
 
     #[test]
@@ -325,9 +326,30 @@ mod global_action_search_cases {
         assert!(!app.global_search.is_open(), "the click outside closes the palette");
         assert_eq!(app.documents.len(), documents + 1, "the ribbon action ran");
         open(&mut app, &ctx, size);
-        click_label_at(&mut app, &ctx, size, "Plots");
+        click_label_at(&mut app, &ctx, size, "Figures");
         for _ in 0..2 { frame_at(&mut app, &ctx, size, vec![]); }
         assert!(!app.global_search.is_open());
         assert_eq!(app.layout.toolstrip, session::ToolstripTab::Plots);
+    }
+
+    #[test]
+    fn global_search_does_not_preselect_a_disabled_row_and_paints_it_unfaded() {
+        let ctx = egui::Context::default(); let size = egui::vec2(1440., 900.);
+        let mut app = Workspace::with_context(ctx.clone(), true);
+        app.new_document("a = 1;\n");
+        for _ in 0..3 { frame_at(&mut app, &ctx, size, vec![]); }
+        assert!(app.variables.is_empty());
+        open(&mut app, &ctx, size);
+        query(&mut app, &ctx, size, "plot");
+        // "Plot workspace data" ranks first but needs variables.
+        assert_eq!(global_search::matching_labels("plot").first(), Some(&"Plot workspace data"));
+        assert_eq!(app.global_search.selected(), 1, "a disabled first row is not pre-selected");
+        let output = frame_at(&mut app, &ctx, size, vec![]);
+        let row = output.shapes.iter().find_map(|s| match &s.shape {
+            egui::Shape::Text(t) if t.galley.text() == "Plot workspace data" => Some(t.clone()),
+            _ => None,
+        }).expect("disabled row painted");
+        assert_eq!(row.opacity_factor, 1., "no egui disabled fade");
+        assert_eq!(row.galley.job.sections[0].format.color, tokens::palette(&ctx).text_disabled);
     }
 }

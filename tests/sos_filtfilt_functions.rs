@@ -110,7 +110,7 @@ fn sos_padding_boundaries_empty_shapes_and_invalid_arguments() {
         assert!(dsp::filtfilt_sos(&identity(), &gains, &input, &cancel).is_err());
     }
     for coefficients in [
-        sos(&[[1., 0., 0., 1., 0., 0.]; 65]),
+        sos(&[[1., 0., 0., 1., 0., 0.]; 101]),
         sos(&[[1., 0., 0., 0., 0., 0.]; 2]),
         sos(&[[1., 0., 0., 1., -1., 0.]; 2]),
         sos(&[[f64::NAN, 0., 0., 1., 0., 0.]; 2]),

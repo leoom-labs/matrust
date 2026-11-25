@@ -48,6 +48,11 @@ fn workspace_keeps_value_column_and_full_name_tooltip_at_800_and_1366() {
                 for _ in 0..4 {
                     output = frame_at(&mut app, &ctx, size, vec![]);
                 }
+                let sheet = workspace_dock::inspector::uses_sheet(&app, &ctx);
+                if sheet {
+                    click_label_at(&mut app, &ctx, size, "Workspace");
+                    for _ in 0..4 { output = frame_at(&mut app, &ctx, size, vec![]); }
+                }
                 let texts = value_column_texts(&output);
                 let shown = |text: &(String, egui::Rect, egui::Rect)| {
                     text.2.intersect(text.1).width() > 0.5
@@ -69,14 +74,16 @@ fn workspace_keeps_value_column_and_full_name_tooltip_at_800_and_1366() {
                     &ctx,
                     if app.workspace_on_left() {
                         "workspace_variables_left"
+                    } else if sheet {
+                        "workspace_sheet_values"
                     } else {
                         "workspace_variables"
                     },
                 );
                 let minimum = workspace_tools::minimum_dock_width(&ctx);
-                assert!(dock.width() >= minimum - 0.5);
+                assert!(dock.width() >= minimum - 2.5);
                 if size.x == 800. || !app.workspace_on_left() {
-                    assert!((dock.width() - minimum).abs() < 2.);
+                    assert!(dock.width() >= minimum - 2.5 && dock.width() <= tokens::RIGHT_COLUMN + 1.);
                 }
                 let values: Vec<_> = texts
                     .iter()

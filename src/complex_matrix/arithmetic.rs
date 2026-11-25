@@ -1,6 +1,7 @@
 //! Complex arithmetic over immutable column-major operands. Real-only engine
 //! calls retain their established kernels; mixed GEMM packs bounded panels.
 use super::{Complex64, ComplexMatrix, build, check};
+use crate::matrix::{expanded_2d_index, expansion_shape};
 use crate::{Array, Result};
 use rayon::prelude::*;
 use std::sync::atomic::AtomicBool;
@@ -32,11 +33,17 @@ fn at(a: &Array, index: usize) -> Complex64 {
         Array::Numeric(a) => Complex64::new(a.data()[index], 0.),
         Array::Logical(a) => Complex64::new(f64::from(a.data()[index]), 0.),
         Array::Typed(a) => Complex64::new(a.real(index), 0.),
-        Array::Character(_)
+        Array::Str(_)
+        | Array::Character(_)
         | Array::Cell(_)
         | Array::Graphics(_)
         | Array::Struct(_)
-        | Array::Handle(_) => {
+        | Array::Handle(_)
+        | Array::Categorical(_)
+        | Array::Datetime(_)
+        | Array::Duration(_)
+        | Array::Table(_)
+        | Array::Sparse(_) => {
             unreachable!("arithmetic_shape rejects nonnumeric input before kernel dispatch")
         }
     }
@@ -53,7 +60,7 @@ fn jobs(a: &Array, b: &Array) -> usize {
 }
 
 impl ComplexMatrix {
-    /// Supported element-wise shapes are equal sizes or scalar expansion.
+    /// Elementwise operands expand along singleton dimensions.
     /// Matmul treats either scalar as element-wise multiplication, as MATLAB does.
     pub fn arithmetic_shape(a: &Array, b: &Array, op: ComplexOp) -> Result<(usize, usize)> {
         a.require_numeric_array()?;
@@ -63,14 +70,8 @@ impl ComplexMatrix {
                 return Err("Complex matrix product inner dimensions must agree".into());
             }
             (a.rows(), b.cols())
-        } else if shape(a) == shape(b) || b.len() == 1 {
-            shape(a)
-        } else if a.len() == 1 {
-            shape(b)
         } else {
-            return Err(
-                "Complex array dimensions must agree (only scalar expansion is supported)".into(),
-            );
+            expansion_shape(shape(a), shape(b))?
         };
         Self::checked_len(output.0, output.1)?;
         Ok(output)
@@ -94,17 +95,20 @@ impl ComplexMatrix {
         if op == ComplexOp::Matmul && a.len() != 1 && b.len() != 1 {
             return matrix_product(a, b, rows, cols, len, cancel);
         }
+        let single_sum = op == ComplexOp::Add && (a.class() == "single" || b.class() == "single");
+        let (left_shape, right_shape) = (shape(a), shape(b));
         let output = build(len, cancel, |index| {
-            let left = at(a, if a.len() == 1 { 0 } else { index });
-            let right = at(b, if b.len() == 1 { 0 } else { index });
+            let left = at(a, expanded_2d_index(index, (rows, cols), left_shape));
+            let right = at(b, expanded_2d_index(index, (rows, cols), right_shape));
             match op {
+                ComplexOp::Add if single_sum => Self::round_to_single(left + right),
                 ComplexOp::Add => left + right,
                 ComplexOp::Subtract => left - right,
                 ComplexOp::Multiply | ComplexOp::Matmul => left * right,
                 ComplexOp::Divide => division::divide(left, right),
             }
         })?;
-        Self::from_column_vec(rows, cols, output, cancel)
+        Ok(Self::from_column_vec(rows, cols, output, cancel)?.with_single_class(single_sum))
     }
 }
 

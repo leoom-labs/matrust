@@ -328,8 +328,14 @@ pub struct CaseRun {
     pub checksum: Option<f64>,
 }
 
+/// Run limits of the native bench runner: the local CLI host's (no step or per-run
+/// output limit; the memory guards stay). `Engine::default()` keeps the browser cap.
+pub fn bench_limits() -> crate::engine::Limits {
+    crate::engine::Limits::local()
+}
+
 fn fresh_engine(case: &Case) -> Result<Engine, String> {
-    let mut engine = Engine::default();
+    let mut engine = Engine::with_limits(bench_limits());
     if let Some(directory) = &case.directory {
         engine.set_function_directory(directory)?;
     }
@@ -675,23 +681,46 @@ mod tests {
     #[test]
     fn unsupported_real_engine_messages() {
         let mut engine = Engine::default();
-        let message = engine.execute("uicontrol();").unwrap_err();
+        let message = engine.execute("uihtml();").unwrap_err();
         assert!(
             message.contains("MatRust does not support yet."),
             "{message}"
         );
         assert_eq!(ErrorKind::classify(&message), ErrorKind::Unsupported);
-        let case = Case::new("unsupported", "", "uicontrol();", "");
+        let case = Case::new("unsupported", "", "uihtml();", "");
         assert_eq!(
             CaseResult::from_run(&case, Source::User, run_case(&case)).error_kind,
             ErrorKind::Unsupported
         );
-        for name in ["uicontrol", "sum", "no_such_bench_function"] {
+        for name in ["uihtml", "sum", "no_such_bench_function"] {
             assert_eq!(
                 ErrorKind::classify(&crate::help::unknown_function(name)),
                 ErrorKind::Unsupported
             );
         }
+    }
+
+    #[test]
+    fn bench_runs_past_the_browser_step_cap_which_default_engine_keeps() {
+        use crate::engine::Limits;
+        // 600000 iterations take more than 1e6 statement/loop steps: over the browser cap.
+        let (setup, op) = ("n=600000;", "s=0; for k=1:n; s=s+k; end;");
+        let case = Case::new("over_cap", setup, op, "s");
+        assert_eq!(checksum(&case).unwrap(), Some(180_000_300_000.));
+        // Only the step and output caps are lifted: the memory guards remain.
+        let limits = bench_limits();
+        assert_eq!((limits.steps, limits.output_entries), (None, None));
+        assert!(limits.evaluation_units.is_some() && limits.loop_bytes.is_some());
+        assert_eq!(Engine::default().limits_active(), Limits::browser());
+        let mut engine = Engine::default();
+        let error = engine.execute(&format!("{setup} {op}")).unwrap_err();
+        assert!(
+            error.contains("Execution exceeds 1000000 statement/loop steps"),
+            "{error}"
+        );
+        // Size bounds still apply in the bench runner.
+        let huge = Case::new("huge", "", "x = zeros(1e6, 1e6);", "x(1)");
+        assert!(checksum(&huge).is_err());
     }
 
     #[test]

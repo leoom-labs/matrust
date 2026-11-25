@@ -13,6 +13,7 @@ fn fixture() -> Figure {
         background: Some([0.2, 0.4, 0.6]),
         x: Some([1., 0., 0.]),
         y: Some([0., 0., 1.]),
+        z: None,
         title: Some([0., 1., 0.]),
         xlabel: Some([1., 0., 1.]),
         ylabel: Some([0., 1., 1.]),
@@ -175,4 +176,169 @@ fn single_ruler_rgb_controls_implicit_label_but_explicit_label_wins_in_both_them
     let before = figure.svg();
     figure.colors = Some(AxesColors::default());
     assert_eq!(figure.svg(), before);
+}
+
+/// Axes `Layer` in exported SVG pixels: opaque blue data covers the whole
+/// box; red grid and green inward ticks show through only with `top`.
+#[cfg(feature = "plot-export")]
+#[test]
+fn axes_color_rendering_layer_orders_grid_and_ticks_in_svg_pixels() {
+    const SCALE: f32 = 4.;
+    let render = |layer: &str| {
+        let mut engine = Engine::default();
+        engine
+            .execute(&format!(
+                "fill([0 10 10 0],[0 0 10 10],[0 0 1],'EdgeColor','none'); axis([0 10 0 10]); grid on;
+                 set(gca,'GridColor',[1 0 0],'GridAlpha',1,'XColor',[0 0.8 0],'YColor',[0 0.8 0], ...
+                     'TickDir','in','TickLength',[0.05 0.05],'Layer','{layer}');"
+            ))
+            .unwrap();
+        let svg = engine.figure.as_ref().unwrap().svg();
+        // The data box is the clip rectangle.
+        let clip = svg.split("<clipPath").nth(1).unwrap();
+        let attr = |name: &str| -> f32 {
+            let start = clip.find(&format!(" {name}=\"")).unwrap() + name.len() + 3;
+            clip[start..].split('"').next().unwrap().parse().unwrap()
+        };
+        let [left, top, width, height] = [attr("x"), attr("y"), attr("width"), attr("height")];
+        let tree =
+            resvg::usvg::Tree::from_str(&svg, &matrust::export::svg_render_options()).unwrap();
+        let size = tree.size();
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(
+            (size.width() * SCALE) as u32,
+            (size.height() * SCALE) as u32,
+        )
+        .unwrap();
+        pixmap.fill(resvg::tiny_skia::Color::WHITE);
+        resvg::render(
+            &tree,
+            resvg::tiny_skia::Transform::from_scale(SCALE, SCALE),
+            &mut pixmap.as_mut(),
+        );
+        let sample = |x: f32, y: f32| {
+            let p = pixmap
+                .pixel((x * SCALE) as u32, (y * SCALE) as u32)
+                .unwrap();
+            [p.red(), p.green(), p.blue()]
+        };
+        let px = |v: f32| left + width * v / 10.;
+        let py = |v: f32| top + height * (1. - v / 10.);
+        let tick = width.max(height) * 0.05;
+        [
+            // Interior crossing of the x = 4 grid line, far from every tick.
+            sample(px(4.), py(5.)),
+            // Near-edge crossing: the x = 4 tick over the same grid line.
+            sample(px(4.), top + height - tick / 2.),
+            // Off-grid data.
+            sample(px(5.), py(5.)),
+        ]
+    };
+    let blue = [0, 0, 255];
+    assert_eq!(render("bottom"), [blue; 3]);
+    assert_eq!(render("Top"), [[255, 0, 0], [0, 204, 0], blue]);
+}
+
+/// Axes `Layer 'top'` draws grid lines and inward ticks above axes overlays
+/// such as an opaque filled `rectangle` in exported SVG pixels.
+#[cfg(feature = "plot-export")]
+#[test]
+fn axes_color_rendering_layer_top_draws_grid_and_ticks_over_rectangle() {
+    const SCALE: f32 = 4.;
+    let render = |layer: &str| {
+        let mut engine = Engine::default();
+        engine
+            .execute(&format!(
+                "rectangle('Position',[0 0 10 10],'FaceColor',[0 0 1],'EdgeColor','none');
+                 axis([0 10 0 10]); grid on;
+                 set(gca,'GridColor',[1 0 0],'GridAlpha',1,'XColor',[0 0.8 0],'YColor',[0 0.8 0], ...
+                     'TickDir','in','TickLength',[0.05 0.05],'Layer','{layer}');"
+            ))
+            .unwrap();
+        let svg = engine.figure.as_ref().unwrap().svg();
+        let clip = svg.split("<clipPath").nth(1).unwrap();
+        let attr = |name: &str| -> f32 {
+            let start = clip.find(&format!(" {name}=\"")).unwrap() + name.len() + 3;
+            clip[start..].split('"').next().unwrap().parse().unwrap()
+        };
+        let [left, top, width, height] = [attr("x"), attr("y"), attr("width"), attr("height")];
+        let tree =
+            resvg::usvg::Tree::from_str(&svg, &matrust::export::svg_render_options()).unwrap();
+        let size = tree.size();
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(
+            (size.width() * SCALE) as u32,
+            (size.height() * SCALE) as u32,
+        )
+        .unwrap();
+        pixmap.fill(resvg::tiny_skia::Color::WHITE);
+        resvg::render(
+            &tree,
+            resvg::tiny_skia::Transform::from_scale(SCALE, SCALE),
+            &mut pixmap.as_mut(),
+        );
+        let sample = |x: f32, y: f32| {
+            let p = pixmap
+                .pixel((x * SCALE) as u32, (y * SCALE) as u32)
+                .unwrap();
+            [p.red(), p.green(), p.blue()]
+        };
+        let px = |v: f32| left + width * v / 10.;
+        let py = |v: f32| top + height * (1. - v / 10.);
+        let tick = width.max(height) * 0.05;
+        [
+            sample(px(4.), py(5.)),
+            sample(px(4.), top + height - tick / 2.),
+            sample(px(5.), py(5.)),
+        ]
+    };
+    let blue = [0, 0, 255];
+    assert_eq!(render("bottom"), [blue; 3]);
+    assert_eq!(render("Top"), [[255, 0, 0], [0, 204, 0], blue]);
+}
+
+/// Layer 'top' must not paint the grid over the yyaxis right axis line.
+#[cfg(feature = "plot-export")]
+#[test]
+fn axes_color_rendering_layer_top_keeps_yyaxis_right_axis_colour() {
+    const SCALE: f32 = 4.;
+    let mut engine = Engine::default();
+    engine
+        .execute(
+            "yyaxis left; plot([0 1],[0 1]); ylim([0 1]); \
+             yyaxis right; plot([0 1],[0 1]); ylim([0 1]); \
+             xlim([0 1]); grid on; xticks([0 1]); \
+             set(gca,'Layer','top','GridColor',[0 0 1],'GridAlpha',1,'YColor',[1 0 0]);",
+        )
+        .unwrap();
+    let svg = engine.figure.as_ref().unwrap().svg();
+    let layer = svg.find("<g data-matrust-layer=\"top\">").unwrap();
+    let axis = svg.find("data-matrust-right-axis=\"true\"").unwrap();
+    assert!(layer < axis, "right axis must follow the top group");
+    let clip = svg.split("<clipPath").nth(1).unwrap();
+    let attr = |name: &str| -> f32 {
+        let start = clip.find(&format!(" {name}=\"")).unwrap() + name.len() + 3;
+        clip[start..].split('"').next().unwrap().parse().unwrap()
+    };
+    let [left, top, width, height] = [attr("x"), attr("y"), attr("width"), attr("height")];
+    let tree = resvg::usvg::Tree::from_str(&svg, &matrust::export::svg_render_options()).unwrap();
+    let size = tree.size();
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(
+        (size.width() * SCALE) as u32,
+        (size.height() * SCALE) as u32,
+    )
+    .unwrap();
+    pixmap.fill(resvg::tiny_skia::Color::WHITE);
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(SCALE, SCALE),
+        &mut pixmap.as_mut(),
+    );
+    let sample = |x: f32, y: f32| {
+        let p = pixmap
+            .pixel((x * SCALE) as u32, (y * SCALE) as u32)
+            .unwrap();
+        [p.red(), p.green(), p.blue()]
+    };
+    // The x = 1 grid line lies on the right axis. Mid-height misses the series.
+    let on_axis = sample(left + width, top + height * 0.37);
+    assert_eq!(on_axis, [255, 0, 0], "right axis line {on_axis:?}");
 }

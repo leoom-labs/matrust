@@ -72,6 +72,55 @@ fn long_transpose_chain_is_rejected() {
 }
 
 #[test]
+fn display_sampling_keeps_nan_separated_segments() {
+    // Quiver-like geometry: many short NaN-separated runs. A small budget
+    // (subplot tiles share 8192 points) must not wipe every run.
+    let mut points = Vec::new();
+    for i in 0..300 {
+        if i > 0 {
+            points.push([f64::NAN, f64::NAN]);
+        }
+        points.push([i as f64, 0.]);
+        points.push([i as f64 + 0.5, 1.]);
+    }
+    let series = matrust::plot::Series::new(points, matrust::plot::PlotKind::Line);
+    let display = series.display_points(100);
+    assert_eq!(display.iter().filter(|p| p[0].is_finite()).count(), 600);
+    assert_eq!(display.iter().filter(|p| p[0].is_nan()).count(), 299);
+    // A long trace with one gap stays bounded and keeps the samples beside it.
+    let mut trace: Vec<_> = (0..10000)
+        .map(|i| [i as f64, (i as f64 / 50.).sin()])
+        .collect();
+    trace[5000] = [f64::NAN, f64::NAN];
+    let series = matrust::plot::Series::new(trace, matrust::plot::PlotKind::Line);
+    let display = series.display_points(512);
+    assert!(display.len() <= 512, "{}", display.len());
+    let gap = display.iter().position(|p| p[0].is_nan()).unwrap();
+    assert_eq!(display[gap - 1][0], 4999.);
+    assert_eq!(display[gap + 1][0], 5001.);
+    // The desktop subplot budget: quiver beside contour3 keeps every arrow.
+    let mut engine = Engine::default();
+    engine
+        .execute(
+            "[X,Y] = meshgrid(-2:0.25:2); subplot(2,3,1); quiver(X,Y,-Y,X); \
+             subplot(2,3,2); contour3(peaks(30));",
+        )
+        .unwrap();
+    let figure = engine.figure.clone().unwrap();
+    let budget = 8192 / figure.series_count().max(1);
+    let (_, quiver) = figure.all_axes().find(|(_, a)| !a.is_3d()).unwrap();
+    for series in &quiver.series {
+        let finite = |p: &&[f64; 2]| p.iter().all(|v| v.is_finite());
+        let source = series.points.dense().unwrap();
+        let shown = series.display_points(budget);
+        assert_eq!(
+            shown.iter().filter(finite).count(),
+            source.iter().filter(finite).count()
+        );
+    }
+}
+
+#[test]
 fn display_sampling_preserves_a_narrow_peak_and_bounds_geometry() {
     let x = Matrix::from_column_slice(1, 10000, &(0..10000).map(|i| i as f64).collect::<Vec<_>>())
         .unwrap();

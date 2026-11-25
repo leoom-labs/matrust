@@ -1,6 +1,8 @@
 //! Explicit complex value admission; unsupported consumers cannot project away
 //! imaginary components. Real-only calls retain their existing dispatch paths.
+use super::logical_values::broadcast_error;
 use super::{Engine, Value};
+use crate::broadcast2::Broadcast2;
 use crate::{Array, Complex64, ComplexMatrix, LogicalMatrix, Matrix, Result};
 
 fn arity(name: &str, args: &[Value], counts: &[usize]) -> Result<()> {
@@ -65,10 +67,15 @@ impl Engine {
             Token::Backslash => Some(true),
             _ => None,
         };
+        let (a, b) = if op == &Token::DotBackslash {
+            (b, a)
+        } else {
+            (a, b)
+        };
         let op=match op {
             Token::Slash | Token::Backslash => ComplexOp::Divide,
             Token::Plus=>ComplexOp::Add,Token::Minus=>ComplexOp::Subtract,
-            Token::DotStar=>ComplexOp::Multiply,Token::DotSlash=>ComplexOp::Divide,Token::Star=>ComplexOp::Matmul,
+            Token::DotStar=>ComplexOp::Multiply,Token::DotSlash | Token::DotBackslash=>ComplexOp::Divide,Token::Star=>ComplexOp::Matmul,
             _=>return Err("Complex arithmetic currently supports +, -, .*, ./ and *; complex powers and linear solves are not implemented".into()),
         };
         let a = a.numeric_operand(&self.cancel)?.array(&self.cancel)?;
@@ -93,6 +100,9 @@ impl Engine {
         })?;
         let units = ComplexMatrix::checked_len(rows, cols)? * 2;
         let scratch = ComplexMatrix::arithmetic_scratch_bytes(&a, &b, op).div_ceil(8);
+        if divide.is_none() && op != ComplexOp::Matmul {
+            self.preflight_elements(units)?;
+        }
         if self
             .evaluated_elements
             .saturating_add(units)
@@ -108,6 +118,13 @@ impl Engine {
         // As in MATLAB, an arithmetic result whose imaginary parts are all zero
         // is real: 1+0i is real, while complex(1,0) itself stays complex.
         if !result.is_empty() && result.data().iter().all(|z| z.im == 0.) {
+            if result.is_single() {
+                let data = result.data().iter().map(|z| z.re);
+                let real =
+                    crate::TypedArray::from_reals(crate::NumericClass::Single, rows, cols, data)?;
+                self.check_cancel()?;
+                return Ok(Value::Container(Array::Typed(real)));
+            }
             return Ok(Value::Matrix(result.real(&self.cancel)?));
         }
         Ok(Value::Complex(result))
@@ -182,12 +199,18 @@ impl Engine {
                             ..(c + column) * height + r + first + n];
                         let range = column * h + first..column * h + first + n;
                         match &a {
-                            Array::Character(_)
+                            Array::Str(_)
+                            | Array::Character(_)
                             | Array::Cell(_)
                             | Array::Graphics(_)
                             | Array::Struct(_)
                             | Array::Handle(_)
-                            | Array::Typed(_) => {
+                            | Array::Typed(_)
+                            | Array::Categorical(_)
+                            | Array::Datetime(_)
+                            | Array::Duration(_)
+                            | Array::Table(_)
+                            | Array::Sparse(_) => {
                                 unreachable!("numeric concatenation preflight")
                             }
                             Array::Complex(a) => to.copy_from_slice(&a.data()[range]),
@@ -215,7 +238,7 @@ impl Engine {
             &self.cancel,
         )?))
     }
-    pub(super) fn complex_call(&self, name: &str, args: &[Value]) -> Result<Option<Value>> {
+    pub(super) fn complex_call(&mut self, name: &str, args: &[Value]) -> Result<Option<Value>> {
         self.check_cancel()?;
         if matches!(name, "i" | "j") {
             arity(name, args, &[0])?;
@@ -234,6 +257,15 @@ impl Engine {
             }
             let real = args[0].view(&self.cancel)?;
             let imaginary = args.get(1).map(|v| v.view(&self.cancel)).transpose()?;
+            let real_shape = real.as_ref().shape();
+            let (rows, cols) = if let Some(imaginary) = &imaginary {
+                let shape = Broadcast2::new(real_shape, imaginary.as_ref().shape())
+                    .map_err(|message| broadcast_error(self, message))?;
+                (shape.rows, shape.cols)
+            } else {
+                real_shape
+            };
+            self.preflight_elements(ComplexMatrix::checked_len(rows, cols)? * 2)?;
             return Ok(Some(Value::Complex(ComplexMatrix::from_component_views(
                 real.as_ref(),
                 imaginary.as_ref().map(|v| v.as_ref()),
@@ -244,10 +276,22 @@ impl Engine {
             arity(name, args, &[1])?;
             args[0].shape(&self.cancel)?;
             // Storage property: complex(x,0) remains non-real, including empty.
-            return Ok(Some(Value::Logical(LogicalMatrix::scalar(!matches!(
-                args[0],
-                Value::Complex(_)
-            )))));
+            // True only for real numeric storage, logical, char and duration.
+            // Datetime is answered before this function.
+            let real = match &args[0] {
+                Value::Matrix(_) | Value::Logical(_) | Value::Text(_) => true,
+                Value::Container(a) => matches!(
+                    a,
+                    Array::Numeric(_)
+                        | Array::Logical(_)
+                        | Array::Character(_)
+                        | Array::Typed(_)
+                        | Array::Sparse(_)
+                        | Array::Duration(_)
+                ),
+                _ => false,
+            };
+            return Ok(Some(Value::Logical(LogicalMatrix::scalar(real))));
         }
         if name == "ctranspose" {
             arity(name, args, &[1])?;
@@ -295,7 +339,7 @@ impl Engine {
             }
             "double" => {
                 arity(name, args, &[1])?;
-                Value::Complex(a.clone())
+                Value::Complex(a.clone().with_single_class(false))
             }
             "transpose" => {
                 arity(name, args, &[1])?;

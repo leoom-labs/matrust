@@ -553,3 +553,302 @@ fn benchmark_round3_paths() {
         );
     }
 }
+
+#[test]
+fn review_d1112_rank_and_pinv_keep_realmax() {
+    // MathWorks eps: the gap from |x| to the next larger double. At realmax
+    // that next value is Inf, so eps(realmax) is the gap below, 2^971.
+    // NumPy: np.spacing(np.finfo(float).max) == 2**971 == 1.99584030953472e+292.
+    // Octave 10.3: rank(realmax) is 1 and pinv(realmax) is 1/realmax.
+    let e = run(
+        "r=rank(realmax); p=pinv(realmax); rn=rank(-realmax); pn=pinv(-realmax); \
+         rc=rank(realmax+0i); pc=pinv(realmax+0i); q=lsqminnorm(realmax,1);",
+    );
+    let reciprocal = 1.0 / f64::MAX;
+    assert_eq!(scalar(&e, "r"), 1.0, "rank(realmax)");
+    assert_eq!(scalar(&e, "p"), reciprocal, "pinv(realmax)");
+    assert_eq!(scalar(&e, "rn"), 1.0, "rank(-realmax)");
+    assert_eq!(scalar(&e, "pn"), -reciprocal, "pinv(-realmax)");
+    assert_eq!(scalar(&e, "rc"), 1.0, "rank(complex realmax)");
+    assert_eq!(scalar(&e, "pc"), reciprocal, "pinv(complex realmax)");
+    assert_eq!(scalar(&e, "q"), reciprocal, "lsqminnorm(realmax, 1)");
+}
+
+// ---- decomposition(A, 'banded') -------------------------------------------
+// Expected solutions: LAPACK band LU with partial pivoting (dgbsv through
+// scipy.linalg.solve_banded), cross-checked against dgesv, from
+// tool/refs/linalg/decomposition_banded.py. The tridiagonal system has a zero
+// leading pivot, so a solve without the row exchange cannot return it.
+const TRI: &str = "A=[0 2 0;1 3 -1;0 4 2]; b=[-2;-4;2]; ";
+
+#[test]
+fn decomposition_banded_direct_solve_needs_the_row_exchange() {
+    let e = run(&format!("{TRI}x=decomposition(A,'banded')\\b;"));
+    values(&e, "x", (3, 1), &[2., -1., 3.], 1e-12);
+}
+
+#[test]
+fn decomposition_banded_keeps_its_matrix_after_the_caller_changes_it() {
+    // A0 is the saved original. After D is built the caller's A is changed (two
+    // entries, later the whole variable) and D is copied and cleared: every
+    // solve must still satisfy A0*x = b.
+    let e = run(&format!(
+        "{TRI}A0=A; D=decomposition(A,'banded'); A(1,1)=5; A(3,2)=-7; b2=[1;2;3]; \
+         x1=D\\b; x2=D\\b2; r1=norm(A0*x1-b); r2=norm(A0*x2-b2); \
+         y1=A\\b; moved=norm(y1-x1); other=norm(A*x1-b); \
+         A=eye(2); E=D; x3=E\\b2; clear D; x4=E\\b;"
+    ));
+    values(&e, "x1", (3, 1), &[2., -1., 3.], 1e-12);
+    values(&e, "x2", (3, 1), &[1., 0.5, 0.5], 1e-12);
+    assert!(scalar(&e, "r1") < 1e-12, "residual of the first solve");
+    assert!(scalar(&e, "r2") < 1e-12, "residual of the second solve");
+    // The changed A has another solution and x1 does not solve it, so an
+    // object that followed the caller's variable fails here.
+    assert!(
+        scalar(&e, "moved") > 1.0,
+        "the changed A solves differently"
+    );
+    assert!(
+        scalar(&e, "other") > 1.0,
+        "x1 is not a solution of the changed A"
+    );
+    values(&e, "x3", (3, 1), &[1., 0.5, 0.5], 1e-12);
+    values(&e, "x4", (3, 1), &[2., -1., 3.], 1e-12);
+    // The object holds the matrix by sharing its storage, not by copying it.
+    let matrust::Array::Struct(object) = e.array("E").unwrap() else {
+        panic!("a decomposition is a tagged scalar struct");
+    };
+    let slot = object.field_index("MatRustDecompositionMatrix").unwrap();
+    let matrust::Array::Numeric(stored) = object.get(slot, 0).unwrap().as_ref() else {
+        panic!("the stored matrix is a real double matrix");
+    };
+    assert!(std::ptr::eq(
+        stored.data().as_ptr(),
+        e.variables["A0"].data().as_ptr()
+    ));
+}
+
+#[test]
+fn decomposition_banded_solves_a_block_matrix_with_couplings() {
+    // MM = [K C; G M] from 3-by-3 blocks with nonzero off-diagonal blocks C and
+    // G (bandwidth (4, 5)) and two right-hand sides, in the source form of the
+    // direct call and through mldivide.
+    let e = run(
+        "K=[4 -1 0;-1 4 -1;0 -1 4]; M=[0 2 1;3 0 -2;1 1 5]; C=[1 0 2;0 -3 0;2 0 1]; \
+         G=[0 1 0;-2 0 1;0 0.5 0]; MM=[K C;G M]; bb=[1 0;2 -1;3 0;4 2;5 0;6 -3]; \
+         X=decomposition(MM,'banded')\\bb; err=norm(MM*X-bb); \
+         Y=mldivide(decomposition(MM,'banded'),bb); same=double(isequal(X,Y));",
+    );
+    values(
+        &e,
+        "X",
+        (6, 2),
+        &[
+            -0.13022372308991131,
+            1.3056141831996624,
+            0.01519628535246949,
+            1.887716336006754,
+            1.1124947235120306,
+            0.46939636977627686,
+            0.6863655550865345,
+            0.8138455044322499,
+            0.5487547488391727,
+            -0.27691008864499794,
+            1.0067539046010976,
+            -0.8273533136344451,
+        ],
+        1e-12,
+    );
+    assert!(scalar(&e, "err") < 1e-12, "block residual");
+    assert_eq!(scalar(&e, "same"), 1.0, "mldivide(D, B) is D\\B");
+}
+
+#[test]
+fn decomposition_is_an_object_with_its_declared_type() {
+    let mut e = Engine::default();
+    let shown = e
+        .execute(&format!("{TRI}D=decomposition(A,'Banded')"))
+        .unwrap()
+        .output
+        .join("\n");
+    assert!(shown.contains("decomposition with properties:"), "{shown}");
+    assert!(shown.contains("Type: 'banded'"), "{shown}");
+    assert!(shown.contains("MatrixSize: [3 3]"), "{shown}");
+    assert!(!shown.contains("MatRust"), "{shown}");
+    e.execute(
+        "S=decomposition(A,\"banded\"); n=D.MatrixSize; xs=S\\b; \
+         is=double([strcmp(class(D),'decomposition') strcmp(D.Type,'banded') \
+         strcmp(S.Type,'banded') isa(D,'decomposition') isobject(D)]); \
+         isnot=double([isnumeric(D) isstruct(D) isa(D,'double') isequal(D,A) \
+         isfield(D,'Type') any(strncmp(fieldnames(D),'MatRust',7))]); \
+         one=decomposition(4,'banded')\\[8 12]; none=size(decomposition([],'banded')\\zeros(0,2));",
+    )
+    .unwrap();
+    values(&e, "n", (1, 2), &[3., 3.], 0.);
+    values(&e, "xs", (3, 1), &[2., -1., 3.], 1e-12);
+    values(&e, "is", (1, 5), &[1.; 5], 0.);
+    values(&e, "isnot", (1, 6), &[0.; 6], 0.);
+    values(&e, "one", (1, 2), &[2., 3.], 1e-15);
+    values(&e, "none", (1, 2), &[0., 2.], 0.);
+}
+
+#[test]
+fn decomposition_rejects_unknown_and_unimplemented_types() {
+    let message = fail(&format!("{TRI}D=decomposition(A,'bandit');"));
+    assert!(message.contains("unknown type 'bandit'"), "{message}");
+    // The other types of the reference are refused by name: none of them is
+    // solved as if it were 'banded'.
+    for kind in [
+        "auto",
+        "qr",
+        "cod",
+        "lu",
+        "ldl",
+        "chol",
+        "triangular",
+        "permutedTriangular",
+        "hessenberg",
+        "diagonal",
+    ] {
+        let message = fail(&format!("{TRI}x=decomposition(A,'{kind}')\\b;"));
+        assert!(
+            message.contains(&format!("the '{kind}' type is not supported yet")),
+            "{kind}: {message}"
+        );
+    }
+    for (src, want) in [
+        (
+            "D=decomposition(A);",
+            "automatic type selection is not supported yet",
+        ),
+        (
+            "D=decomposition(A,'banded','CheckCondition',false);",
+            "options after the type are not supported yet",
+        ),
+        (
+            "D=decomposition(A,1);",
+            "the type must be a character vector or string scalar",
+        ),
+        (
+            "D=decomposition([1 2 3;4 5 6],'banded');",
+            "needs a square matrix, not 2-by-3",
+        ),
+        (
+            "D=decomposition([1 2;3 4i],'banded');",
+            "complex matrices are not supported yet",
+        ),
+        (
+            "D=decomposition(sparse(A),'banded');",
+            "sparse matrices are not supported yet",
+        ),
+        (
+            "D=decomposition(single(A),'banded');",
+            "single and integer matrices are not supported yet",
+        ),
+        (
+            "D=decomposition(true(2),'banded');",
+            "the matrix must be a real double 2-D matrix",
+        ),
+        (
+            "[D,E]=decomposition(A,'banded');",
+            "Too many output arguments.",
+        ),
+    ] {
+        let message = fail(&format!("{TRI}{src}"));
+        assert!(message.contains(want), "{src}: {message}");
+    }
+}
+
+#[test]
+fn decomposition_rejects_a_wrong_right_hand_side_and_other_operations() {
+    const ONLY: &str = "only D\\B is supported for a decomposition object";
+    const TRANSPOSE: &str = "transposing a decomposition object is not supported yet";
+    const PRIVATE: &str =
+        "No public property MatRustDecompositionMatrix exists for class decomposition.";
+    for (src, want) in [
+        // B needs one row per row of the stored matrix: no scalar expansion.
+        (
+            "x=D\\[1;2];",
+            "size(B, 1) is 2 but the stored matrix is 3-by-3",
+        ),
+        ("x=D\\[1;2;3;4];", "size(B, 1) is 4"),
+        ("x=D\\[1 2 3];", "size(B, 1) is 1"),
+        ("x=D\\2;", "size(B, 1) is 1"),
+        ("x=mldivide(D,[1;2]);", "size(B, 1) is 2"),
+        (
+            "x=decomposition(4,'banded')\\[8;12];",
+            "size(B, 1) is 2 but the stored matrix is 1-by-1",
+        ),
+        (
+            "x=D\\[1i;2;3];",
+            "complex right-hand sides are not supported yet",
+        ),
+        (
+            "x=D\\{1;2;3};",
+            "the right-hand side must be a real double 2-D matrix",
+        ),
+        ("x=[1 2 3]/D;", "B/D is not supported yet"),
+        ("x=mrdivide([1 2 3],D);", "B/D is not supported yet"),
+        ("x=D*2;", ONLY),
+        ("x=2*D;", ONLY),
+        ("x=D+1;", ONLY),
+        ("x=D\\D;", ONLY),
+        // A transposed object would have to solve with A'; returning D
+        // unchanged would silently solve with A.
+        ("x=D'\\b;", TRANSPOSE),
+        ("x=D.'\\b;", TRANSPOSE),
+        (
+            "x=transpose(D)\\b;",
+            "Undefined function 'transpose' for input arguments of type 'decomposition'.",
+        ),
+        (
+            "x=ctranspose(D)\\b;",
+            "Undefined function 'ctranspose' for input arguments of type 'decomposition'.",
+        ),
+        (
+            "D.Type='lu';",
+            "You cannot set the read-only property 'Type' of decomposition.",
+        ),
+        ("x=D.MatRustDecompositionMatrix;", PRIVATE),
+        ("x=getfield(D,'MatRustDecompositionMatrix');", PRIVATE),
+    ] {
+        let message = fail(&format!("{TRI}D=decomposition(A,'banded'); {src}"));
+        assert!(message.contains(want), "{src}: {message}");
+    }
+}
+
+#[test]
+fn decomposition_banded_keeps_the_square_solve_singular_policy() {
+    // The numeric solve keeps its warning and its values; the object gives the
+    // same warning and bit-identical values from the stored matrix.
+    for (a, warning) in [
+        (
+            "[1 2;2 4]",
+            "Warning: Matrix is singular to working precision.",
+        ),
+        (
+            "zeros(3)",
+            "Warning: Matrix is singular to working precision.",
+        ),
+        (
+            "[1 1;1 1+2*eps]",
+            "Warning: Matrix is close to singular or badly scaled. Results may be inaccurate. RCOND = 1.110223e-16.",
+        ),
+        ("[0 2 0;1 3 -1;0 4 2]", ""),
+    ] {
+        let mut e = Engine::default();
+        let mut output = |src: &str| e.execute(src).unwrap().output.join("\n");
+        let numeric = output(&format!("A={a}; b=(1:size(A,1))'; x=A\\b;"));
+        let object = output("D=decomposition(A,'banded'); A=A+1; y=D\\b;");
+        assert_eq!(numeric.trim(), warning, "{a}: numeric solve");
+        assert_eq!(object.trim(), warning, "{a}: stored solve");
+        let bits = |name: &str| -> Vec<u64> {
+            e.variables[name]
+                .data()
+                .iter()
+                .map(|v| v.to_bits())
+                .collect()
+        };
+        assert_eq!(bits("x"), bits("y"), "{a}");
+    }
+}

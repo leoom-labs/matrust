@@ -86,7 +86,7 @@ fn invalid_options_lengths_and_cancellation_do_not_publish_output() {
             "-1",
             "Inf",
             "NaN",
-            "16777217",
+            "50331649",
             "[2 3]",
             "3+1i",
             "3,'single'",

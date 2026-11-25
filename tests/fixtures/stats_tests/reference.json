@@ -1,0 +1,502 @@
+{
+  "source": "SciPy 1.18.1; exhaustive midrank permutations; Pearson formula",
+  "cases": [
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],3,'Tail','both'); zz=[p s.tstat s.df s.sd];",
+      "values": [
+        0.3471731076843434,
+        1.0643041683803827,
+        4.0,
+        3.361547262794322
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','both','Vartype','equal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.7200947934431565,
+        -0.3697841687954106,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','both','Vartype','unequal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.7219053434017684,
+        -0.3679979562484306,
+        8.467055413297944
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','both','Method','exact'); zz=[p s.ranksum];",
+      "values": [
+        0.9047619047619049,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','both','Method','approximate'); zz=[p s.ranksum];",
+      "values": [
+        0.9025232501776794,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -2 3 -4 6],'Tail','both','Method','exact'); zz=[p s.signedrank];",
+      "values": [
+        0.8125,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],3,'Tail','left'); zz=[p s.tstat s.df s.sd];",
+      "values": [
+        0.8264134461578283,
+        1.0643041683803827,
+        4.0,
+        3.361547262794322
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','left','Vartype','equal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.36004739672157826,
+        -0.3697841687954106,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','left','Vartype','unequal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.3609526717008842,
+        -0.3679979562484306,
+        8.467055413297944
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','left','Method','exact'); zz=[p s.ranksum];",
+      "values": [
+        0.45238095238095244,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','left','Method','approximate'); zz=[p s.ranksum];",
+      "values": [
+        0.4512616250888397,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -2 3 -4 6],'Tail','left','Method','exact'); zz=[p s.signedrank];",
+      "values": [
+        0.6875,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],3,'Tail','right'); zz=[p s.tstat s.df s.sd];",
+      "values": [
+        0.1735865538421717,
+        1.0643041683803827,
+        4.0,
+        3.361547262794322
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','right','Vartype','equal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.6399526032784217,
+        -0.3697841687954106,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Tail','right','Vartype','unequal'); zz=[p s.tstat s.df];",
+      "values": [
+        0.6390473282991158,
+        -0.3679979562484306,
+        8.467055413297944
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','right','Method','exact'); zz=[p s.ranksum];",
+      "values": [
+        0.6349206349206349,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 4 7 9],[2.5 3.5 6 8],'Tail','right','Method','approximate'); zz=[p s.ranksum];",
+      "values": [
+        0.6433484130607712,
+        24.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -2 3 -4 6],'Tail','right','Method','exact'); zz=[p s.signedrank];",
+      "values": [
+        0.40625,
+        9.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],[0 1 3 5 8]); zz=[p s.tstat s.df s.sd ci];",
+      "values": [
+        0.0038825370469605124,
+        5.999999999999999,
+        4.0,
+        0.4472135954999579,
+        0.6447109789604413,
+        1.7552890210395586
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],0,'Alpha',1e-10); zz=ci;",
+      "values": [
+        -739.427653077057,
+        748.6276530770571
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -1 2 3 -4 5],'Tail','both','Method','approximate'); zz=[p s.signedrank s.zval];",
+      "values": [
+        0.46183801815063774,
+        14.5,
+        0.7358236637186915
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -1 2 3 -4 5],'Tail','left','Method','approximate'); zz=[p s.signedrank s.zval];",
+      "values": [
+        0.8279407519323441,
+        14.5,
+        0.9460589962097461
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -1 2 3 -4 5],'Tail','right','Method','approximate'); zz=[p s.signedrank s.zval];",
+      "values": [
+        0.23091900907531887,
+        14.5,
+        0.7358236637186915
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest([1 2 4 7 9],3); zz=ci;",
+      "values": [
+        0.42608778552788173,
+        8.773912214472118
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,ci,s]=ttest2([1 2 4 7 9],[2 3 3 6 8 10],'Vartype','unequal'); zz=ci;",
+      "values": [
+        -5.2849061371785595,
+        3.8182394705118927
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,t,s]=anova1([1 2 4;2 5 8;4 7 9],[],'off'); zz=[p t{2,5}];",
+      "values": [
+        0.11734913013599532,
+        3.127659574468086
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 2 3],[2 3 4 4 5],'Tail','both'); zz=[p s.ranksum];",
+      "values": [
+        0.1111111111111111,
+        12.5
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 2 3],[2 3 4 4 5],'Tail','left'); zz=[p s.ranksum];",
+      "values": [
+        0.05555555555555555,
+        12.5
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([1 2 2 3],[2 3 4 4 5],'Tail','right'); zz=[p s.ranksum];",
+      "values": [
+        0.9920634920634921,
+        12.5
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([4 5 5 6 7],[1 2 3],'Tail','both'); zz=[p s.ranksum];",
+      "values": [
+        0.03571428571428571,
+        30.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([4 5 5 6 7],[1 2 3],'Tail','left'); zz=[p s.ranksum];",
+      "values": [
+        1.0,
+        30.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=ranksum([4 5 5 6 7],[1 2 3],'Tail','right'); zz=[p s.ranksum];",
+      "values": [
+        0.017857142857142856,
+        30.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,h,s]=signrank([1 -1 2 3]); zz=[p s.signedrank];",
+      "values": [
+        0.375,
+        8.5
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,s]=chi2gof([1 2 3],'Ctrs',[1 2 3],'Frequency',[10 20 30],'Expected',[20 20 20],'EMin',0); zz=[p s.chi2stat s.df];",
+      "values": [
+        0.006737946999085468,
+        10.0,
+        2.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,5),'CDF',[0 0;1 1],'Tail','unequal','Alpha',0.3); zz=[p d];",
+      "values": [
+        1.0,
+        0.10000000000000009
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,5),'CDF',[0 0;1 1],'Tail','larger','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.85359,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,5),'CDF',[0 0;1 1],'Tail','smaller','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.8535899999999998,
+        0.10000000000000009
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,20),'CDF',[0 0;1 1],'Tail','unequal','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.976255094592155,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,20),'CDF',[0 0;1 1],'Tail','larger','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.6290710188849631,
+        0.09999999999999998
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,20),'CDF',[0 0;1 1],'Tail','smaller','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.6290710188849629,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,101),'CDF',[0 0;1 1],'Tail','unequal','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.2477060250143171,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,101),'CDF',[0 0;1 1],'Tail','larger','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.12407835173844399,
+        0.09999999999999998
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,101),'CDF',[0 0;1 1],'Tail','smaller','Alpha',0.3); zz=[p d];",
+      "values": [
+        0.12407835173844385,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,600),'CDF',[0 0;1 1],'Tail','unequal','Alpha',0.3); zz=[p d];",
+      "values": [
+        1.1239700624504987e-05,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,600),'CDF',[0 0;1 1],'Tail','larger','Alpha',0.3); zz=[p d];",
+      "values": [
+        5.619850312252531e-06,
+        0.09999999999999998
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.1,0.9,600),'CDF',[0 0;1 1],'Tail','smaller','Alpha',0.3); zz=[p d];",
+      "values": [
+        5.619850312252493e-06,
+        0.1
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.001,1,600000),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        0.5856119892791216,
+        0.001
+      ],
+      "tol": 1e-05
+    },
+    {
+      "code": "[p,t,s]=anova2([1.0 4.0 9.0;2.0 5.0 7.0;3.0 8.0 6.0],1,'off'); zz=[p s.sigmasq s.df];",
+      "values": [
+        0.052847139648566535,
+        0.7561436672967863,
+        3.333333333333333,
+        4.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[p,t,s]=anova2([1.0 4.0;3.0 6.0;7.0 6.0;9.0 8.0],2,'off'); zz=[p s.sigmasq s.df];",
+      "values": [
+        0.37390096630005887,
+        0.016130089900092546,
+        0.11611652351681556,
+        2.0,
+        4.0
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "zz=[trimmean([0 1 2 100],25,'round') trimmean([0 1 2 100],25,'floor') trimmean([0 1 2 100],25,'weighted')];",
+      "values": [
+        1.5,
+        25.75,
+        17.666666666666668
+      ],
+      "tol": 1e-12
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.4,1,100),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        5.947617451361663e-15,
+        0.4
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.25,1,200),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        1.6840667400683394e-11,
+        0.25
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.5,1,100),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        1.2131434371817858e-23,
+        0.5
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.95,1,30),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        1.8626451492464766e-39,
+        0.95
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.95,1,50),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        1.7763568621337656e-65,
+        0.95
+      ],
+      "tol": 1e-09
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.002,1,600000),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        0.01643752179507528,
+        0.002
+      ],
+      "tol": 1e-05
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.004,1,600000),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        9.149371436528321e-09,
+        0.004
+      ],
+      "tol": 1e-05
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.006,1,600000),'CDF',[0 0;1 1],'Alpha',0.3); zz=[p d];",
+      "values": [
+        3.448482555050416e-19,
+        0.006
+      ],
+      "tol": 1e-05
+    },
+    {
+      "code": "[h,p,d,cv]=kstest(linspace(0.001,1,600000),'CDF',[0 0;1 1],'Tail','smaller','Alpha',0.3); zz=p;",
+      "values": [
+        0.30099353617725855
+      ],
+      "tol": 1e-09
+    }
+  ]
+}

@@ -166,6 +166,7 @@ fn callback(
         ctx.request_repaint_of(egui::ViewportId::ROOT);
         return;
     }
+    theme::window_root(ui);
     let frame = ctx.cumulative_frame_nr();
     let focused = ctx.input(|i| i.viewport().focused.unwrap_or(false));
     let was_minimized = state.minimized;
@@ -490,10 +491,12 @@ fn presentation(app: &Workspace, id: u32) -> Option<Presentation> {
                 .into_owned()
         })
         .unwrap_or_else(|| {
-            if figure.name.is_empty() {
+            if !figure.number_title {
+                figure.name.clone()
+            } else if figure.name.is_empty() {
                 format!("Figure {id}")
             } else {
-                format!("Figure {id} - {}", figure.name)
+                format!("Figure {id}: {}", figure.name)
             }
         });
     let dirty = app.figure_dirty(id);
@@ -603,6 +606,13 @@ impl Registry {
     pub fn contains(&self, id: u32) -> bool {
         self.windows.contains_key(&id)
     }
+    pub fn ids(&self) -> Vec<u32> {
+        self.windows.keys().copied().collect()
+    }
+    #[cfg(test)]
+    pub fn viewport_of(&self, id: u32) -> Option<egui::ViewportId> {
+        Some(self.windows.get(&id)?.lock().ok()?.viewport)
+    }
     /// Called after final-pass tile reconciliation and preparation admission.
     pub fn capture_ready(&self) -> bool {
         !self.preparation_in_flight && self.docked.capture_ready()
@@ -652,22 +662,36 @@ impl Registry {
             };
             let viewport = state.viewport;
             let title = state.presentation.caption.clone();
-            let size = state.capture_size.unwrap_or(egui::vec2(900., 650.));
+            let [fig_w, fig_h] = state.presentation.figure.export_svg_size();
             let minimum = state.minimum_size;
+            let size = state.capture_size.unwrap_or_else(|| {
+                egui::vec2((fig_w as f32).max(minimum.x), (fig_h as f32).max(minimum.y))
+            });
+            let resizable = state.presentation.figure.resize;
+            let window_state = state.presentation.figure.window_state;
             let activate = state.activate;
             drop(state);
             let child = child.clone();
             let sequence = self.sequence.clone();
             let cancel = cancel.clone();
-            ctx.show_viewport_deferred(
-                viewport,
-                egui::ViewportBuilder::default()
-                    .with_title(title)
-                    .with_inner_size(size)
-                    .with_min_inner_size(minimum)
-                    .with_active(activate),
-                move |ui, class| callback(ui, class, &child, &sequence, &cancel),
-            );
+            let mut builder = egui::ViewportBuilder::default()
+                .with_title(title)
+                .with_inner_size(size)
+                .with_min_inner_size(minimum)
+                .with_resizable(resizable)
+                .with_active(activate);
+            match window_state {
+                matrust::plot::WindowState::Normal | matrust::plot::WindowState::Minimized => {}
+                matrust::plot::WindowState::Maximized => {
+                    builder = builder.with_maximized(true);
+                }
+                matrust::plot::WindowState::Fullscreen => {
+                    builder = builder.with_fullscreen(true);
+                }
+            }
+            ctx.show_viewport_deferred(viewport, builder, move |ui, class| {
+                callback(ui, class, &child, &sequence, &cancel)
+            });
         }
     }
     pub fn complete(
@@ -749,10 +773,11 @@ impl Registry {
             .windows
             .iter()
             .filter_map(|(&id, child)| {
+                let visible = app.all_figures.get(&id).is_some_and(|f| f.visible);
                 child
                     .lock()
                     .ok()
-                    .filter(|c| live(app, &c.key))
+                    .filter(|c| visible && live(app, &c.key))
                     .is_none()
                     .then_some(id)
             })
@@ -812,6 +837,10 @@ impl Registry {
                 || old.marker != new.marker
                 || old.sample != new.sample
                 || old.view != new.view;
+            let size_changed =
+                old.figure.position != new.figure.position && child.capture_size.is_none();
+            let resize_changed = old.figure.resize != new.figure.resize;
+            let state_changed = old.figure.window_state != new.figure.window_state;
             if child
                 .geometry_source
                 .as_ref()
@@ -833,6 +862,10 @@ impl Registry {
                 child.geometry_source = None;
                 child.prepare_requested = !child.minimized;
             }
+            let new_size = new.figure.export_svg_size();
+            let new_resize = new.figure.resize;
+            let new_state = new.figure.window_state;
+            let minimum = child.minimum_size;
             if changed {
                 child.presentation = Arc::new(new);
             }
@@ -840,6 +873,43 @@ impl Registry {
             drop(child);
             for id in forget {
                 figure_view::forget_prepared(ctx, id);
+            }
+            if size_changed {
+                ctx.send_viewport_cmd_to(
+                    viewport,
+                    egui::ViewportCommand::InnerSize(egui::vec2(
+                        (new_size[0] as f32).max(minimum.x),
+                        (new_size[1] as f32).max(minimum.y),
+                    )),
+                );
+            }
+            if resize_changed {
+                ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Resizable(new_resize));
+            }
+            if state_changed {
+                match new_state {
+                    matrust::plot::WindowState::Normal => {
+                        ctx.send_viewport_cmd_to(
+                            viewport,
+                            egui::ViewportCommand::Fullscreen(false),
+                        );
+                        ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Maximized(false));
+                        ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Minimized(false));
+                    }
+                    matrust::plot::WindowState::Minimized => {
+                        ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Minimized(true));
+                    }
+                    matrust::plot::WindowState::Maximized => {
+                        ctx.send_viewport_cmd_to(
+                            viewport,
+                            egui::ViewportCommand::Fullscreen(false),
+                        );
+                        ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Maximized(true));
+                    }
+                    matrust::plot::WindowState::Fullscreen => {
+                        ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::Fullscreen(true));
+                    }
+                }
             }
             if changed {
                 ctx.request_repaint_of(viewport);
@@ -935,12 +1005,14 @@ impl Registry {
                     }
                     if let Some(geometry) = self.retire(id, ctx) {
                         app.plot_points = Vec::new();
+                        app.plot_point_indices = Vec::new();
                         app.subplot_canvas.release_geometry();
                         // Transfer existing vectors, never clone or prepare during docking.
                         let _ = self.reserve(0, geometry.retained_bytes());
                         match geometry {
                             Geometry::Ordinary(p) => {
                                 app.plot_points = p.points;
+                                app.plot_point_indices = p.point_indices;
                                 app.plot_axes = p.transforms;
                             }
                             Geometry::Subplots(canvas) => app.subplot_canvas = canvas,
@@ -1307,6 +1379,9 @@ impl Registry {
         let Some(presentation) = presentation(app, id) else {
             return;
         };
+        if !presentation.figure.visible {
+            return;
+        }
         let Some(generation) = self.generation.checked_add(1) else {
             app.status =
                 "Window generation limit reached; restart before opening another detached figure."

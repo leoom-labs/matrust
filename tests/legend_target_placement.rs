@@ -75,7 +75,7 @@ fn inactive_legend_location_set_prepares_target_and_failure_is_atomic() {
     assert_target(&e, &original, left, expected);
     let before = e.figure.as_ref().unwrap().clone();
     assert!(
-        e.execute("set(lg,'Location','eastoutside','Box','off');")
+        e.execute("set(lg,'Location','eastoutside','Box','maybe');")
             .is_err()
     );
     assert!(e.figure.as_ref().unwrap().same_snapshot(&before));

@@ -1,0 +1,164 @@
+{
+  "valid": [
+    "frames_baseline",
+    "frames_rgb_u8_f1_pc0_explicit_le",
+    "frames_rgb_u8_f1_pc1_explicit_le",
+    "frames_rgb_u8_f2_pc0_explicit_le",
+    "frames_rgb_u8_f2_pc1_explicit_le",
+    "frames_rgb_u16_f1_pc0_explicit_le",
+    "frames_rgb_u16_f1_pc1_explicit_le",
+    "frames_rgb_u16_f2_pc0_explicit_le",
+    "frames_rgb_u16_f2_pc1_explicit_le",
+    "frames_rgb_1x3_f1_pc0_explicit_le",
+    "frames_rgb_1x3_f1_pc1_explicit_le",
+    "frames_rgb_1x3_f2_pc0_explicit_le",
+    "frames_rgb_1x3_f2_pc1_explicit_le",
+    "frames_rgb_2x1_f2_pc0_explicit_le",
+    "frames_rgb_2x1_f2_pc1_explicit_le",
+    "frames_rgb_1x1_f1_pc0_explicit_le",
+    "frames_rgb_1x1_f1_pc1_explicit_le",
+    "frames_rgb_1x1_f3_pc0_explicit_le",
+    "frames_rgb_1x1_f3_pc1_explicit_le",
+    "frames_gray_i16_explicit_le",
+    "frames_gray_i12_explicit_le",
+    "frames_gray_odd_f1_explicit_le",
+    "frames_gray_odd_f2_explicit_le",
+    "frames_gray_odd_f3_explicit_le",
+    "frames_rgb_narrow5_explicit_le",
+    "frames_rgb_narrow12_explicit_le",
+    "frames_rgb_u8_f1_pc0_implicit_le",
+    "frames_rgb_u8_f1_pc1_implicit_le",
+    "frames_rgb_u8_f2_pc0_implicit_le",
+    "frames_rgb_u8_f2_pc1_implicit_le",
+    "frames_rgb_u16_f1_pc0_implicit_le",
+    "frames_rgb_u16_f1_pc1_implicit_le",
+    "frames_rgb_u16_f2_pc0_implicit_le",
+    "frames_rgb_u16_f2_pc1_implicit_le",
+    "frames_rgb_1x3_f1_pc0_implicit_le",
+    "frames_rgb_1x3_f1_pc1_implicit_le",
+    "frames_rgb_1x3_f2_pc0_implicit_le",
+    "frames_rgb_1x3_f2_pc1_implicit_le",
+    "frames_rgb_2x1_f2_pc0_implicit_le",
+    "frames_rgb_2x1_f2_pc1_implicit_le",
+    "frames_rgb_1x1_f1_pc0_implicit_le",
+    "frames_rgb_1x1_f1_pc1_implicit_le",
+    "frames_rgb_1x1_f3_pc0_implicit_le",
+    "frames_rgb_1x1_f3_pc1_implicit_le",
+    "frames_gray_i16_implicit_le",
+    "frames_gray_i12_implicit_le",
+    "frames_gray_odd_f1_implicit_le",
+    "frames_gray_odd_f2_implicit_le",
+    "frames_gray_odd_f3_implicit_le",
+    "frames_rgb_narrow5_implicit_le",
+    "frames_rgb_narrow12_implicit_le",
+    "frames_rgb_u8_f1_pc0_explicit_be",
+    "frames_rgb_u8_f1_pc1_explicit_be",
+    "frames_rgb_u8_f2_pc0_explicit_be",
+    "frames_rgb_u8_f2_pc1_explicit_be",
+    "frames_rgb_u16_f1_pc0_explicit_be",
+    "frames_rgb_u16_f1_pc1_explicit_be",
+    "frames_rgb_u16_f2_pc0_explicit_be",
+    "frames_rgb_u16_f2_pc1_explicit_be",
+    "frames_rgb_1x3_f1_pc0_explicit_be",
+    "frames_rgb_1x3_f1_pc1_explicit_be",
+    "frames_rgb_1x3_f2_pc0_explicit_be",
+    "frames_rgb_1x3_f2_pc1_explicit_be",
+    "frames_rgb_2x1_f2_pc0_explicit_be",
+    "frames_rgb_2x1_f2_pc1_explicit_be",
+    "frames_rgb_1x1_f1_pc0_explicit_be",
+    "frames_rgb_1x1_f1_pc1_explicit_be",
+    "frames_rgb_1x1_f3_pc0_explicit_be",
+    "frames_rgb_1x1_f3_pc1_explicit_be",
+    "frames_gray_i16_explicit_be",
+    "frames_gray_i12_explicit_be",
+    "frames_gray_odd_f1_explicit_be",
+    "frames_gray_odd_f2_explicit_be",
+    "frames_gray_odd_f3_explicit_be",
+    "frames_rgb_narrow5_explicit_be",
+    "frames_rgb_narrow12_explicit_be",
+    "frames_rgb_absent",
+    "frames_gray_scalar"
+  ],
+  "pairs": [
+    [
+      "frames_rgb_u8_f1_pc0_explicit_le",
+      "frames_rgb_u8_f1_pc1_explicit_le"
+    ],
+    [
+      "frames_rgb_u8_f2_pc0_explicit_le",
+      "frames_rgb_u8_f2_pc1_explicit_le"
+    ],
+    [
+      "frames_rgb_u16_f1_pc0_explicit_le",
+      "frames_rgb_u16_f1_pc1_explicit_le"
+    ],
+    [
+      "frames_rgb_u16_f2_pc0_explicit_le",
+      "frames_rgb_u16_f2_pc1_explicit_le"
+    ],
+    [
+      "frames_rgb_u8_f1_pc0_implicit_le",
+      "frames_rgb_u8_f1_pc1_implicit_le"
+    ],
+    [
+      "frames_rgb_u8_f2_pc0_implicit_le",
+      "frames_rgb_u8_f2_pc1_implicit_le"
+    ],
+    [
+      "frames_rgb_u16_f1_pc0_implicit_le",
+      "frames_rgb_u16_f1_pc1_implicit_le"
+    ],
+    [
+      "frames_rgb_u16_f2_pc0_implicit_le",
+      "frames_rgb_u16_f2_pc1_implicit_le"
+    ],
+    [
+      "frames_rgb_u8_f1_pc0_explicit_be",
+      "frames_rgb_u8_f1_pc1_explicit_be"
+    ],
+    [
+      "frames_rgb_u8_f2_pc0_explicit_be",
+      "frames_rgb_u8_f2_pc1_explicit_be"
+    ],
+    [
+      "frames_rgb_u16_f1_pc0_explicit_be",
+      "frames_rgb_u16_f1_pc1_explicit_be"
+    ],
+    [
+      "frames_rgb_u16_f2_pc0_explicit_be",
+      "frames_rgb_u16_f2_pc1_explicit_be"
+    ]
+  ],
+  "invalid": {
+    "frames_bad_pc": "PlanarConfiguration",
+    "frames_bad_pc_multiple": "PlanarConfiguration",
+    "frames_bad_rgb_samples": "SamplesPerPixel",
+    "frames_bad_mono_samples": "SamplesPerPixel",
+    "frames_bad_samples_two": "SamplesPerPixel",
+    "frames_bad_signed_rgb": "signed RGB",
+    "frames_bad_zero_frames": "NumberOfFrames",
+    "frames_bad_negative_frames": "NumberOfFrames",
+    "frames_bad_multiple_frames": "NumberOfFrames",
+    "frames_bad_extra_frame": "PixelData length",
+    "frames_bad_missing_frame": "PixelData length",
+    "frames_bad_size": "element limit",
+    "frames_bad_ybr": "PhotometricInterpretation",
+    "frames_bad_ybr422": "PhotometricInterpretation",
+    "frames_bad_palette": "PhotometricInterpretation",
+    "frames_bad_unknown_photo": "PhotometricInterpretation",
+    "frames_bad_missing_pc": "PlanarConfiguration",
+    "frames_bad_pc_vr": "explicit VR disagrees",
+    "frames_bad_signed_rgb16": "signed RGB",
+    "frames_bad_short": "PixelData length",
+    "frames_bad_extra": "PixelData length",
+    "frames_bad_fraction": "NumberOfFrames",
+    "frames_bad_decimal": "NumberOfFrames",
+    "frames_bad_nan": "NumberOfFrames",
+    "frames_bad_inf": "NumberOfFrames",
+    "frames_bad_empty": "NumberOfFrames",
+    "frames_bad_overflow": "overflow",
+    "frames_bad_unrepresentable": "NumberOfFrames",
+    "frames_bad_truncated": "length",
+    "frames_bad_per_frame_pad": "PixelData length"
+  }
+}

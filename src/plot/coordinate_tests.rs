@@ -293,7 +293,7 @@ fn two_bank_maximum_scenes_are_exact_bounded_and_add_is_atomic() {
         assert_eq!(a.cost().retained_bytes(), MAX_RETAINED_BYTES);
         assert_eq!(
             a.cost().compact_rectangles() + a.cost().general_faces(),
-            20_000
+            MAX_RECTANGLES + MAX_GENERAL_FACES
         );
         let before = a;
         assert!(
@@ -302,19 +302,26 @@ fn two_bank_maximum_scenes_are_exact_bounded_and_add_is_atomic() {
         );
         assert_eq!(a, before);
     }
-    let one = fixed_view(1).cost();
+    let one = GeometryCost::from_counts(1, 1, 0, 0, 16).unwrap();
     let mut ledger = GeometryLedger::default();
-    for _ in 0..64 {
+    for _ in 0..super::super::MAX_PLOT_SERIES {
         ledger.add(one).unwrap();
     }
     let before = ledger;
     assert!(ledger.add(one).is_err());
+    let mut other = GeometryLedger::default();
+    other.add(one).unwrap();
+    assert!(ledger.merge(other).is_err());
     assert_eq!(ledger, before);
-    assert_eq!(ledger.cost().source_units(), one.source_units() * 64);
+    assert_eq!(ledger.cost().source_units(), super::super::MAX_PLOT_SERIES);
     // Sharing never makes the second object's logical geometry free.
-    assert_eq!(ledger.cost().retained_bytes(), one.retained_bytes() * 64);
+    assert_eq!(
+        ledger.cost().retained_bytes(),
+        one.retained_bytes() * super::super::MAX_PLOT_SERIES
+    );
     assert!(GeometryCost::from_counts(10_001, 40_004, 10_001, 0, 160_016).is_err());
-    assert!(GeometryCost::from_counts(30_003, 30_003, 0, 10_001, 480_048).is_err());
+    let faces = MAX_GENERAL_FACES + 1;
+    assert!(GeometryCost::from_counts(3 * faces, 3 * faces, 0, faces, 48 * faces).is_err());
     assert!(GeometryCost::from_counts(1, 1, 0, 0, 17).is_err());
     assert!(GeometryCost::from_counts(1, 3, 1, 0, 16).is_err());
     assert!(GeometryCost::from_counts(3, 2, 0, 1, 48).is_err());

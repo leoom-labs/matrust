@@ -57,6 +57,7 @@ fn toolkit_tabs_fill_compact_viewports_and_close_without_edits() {
             let rect = match tool {
                 Tool::Designer => tools.designer_region(),
                 Tool::Model => tools.model_document_region().map(|(rect, _)| rect),
+                Tool::App(_) => unreachable!("only the two built-in tools are tested here"),
             }
             .unwrap();
             assert!(

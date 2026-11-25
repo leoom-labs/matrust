@@ -17,7 +17,7 @@ const NAMES: &[&str] = &[
     "calendar",
 ];
 
-const MONTHS: [&str; 12] = [
+pub(crate) const MONTHS: [&str; 12] = [
     "January",
     "February",
     "March",
@@ -31,7 +31,7 @@ const MONTHS: [&str; 12] = [
     "November",
     "December",
 ];
-const DAYS: [&str; 7] = [
+pub(crate) const DAYS: [&str; 7] = [
     "Sunday",
     "Monday",
     "Tuesday",
@@ -45,7 +45,7 @@ const BEFORE_MONTH: [f64; 12] = [
     0.0, 31.0, 59.0, 90.0, 120.0, 151.0, 181.0, 212.0, 243.0, 273.0, 304.0, 334.0,
 ];
 /// datenum(1970, 1, 1): the civil-date conversion counts days from 1970.
-const UNIX_DAY: i64 = 719_529;
+pub(crate) const UNIX_DAY: i64 = 719_529;
 /// Serial numbers beyond this (about 2.7e12 years) are rejected where a
 /// calendar date must be built; the integer conversion stays exact.
 const MAX_SERIAL: f64 = 1e15;
@@ -173,8 +173,22 @@ fn serial(parts: [f64; 6]) -> Result<f64> {
     }
 }
 
+/// Integer serial day of year `y`, month `m` (1..12) and day `d`; any `d`
+/// rolls over linearly (day 0 is the last day of the month before). Inverse
+/// of `civil` for valid dates. Callers bound `y` (|y| < 1e12) and `d`.
+pub(crate) fn civil_serial(y: i64, m: usize, d: i64) -> i64 {
+    let m = m as i64;
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468 + UNIX_DAY + d - 1
+}
+
 /// (year, month 1..12, day 1..31) of an integer serial day.
-fn civil(day: i64) -> (i64, usize, u32) {
+pub(crate) fn civil(day: i64) -> (i64, usize, u32) {
     let z = day - UNIX_DAY + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;

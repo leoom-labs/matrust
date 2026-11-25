@@ -13,17 +13,17 @@ fn scalar(e: &Engine, name: &str) -> f64 {
 #[test]
 fn nested_conditionals_choose_one_branch_and_skip_unneeded_expressions() {
     let mut e = Engine::default();
-    e.execute("x=0; if false; missing; elseif [1 2;3 4]; if 2>1; x=7; else; x=8; end; elseif missing; x=9; else; x=10; end").unwrap();
+    e.execute("x=0; if false; uifigure; elseif [1 2;3 4]; if 2>1; x=7; else; x=8; end; elseif uifigure; x=9; else; x=10; end").unwrap();
     assert_eq!(scalar(&e, "x"), 7.);
     for (condition, expected) in [
         ("[]", 0.),
         ("[1 0]", 0.),
         ("[1 -1]", 1.),
-        ("false & missing", 0.),
-        ("true | missing", 1.),
-        ("~(false & missing)", 1.),
+        ("false & uifigure", 0.),
+        ("true | uifigure", 1.),
+        ("~(false & uifigure)", 1.),
         ("[true false] | [false true]", 1.),
-        ("false && missing", 0.),
+        ("false && uifigure", 0.),
     ] {
         e.execute(&format!("x=0;if {condition}, x=1;end")).unwrap();
         assert_eq!(scalar(&e, "x"), expected, "{condition}");
@@ -72,9 +72,9 @@ fn loop_values_are_typed_and_zero_iterations_replace_the_index_with_empty() {
         .unwrap();
     assert_eq!(scalar(&e, "s"), 2.);
     assert!(e.array("flag").unwrap().is_logical());
-    e.execute("k=9;for k=3:1;missing;end").unwrap();
+    e.execute("k=9;for k=3:1;uifigure;end").unwrap();
     assert!(e.variables["k"].is_empty());
-    e.execute("for flag=false(1,0);missing;end").unwrap();
+    e.execute("for flag=false(1,0);uifigure;end").unwrap();
     assert!(e.array("flag").unwrap().is_logical());
     assert!(e.array("flag").unwrap().is_empty());
     e.execute("n=0;for k=1:3;n=n+1;k=99;end").unwrap();
@@ -158,7 +158,8 @@ fn malformed_blocks_and_unsupported_keywords_fail_before_any_execution() {
         "if true;function f();end;end",
         "switch 1;x=1;end",
         "switch 1;case 1;x=1;",
-        "parfor k=1:3;end",
+        "parfor k 1:3;end",
+        "spmd (;end",
         "if true x=1;end",
         "for if=1:3;end",
         "[for,x]=size(1);",
@@ -180,14 +181,14 @@ fn malformed_blocks_and_unsupported_keywords_fail_before_any_execution() {
 #[test]
 fn nested_errors_retain_precise_locations_and_completed_results() {
     let mut e = Engine::default();
-    let source = "% α\nfor k=1:3\n  x=k;\n  if k==2\n    missing(1);\n  end\nend\nafter=1;";
+    let source = "% α\nfor k=1:3\n  x=k;\n  if k==2\n    uifigure(1);\n  end\nend\nafter=1;";
     assert!(e.execute(source).is_err());
     let d = e.diagnostic.as_ref().unwrap();
     assert_eq!((d.line, d.column), (5, 5));
     assert_eq!(scalar(&e, "x"), 2.);
     assert!(!e.variables.contains_key("after"));
     assert!(
-        e.execute("if false\n x=1;\nelseif missing\n x=2;\nend")
+        e.execute("if false\n x=1;\nelseif uifigure\n x=2;\nend")
             .is_err()
     );
     assert_eq!(e.diagnostic.as_ref().unwrap().line, 3);

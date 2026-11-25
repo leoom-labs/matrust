@@ -60,6 +60,8 @@ def render(meta, triple, root):
              f"Crates in the dependency graph for {triple} ({len(rows)}):", ""] + rows
     for f in sorted((pathlib.Path(root) / "assets" / "fonts").glob("*-LICENSE.txt")):
         texts.append((f"Font licence: {f.name}", f.read_text(encoding="utf-8", errors="replace").rstrip()))
+    for f in sorted((pathlib.Path(root) / "assets" / "icons").glob("*-LICENSE.txt")):
+        texts.append((f"Icon licence: {f.name}", f.read_text(encoding="utf-8", errors="replace").rstrip()))
     for heading, body in texts:
         lines += ["", "=" * 72, heading, "=" * 72, "", body]
     return "\n".join(lines) + "\n", len(rows), sum(r.endswith(": see full text below") for r in rows)

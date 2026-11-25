@@ -6,7 +6,7 @@ pub struct Browser {
     generation: u64,
     pub loading: bool,
     pub filter: String,
-    /// The Files header shows the filename field instead of the filter icon.
+    /// The Files header shows the filename field instead of "Filter".
     pub filter_open: bool,
     filter_focus: bool,
     due: Option<Instant>,
@@ -26,6 +26,40 @@ enum Nav {
     Up,
     Refresh,
     Browse,
+}
+/// Text buttons of the Files header.
+#[derive(Clone, Copy, PartialEq)]
+enum FilesTool {
+    Filter,
+    Find,
+    Nav(Nav),
+}
+impl FilesTool {
+    /// The short word on the header button.
+    fn text(self) -> &'static str {
+        match self {
+            Self::Filter => "Filter",
+            Self::Find => "Find",
+            Self::Nav(Nav::Back) => "Back",
+            Self::Nav(Nav::Forward) => "Forward",
+            Self::Nav(Nav::Up) => "Up",
+            Self::Nav(Nav::Refresh) => "Refresh",
+            Self::Nav(Nav::Browse) => "Browse",
+        }
+    }
+    /// The row of the header's More menu.
+    fn menu_text(self) -> &'static str {
+        match self {
+            Self::Filter => "Filter filenames",
+            Self::Find => "Find text in files…",
+            Self::Nav(Nav::Back) => "Back",
+            Self::Nav(Nav::Forward) => "Forward",
+            Self::Nav(Nav::Up) => "Up to parent folder",
+            Self::Nav(Nav::Refresh) => "Refresh",
+            // Never in More (the picker refuses a menu); kept for the match.
+            Self::Nav(Nav::Browse) => "Browse for folder…",
+        }
+    }
 }
 impl Browser {
     pub fn new(context: egui::Context) -> Self {
@@ -166,26 +200,181 @@ impl Workspace {
             }
         }
     }
-    /// Filename filter of the Files header: an icon until it is used, then
-    /// the field. An emptied field folds back into the icon.
-    fn folder_filter_control(&mut self, ui: &mut egui::Ui) {
-        if !self.folder_browser.filter_open && self.folder_browser.filter.is_empty() {
-            if panels::header_icon_button(
-                ui,
-                panels::Glyph::Filter,
-                "Filter filenames",
-                "Filter filenames",
-            )
-            .clicked()
+    /// Tools of the Files header as text buttons, painted right to left:
+    /// More, Filter, Find, then Refresh, Browse, Up, Forward and Back. The
+    /// title stays whole; what does not fit beside it waits in More, so Up,
+    /// Back and Filter stay in the row longest. An open filter field never
+    /// hides. Browse never waits in More (the folder picker refuses to open
+    /// from a menu): it stays in the row, beside an open filter while it fits.
+    fn folder_header_tools(&mut self, ui: &mut egui::Ui, title_room: f32) {
+        let width = |text: &str| panels::tool_link_width(ui, text);
+        let mut room = ui.available_width() - title_room;
+        let more = width("More");
+        let browse = width("Browse");
+        let filtering = self.folder_browser.filter_open || !self.folder_browser.filter.is_empty();
+        let mut order = vec![
+            FilesTool::Nav(Nav::Up),
+            FilesTool::Nav(Nav::Back),
+            FilesTool::Filter,
+            FilesTool::Find,
+            FilesTool::Nav(Nav::Forward),
+            FilesTool::Nav(Nav::Refresh),
+        ];
+        // An open filter claims its field (40 to 110 px, leaving room for
+        // Browse) and "Clear" first.
+        let clear = width("Clear") + 2. * tokens::XS;
+        let field = (room - more - clear - browse - 1.).clamp(40., 110.);
+        if filtering {
+            room -= field + clear;
+            order.retain(|tool| *tool != FilesTool::Filter);
+        }
+        let show_browse = !filtering || room - more >= browse;
+        if show_browse {
+            room -= browse;
+        }
+        let widths: Vec<f32> = order.iter().map(|tool| width(tool.text())).collect();
+        let (fit, overflow) = panels::header_fit(&widths, room, more);
+        let (shown, hidden) = order.split_at(fit);
+        if overflow {
+            self.folder_more_menu(ui, hidden);
+        }
+        let ctx = ui.ctx().clone();
+        for tool in [
+            FilesTool::Filter,
+            FilesTool::Find,
+            FilesTool::Nav(Nav::Refresh),
+            FilesTool::Nav(Nav::Browse),
+            FilesTool::Nav(Nav::Up),
+            FilesTool::Nav(Nav::Forward),
+            FilesTool::Nav(Nav::Back),
+        ] {
+            if tool == FilesTool::Filter {
+                if filtering || shown.contains(&tool) {
+                    ui.add_enabled_ui(self.folder_browser.navigation.is_none(), |ui| {
+                        self.folder_filter_control(ui, field);
+                    });
+                }
+                continue;
+            }
+            let inline = if tool == FilesTool::Nav(Nav::Browse) {
+                show_browse
+            } else {
+                shown.contains(&tool)
+            };
+            if !inline {
+                continue;
+            }
+            let (name, hint, enabled) = self.files_tool_state(&ctx, tool);
+            if ui
+                .add_enabled_ui(enabled, |ui| {
+                    panels::header_tool(ui, tool.text(), name, hint)
+                })
+                .inner
+                .clicked()
             {
+                self.files_tool_action(&ctx, tool);
+            }
+        }
+    }
+
+    /// "More" of the Files header: the tools that did not fit, as menu rows.
+    fn folder_more_menu(&mut self, ui: &mut egui::Ui, hidden: &[FilesTool]) {
+        let ctx = ui.ctx().clone();
+        let more = panels::header_tool(ui, "More", "Folder actions", "More folder actions");
+        let mut picked = None;
+        egui::Popup::menu(&more).show(|ui| {
+            for tool in hidden {
+                let (_, hint, enabled) = self.files_tool_state(&ctx, *tool);
+                if ui
+                    .add_enabled(enabled, egui::Button::new(tool.menu_text()))
+                    .on_hover_text(hint)
+                    .on_disabled_hover_text(hint)
+                    .clicked()
+                {
+                    picked = Some(*tool);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(tool) = picked {
+            self.files_tool_action(&ctx, tool);
+        }
+    }
+
+    /// Accessible name, tooltip and enabled state of a Files header tool.
+    fn files_tool_state(
+        &self,
+        ctx: &egui::Context,
+        tool: FilesTool,
+    ) -> (&'static str, &'static str, bool) {
+        let idle = !self.busy && !self.file_action_pending();
+        match tool {
+            FilesTool::Filter => (
+                "Filter filenames",
+                "Filter filenames",
+                self.folder_browser.navigation.is_none(),
+            ),
+            FilesTool::Find => (
+                "Search text",
+                "Find literal text in .mr, .m and .txt files in Current Folder",
+                true,
+            ),
+            FilesTool::Nav(Nav::Back) => (
+                "Back",
+                "Back · Alt+Left",
+                idle && self.folder_navigation.destination(false).is_some(),
+            ),
+            FilesTool::Nav(Nav::Forward) => (
+                "Forward",
+                "Forward · Alt+Right",
+                idle && self.folder_navigation.destination(true).is_some(),
+            ),
+            FilesTool::Nav(Nav::Up) => (
+                "Up",
+                "Parent folder · Alt+Up",
+                idle && self.folder.parent().is_some(),
+            ),
+            FilesTool::Nav(Nav::Refresh) => ("Refresh", "Refresh this folder", idle),
+            FilesTool::Nav(Nav::Browse) => (
+                "Browse",
+                "Choose another folder…",
+                self.folder_browse_context(ctx),
+            ),
+        }
+    }
+
+    fn files_tool_action(&mut self, ctx: &egui::Context, tool: FilesTool) {
+        match tool {
+            FilesTool::Filter => {
+                self.folder_browser.filter_open = true;
+                self.folder_browser.filter_focus = true;
+            }
+            FilesTool::Find => self.show_folder_search(ctx),
+            FilesTool::Nav(Nav::Back) => self.step_folder(false),
+            FilesTool::Nav(Nav::Forward) => self.step_folder(true),
+            FilesTool::Nav(Nav::Up) => {
+                if let Some(parent) = self.folder.parent() {
+                    self.change_folder(parent.to_owned());
+                }
+            }
+            FilesTool::Nav(Nav::Refresh) => self.refresh_folder(),
+            FilesTool::Nav(Nav::Browse) => self.queue_folder_browse(ctx),
+        }
+    }
+
+    /// Filename filter of the Files header: "Filter" until it is used, then
+    /// a `field` px field and "Clear". An emptied field folds back.
+    fn folder_filter_control(&mut self, ui: &mut egui::Ui, field: f32) {
+        if !self.folder_browser.filter_open && self.folder_browser.filter.is_empty() {
+            if panels::header_tool(ui, "Filter", "Filter filenames", "Filter filenames").clicked() {
                 self.folder_browser.filter_open = true;
                 self.folder_browser.filter_focus = true;
             }
             return;
         }
-        if panels::header_icon_button(
+        if panels::header_tool(
             ui,
-            panels::Glyph::Filter,
+            "Clear",
             "Clear filename filter",
             "Clear filename filter",
         )
@@ -198,15 +387,14 @@ impl Workspace {
             self.refresh_folder();
             return;
         }
-        // The header packs its icons edge to edge; the field keeps a gap.
+        // The header packs its tools edge to edge; the field keeps a gap.
         ui.add_space(tokens::XS);
         let response = ui.add(
             egui::TextEdit::singleline(&mut self.folder_browser.filter)
                 .id(egui::Id::new("folder_filter"))
                 .hint_text(RichText::new("Filter…").color(tokens::palette(ui.ctx()).text_disabled))
                 .char_limit(256)
-                // Leave the title its room.
-                .desired_width((ui.available_width() - 72.).clamp(40., 110.)),
+                .desired_width(field),
         );
         ui.add_space(tokens::XS);
         if std::mem::take(&mut self.folder_browser.filter_focus) {
@@ -222,78 +410,6 @@ impl Workspace {
             self.folder_browser.notice = "Waiting for filename filter…".into();
             self.folder_browser.clear_selection();
             self.entries.clear();
-        }
-    }
-
-    /// Folder navigation in the Files header, painted right to left: Back,
-    /// Forward, Up, Refresh and Browse as icon buttons with tooltips. A narrow
-    /// column keeps what fits after the title, Up, Back and Forward first;
-    /// Refresh (F5) and Browse (the top-bar folder) are the first to go.
-    fn folder_navigation_icons(&mut self, ui: &mut egui::Ui, title_room: f32) {
-        let ctx = ui.ctx().clone();
-        let idle = !self.busy && !self.file_action_pending();
-        // n icons take n slots less the spacing after the last one.
-        let spacing = ui.spacing().item_spacing.x;
-        let slot = tokens::HEADER_ICON + spacing;
-        let fit = ((ui.available_width() - title_room + spacing) / slot).floor();
-        let priority = [Nav::Up, Nav::Back, Nav::Forward, Nav::Refresh, Nav::Browse];
-        let shown = &priority[..(fit.max(0.) as usize).min(priority.len())];
-        for nav in [Nav::Browse, Nav::Refresh, Nav::Up, Nav::Forward, Nav::Back] {
-            if !shown.contains(&nav) {
-                continue;
-            }
-            let (glyph, label, hint, enabled) = match nav {
-                Nav::Back => (
-                    panels::Glyph::Back,
-                    "Back",
-                    "Back · Alt+Left",
-                    idle && self.folder_navigation.destination(false).is_some(),
-                ),
-                Nav::Forward => (
-                    panels::Glyph::Forward,
-                    "Forward",
-                    "Forward · Alt+Right",
-                    idle && self.folder_navigation.destination(true).is_some(),
-                ),
-                Nav::Up => (
-                    panels::Glyph::Up,
-                    "Up",
-                    "Parent folder · Alt+Up",
-                    idle && self.folder.parent().is_some(),
-                ),
-                Nav::Refresh => (
-                    panels::Glyph::Refresh,
-                    "Refresh",
-                    "Refresh this folder · F5",
-                    idle,
-                ),
-                Nav::Browse => (
-                    panels::Glyph::Browse,
-                    "Browse",
-                    "Choose another folder…",
-                    self.folder_browse_context(&ctx),
-                ),
-            };
-            if !ui
-                .add_enabled_ui(enabled, |ui| {
-                    panels::header_icon_button(ui, glyph, label, hint)
-                })
-                .inner
-                .clicked()
-            {
-                continue;
-            }
-            match nav {
-                Nav::Back => self.step_folder(false),
-                Nav::Forward => self.step_folder(true),
-                Nav::Up => {
-                    if let Some(parent) = self.folder.parent() {
-                        self.change_folder(parent.to_owned());
-                    }
-                }
-                Nav::Refresh => self.refresh_folder(),
-                Nav::Browse => self.queue_folder_browse(&ctx),
-            }
         }
     }
 
@@ -342,11 +458,7 @@ impl Workspace {
                     self.folder_address_field(ui, title_room);
                     return;
                 }
-                self.folder_search_link(ui);
-                ui.add_enabled_ui(self.folder_browser.navigation.is_none(), |ui| {
-                    self.folder_filter_control(ui);
-                });
-                self.folder_navigation_icons(ui, title_room);
+                self.folder_header_tools(ui, title_room);
             });
         });
         if let Some(due) = self.folder_browser.due {
@@ -427,12 +539,22 @@ impl Workspace {
                 let entry = &self.entries[index];
                 let selected = self.folder_browser.selected_path() == Some(entry.path.as_path());
                 let label = format!("{}{}", entry.name, if entry.directory { "/" } else { "" });
+                let extension = entry
+                    .path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
                 let kind = if entry.directory {
                     panels::FileKind::Folder
-                } else if entry.name.to_ascii_lowercase().ends_with(".m") {
-                    panels::FileKind::Script
                 } else {
-                    panels::FileKind::Data
+                    match extension.as_str() {
+                        "m" | "mr" => panels::FileKind::Script,
+                        "csv" => panels::FileKind::Csv,
+                        "png" | "jpg" | "jpeg" | "bmp" | "gif" | "tif" | "tiff" | "svg" | "eps"
+                        | "pdf" => panels::FileKind::Image,
+                        _ => panels::FileKind::Data,
+                    }
                 };
                 let response = ui
                     .add_enabled_ui(enabled, |ui| {
@@ -672,7 +794,9 @@ impl Workspace {
             && action.folder == self.folder
             && action.document == self.documents[self.active].id
             && action.interaction == self.document_save.interaction_generation()
-            && action.focus == ctx.memory(|m| m.focused())
+            // The click itself makes a focused editor surrender focus in the same
+            // frame; only a move to another widget means the user went elsewhere.
+            && ctx.memory(|m| m.focused()).is_none_or(|now| action.focus == Some(now))
     }
 
     pub(super) fn queue_folder_browse(&mut self, ctx: &egui::Context) {

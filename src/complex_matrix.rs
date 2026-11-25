@@ -24,6 +24,8 @@ pub struct ComplexMatrix {
     pub(crate) storage: Arc<DMatrix<Complex64>>,
     rows: usize,
     cols: usize,
+    nd: Option<Arc<Vec<usize>>>,
+    single: bool,
 }
 
 fn check(cancel: &AtomicBool) -> Result<()> {
@@ -100,6 +102,8 @@ impl ComplexMatrix {
             storage: Arc::new(DMatrix::from_vec(rows, cols, data)),
             rows,
             cols,
+            nd: None,
+            single: false,
         };
         check(cancel)?;
         Ok(result)
@@ -135,33 +139,41 @@ impl ComplexMatrix {
             cancel,
         )
     }
-    /// Equal shapes or scalar expansion only. Components are copied directly,
-    /// preserving explicit zero imaginary storage and each component's bits.
+    /// Expand singleton dimensions and copy components directly, preserving
+    /// explicit zero imaginary storage and each component's bits.
     pub fn from_parts(real: &Matrix, imaginary: &Matrix, cancel: &AtomicBool) -> Result<Self> {
-        check(cancel)?;
-        let shape = if real.rows() == imaginary.rows() && real.cols() == imaginary.cols() {
-            (real.rows(), real.cols())
-        } else if real.len() == 1 {
-            (imaginary.rows(), imaginary.cols())
-        } else if imaginary.len() == 1 {
-            (real.rows(), real.cols())
-        } else {
-            return Err("Complex components need equal shapes or a scalar".into());
-        };
-        let len = Self::checked_len(shape.0, shape.1)?;
-        let data = build(len, cancel, |i| {
-            Complex64::new(
-                real.data()[if real.len() == 1 { 0 } else { i }],
-                imaginary.data()[if imaginary.len() == 1 { 0 } else { i }],
-            )
-        })?;
-        Self::from_column_vec(shape.0, shape.1, data, cancel)
+        use crate::logical::ArrayRef::Numeric;
+        Self::from_component_views(Numeric(real), Some(Numeric(imaginary)), cancel)
     }
     pub fn rows(&self) -> usize {
         self.rows
     }
     pub fn cols(&self) -> usize {
         self.cols
+    }
+    pub fn dims(&self) -> std::borrow::Cow<'_, [usize]> {
+        self.nd.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(vec![self.rows, self.cols]),
+            |dims| std::borrow::Cow::Borrowed(dims.as_slice()),
+        )
+    }
+    pub fn ndims(&self) -> usize {
+        self.nd.as_ref().map_or(2, |dims| dims.len())
+    }
+    pub fn is_nd(&self) -> bool {
+        self.nd.is_some()
+    }
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        check(&AtomicBool::new(false))?;
+        let dims = crate::array::normalize_dims(dims)?;
+        if dims[0] != self.rows
+            || dims[1..].iter().try_fold(1usize, |n, &d| n.checked_mul(d)) != Some(self.cols)
+        {
+            return Err("reshape dimensions do not match folded complex storage".into());
+        }
+        let mut result = self.clone();
+        result.nd = (dims.len() > 2).then(|| Arc::new(dims));
+        Ok(result)
     }
     pub fn len(&self) -> usize {
         self.storage.len()
@@ -185,7 +197,10 @@ impl ComplexMatrix {
         Arc::ptr_eq(&self.storage, &other.storage)
     }
     pub fn same_snapshot(&self, other: &Self) -> bool {
-        self.rows == other.rows && self.cols == other.cols && self.shares_storage(other)
+        self.rows == other.rows
+            && self.cols == other.cols
+            && self.single == other.single
+            && self.shares_storage(other)
     }
     pub fn reshape(&self, rows: usize, cols: usize, cancel: &AtomicBool) -> Result<Self> {
         check(cancel)?;
@@ -193,12 +208,32 @@ impl ComplexMatrix {
             return Err("Reshape must preserve complex element count".into());
         }
         let result = Self {
-            storage: self.storage.clone(),
             rows,
             cols,
+            nd: None,
+            ..self.clone()
         };
         check(cancel)?;
         Ok(result)
+    }
+    pub(crate) fn is_single(&self) -> bool {
+        self.single
+    }
+    /// Attach class metadata to values already representable as complex single.
+    pub(crate) fn with_single_class(mut self, single: bool) -> Self {
+        self.single = single;
+        self
+    }
+    pub(crate) fn round_to_single(value: Complex64) -> Complex64 {
+        Complex64::new(f64::from(value.re as f32), f64::from(value.im as f32))
+    }
+    pub(crate) fn cast_single(&self, cancel: &AtomicBool) -> Result<Self> {
+        let data = build(self.len(), cancel, |i| {
+            Self::round_to_single(self.data()[i])
+        })?;
+        let mut result = Self::from_column_vec(self.rows, self.cols, data, cancel)?;
+        result.nd = self.nd.clone();
+        Ok(result.with_single_class(true))
     }
     pub fn real(&self, cancel: &AtomicBool) -> Result<Matrix> {
         let data = build(self.len(), cancel, |i| self.data()[i].re)?;
@@ -252,33 +287,20 @@ impl ComplexMatrix {
         cancel: &AtomicBool,
     ) -> Result<Self> {
         check(cancel)?;
-        let shape = if let Some(imaginary) = imaginary {
-            if real.shape() == imaginary.shape() || imaginary.len() == 1 {
-                real.shape()
-            } else if real.len() == 1 {
-                imaginary.shape()
-            } else {
-                return Err("Complex components need equal shapes or a scalar".into());
-            }
+        let (rows, cols) = real.shape();
+        if let Some(imaginary) = imaginary {
+            let shape = crate::broadcast2::Broadcast2::new((rows, cols), imaginary.shape())?;
+            let len = Self::checked_len(shape.rows, shape.cols)?;
+            let data = build(len, cancel, |i| {
+                let (r, c) = shape.indices(i);
+                Complex64::new(real.value(r), imaginary.value(c))
+            })?;
+            Self::from_column_vec(shape.rows, shape.cols, data, cancel)
         } else {
-            real.shape()
-        };
-        let len = Self::checked_len(shape.0, shape.1)?;
-        let at = |part: crate::logical::ArrayRef<'_>, i: usize| {
-            let i = if part.len() == 1 { 0 } else { i };
-            match part {
-                crate::logical::ArrayRef::Numeric(a) => a.data()[i],
-                crate::logical::ArrayRef::Logical(a) => f64::from(a.data()[i]),
-            }
-        };
-        Self::from_column_vec(
-            shape.0,
-            shape.1,
-            build(len, cancel, |i| {
-                Complex64::new(at(real, i), imaginary.map_or(0., |a| at(a, i)))
-            })?,
-            cancel,
-        )
+            let len = Self::checked_len(rows, cols)?;
+            let data = build(len, cancel, |i| Complex64::new(real.value(i), 0.))?;
+            Self::from_column_vec(rows, cols, data, cancel)
+        }
     }
     pub fn magnitude(&self, cancel: &AtomicBool) -> Result<Matrix> {
         let data = build(self.len(), cancel, |i| {

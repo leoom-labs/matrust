@@ -11,6 +11,9 @@ use crate::{
 };
 use std::sync::Arc;
 
+mod num2cell;
+pub(super) use num2cell::{dense_num2cell, sparse_num2cell};
+
 const NAMES: &[&str] = &[
     "sprintf",
     "fprintf",
@@ -42,13 +45,27 @@ pub(super) fn handles(name: &str) -> bool {
 
 const MAX_PIECES: usize = 65536;
 
-fn is_white(c: char) -> bool {
-    matches!(c, ' ' | '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | '\0')
+/// Trailing ASCII whitespace `strcat` documents: space, tab, VT, FF, LF, CR.
+pub(super) fn is_strcat_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\u{b}' | '\u{c}' | '\r')
 }
 
-/// `isspace`: what `strtrim` removes (`deblank` also removes NUL).
-fn is_space(c: char) -> bool {
-    c != '\0' && is_white(c)
+fn strcat_append(units: &mut Vec<u16>, part: impl Iterator<Item = u16>) -> Result<()> {
+    units.extend(part.take(MAX_CHARACTER_UNITS + 1 - units.len()));
+    CharacterRow::checked_len(1, units.len())?;
+    Ok(())
+}
+
+/// `deblank` removes that whitespace and NUL.
+fn is_white(c: char) -> bool {
+    c == '\0' || is_strcat_space(c)
+}
+
+/// Whitespace removed by `strtrim` and default `strip`.
+/// MathWorks removes Unicode whitespace except the significant characters
+/// char(133), char(160), char(8199) and char(8239).
+pub(super) fn is_trimmed_whitespace(c: char) -> bool {
+    c.is_whitespace() && !matches!(c, '\u{85}' | '\u{a0}' | '\u{2007}' | '\u{202f}')
 }
 
 /// A string-like operand: one character row, or the strings of a cell
@@ -96,7 +113,7 @@ impl Engine {
                 let items = self.format_arguments("sprintf", &args)?;
                 let text = tf::format_items(
                     "sprintf",
-                    self.format_text("sprintf", &args)?,
+                    &self.format_text("sprintf", &args)?,
                     &items,
                     &self.cancel,
                 )?;
@@ -105,11 +122,13 @@ impl Engine {
             "fprintf" => self.fprintf_call(&args, out)?,
             "num2str" | "int2str" => self.num2str_call(name, &args)?,
             "mat2str" => self.mat2str_call(&args)?,
-            "strcat" => self.strcat_call(&args)?,
+            "strcat" => self.strcat_call(args)?,
             "strsplit" => self.strsplit_call(&args)?,
             "strjoin" => self.strjoin_call(&args)?,
             "strrep" => self.strrep_call(&args)?,
-            "strtrim" => self.map_strings(name, &args, |s| s.trim_matches(is_space).to_owned())?,
+            "strtrim" => self.map_strings(name, &args, |s| {
+                s.trim_matches(is_trimmed_whitespace).to_owned()
+            })?,
             "deblank" => {
                 self.map_strings(name, &args, |s| s.trim_end_matches(is_white).to_owned())?
             }
@@ -148,24 +167,31 @@ impl Engine {
                 if !(0. ..=65536.).contains(&n) || n.fract() != 0. {
                     return Err("blanks: N must be an integer in 0..65536".into());
                 }
-                Value::Text(" ".repeat(n as usize))
+                // Value::Text("") is stored as 0-by-0. blanks(0) is a 1-by-0 row.
+                if n == 0. {
+                    Value::Container(
+                        CharacterRow::from_column_major(1, 0, Vec::new(), &self.cancel)?.into(),
+                    )
+                } else {
+                    Value::Text(" ".repeat(n as usize))
+                }
             }
             _ => unreachable!("NAMES and the match above agree"),
         };
         Ok(Some(value))
     }
 
-    fn text_row<'a>(&self, who: &str, what: &str, v: Option<&'a Value>) -> Result<&'a str> {
-        match v {
-            Some(Value::Text(s)) => Ok(s),
-            _ => Err(format!("{who}: {what} must be a character row")),
-        }
-    }
-
     // ---- sprintf / fprintf --------------------------------------------------
 
-    fn format_text<'a>(&self, who: &str, args: &'a [Value]) -> Result<&'a str> {
-        self.text_row(who, "format", args.first())
+    fn format_text(&self, who: &str, args: &[Value]) -> Result<String> {
+        match args.first() {
+            Some(Value::Text(s)) => Ok(s.clone()),
+            Some(Value::Container(Array::Str(s))) if s.len() == 1 => s.data()[0]
+                .as_ref()
+                .map(|t| t.to_string())
+                .ok_or_else(|| format!("{who}: format cannot be missing")),
+            _ => Err(format!("{who}: format must be a character row")),
+        }
     }
 
     fn format_arguments(&self, who: &str, args: &[Value]) -> Result<Vec<Item>> {
@@ -177,6 +203,16 @@ impl Engine {
                 Value::Logical(m) => (m.len(), m.len()),
                 Value::Complex(m) => (m.len(), m.len()),
                 Value::Text(s) => (1, s.len()),
+                Value::Container(Array::Str(s)) => {
+                    let mut bytes = 0usize;
+                    for item in s.data() {
+                        let Some(text) = item else {
+                            return Err(format!("{who}: missing string values are not supported"));
+                        };
+                        bytes = bytes.saturating_add(text.len());
+                    }
+                    (s.len(), bytes.saturating_add(s.len()))
+                }
                 Value::Container(Array::Cell(_)) => {
                     return Err(format!("{who}: cell array arguments are not supported yet"));
                 }
@@ -199,6 +235,15 @@ impl Engine {
                 // Numeric conversions print only the real part of a complex value.
                 Value::Complex(m) => items.extend(m.data().iter().map(|z| Item::Num(z.re))),
                 Value::Text(s) => items.push(Item::Str(s.chars().collect())),
+                Value::Container(Array::Str(s)) => {
+                    for (i, item) in s.data().iter().enumerate() {
+                        if i.is_multiple_of(1024) {
+                            self.check_cancel()?;
+                        }
+                        let text = item.as_ref().expect("missing checked above");
+                        items.push(Item::Str(text.chars().collect()));
+                    }
+                }
                 _ => unreachable!("argument types checked above"),
             }
         }
@@ -218,15 +263,18 @@ impl Engine {
 
     fn fprintf_call(&mut self, args: &[Value], out: &mut Execution) -> Result<Value> {
         let mut file = None;
+        let mut error_stream = false;
         let skip = match args.first() {
             Some(Value::Matrix(m)) if m.len() == 1 => {
                 let fid = m.data()[0];
+                error_stream = fid == 2.;
                 if fid != 1. && fid != 2. {
                     file = Some(fid);
                 }
                 1
             }
             Some(Value::Text(_)) => 0,
+            Some(Value::Container(Array::Str(s))) if s.len() == 1 => 0,
             _ => return Err("fprintf: format must be a character row".into()),
         };
         let args = &args[skip..];
@@ -234,7 +282,7 @@ impl Engine {
             let items = self.format_arguments("fprintf", args)?;
             tf::format_items(
                 "fprintf",
-                self.format_text("fprintf", args)?,
+                &self.format_text("fprintf", args)?,
                 &items,
                 &self.cancel,
             )?
@@ -244,7 +292,10 @@ impl Engine {
                 self.fileio_write_text(fid, &text)? as f64,
             )));
         }
-        self.print_text(out, &text)?;
+        // A host with an error stream (the CLI) writes file id 2 there.
+        if !(error_stream && self.hostio_write_error(&text)?) {
+            self.print_text(out, &text)?;
+        }
         Ok(Value::Matrix(Matrix::scalar(text.len() as f64)))
     }
 
@@ -614,73 +665,110 @@ impl Engine {
         }
     }
 
-    fn strcat_call(&self, args: &[Value]) -> Result<Value> {
+    fn strcat_call(&self, mut args: Vec<Value>) -> Result<Value> {
         if args.is_empty() {
             return Err("strcat requires at least one input".into());
         }
-        let mut operands = Vec::with_capacity(args.len());
-        for a in args {
-            match self.operand("strcat", a)? {
-                Operand::Other => {
-                    return Err("strcat: inputs must be strings or cell arrays of strings".into());
+        let any_cell = args
+            .iter()
+            .any(|a| matches!(a, Value::Container(Array::Cell(_))));
+        let mut shape = None;
+        for a in &mut args {
+            self.check_cancel()?;
+            let size = match a {
+                Value::Text(text) => {
+                    text.truncate(text.trim_end_matches(is_strcat_space).len());
+                    None
                 }
-                o => operands.push(o),
+                Value::Container(Array::Character(chars)) if !chars.is_nd() => {
+                    (!(any_cell && chars.rows() == 0)).then(|| (chars.rows(), 1))
+                }
+                Value::Container(Array::Cell(cell)) => {
+                    (cell.len() != 1).then(|| (cell.rows(), cell.cols()))
+                }
+                _ => return Err("strcat: inputs must be strings or cell arrays of strings".into()),
+            };
+            if let Some(size) = size {
+                if shape.is_some_and(|old| old != size) {
+                    return Err(
+                        "strcat: nonscalar inputs must have matching text dimensions".into(),
+                    );
+                }
+                shape = Some(size);
             }
         }
-        let mut shape: Option<(usize, usize)> = None;
-        for o in &operands {
-            if let Operand::Cell { rows, cols, .. } = o
-                && rows * cols != 1
-            {
-                match shape {
-                    None => shape = Some((*rows, *cols)),
-                    Some(s) if s == (*rows, *cols) => {}
-                    Some(_) => {
-                        return Err("strcat: nonscalar cell arrays must have the same size".into());
-                    }
-                }
-            }
-        }
-        let any_cell = operands.iter().any(|o| matches!(o, Operand::Cell { .. }));
-        if !any_cell {
+        if shape.is_none() && !any_cell {
             let mut text = String::new();
-            for o in &operands {
-                if let Operand::Text(s) = o {
-                    text.push_str(s.trim_end_matches(is_white));
+            for a in &args {
+                if let Value::Text(s) = a {
+                    if s.len() > MAX_TEXT - text.len() {
+                        return Err("strcat: result exceeds 2 MiB".into());
+                    }
+                    text.push_str(s);
                 }
             }
             return Ok(Value::Text(text));
         }
         let (rows, cols) = shape.unwrap_or((1, 1));
-        let mut result = Vec::with_capacity(rows * cols);
-        for i in 0..rows * cols {
-            if i.is_multiple_of(1024) {
-                self.check_cancel()?;
-            }
-            let mut text = String::new();
-            for o in &operands {
-                match o {
-                    Operand::Text(s) => text.push_str(s.trim_end_matches(is_white)),
-                    Operand::Cell { items, .. } => {
-                        let item = if items.len() == 1 {
-                            &items[0]
-                        } else {
-                            &items[i]
-                        };
-                        let Some(s) = item else {
+        let count = rows * cols;
+        self.preflight_elements(count)?;
+        let mut result = Vec::with_capacity(count);
+        let mut total_units = 0usize;
+        for i in 0..count {
+            self.check_cancel()?;
+            let mut units = Vec::new();
+            for a in &args {
+                match a {
+                    Value::Text(s) => strcat_append(&mut units, s.encode_utf16())?,
+                    Value::Container(Array::Character(chars)) => {
+                        if chars.rows() == 0 {
+                            continue;
+                        }
+                        let row = chars.units().iter().skip(i).step_by(rows).copied();
+                        let len = row.clone().rposition(|unit| {
+                            unit > 0x7f || !is_strcat_space(char::from(unit as u8))
+                        });
+                        strcat_append(&mut units, row.take(len.map_or(0, |last| last + 1)))?;
+                    }
+                    Value::Container(Array::Cell(cell)) => {
+                        let index = if cell.len() == 1 { 0 } else { i };
+                        let Array::Character(chars) = cell.get_linear(index)?.as_ref() else {
                             return Err("strcat: cell elements must be strings".into());
                         };
-                        text.push_str(s);
+                        if !chars.is_text_row() {
+                            return Err("strcat: cell elements must be character rows".into());
+                        }
+                        strcat_append(&mut units, chars.units().iter().copied())?;
                     }
-                    Operand::Other => unreachable!(),
+                    _ => unreachable!(),
                 }
             }
-            if text.len() > MAX_TEXT {
-                return Err("strcat: result exceeds 2 MiB".into());
+            let width = units.len();
+            if !any_cell {
+                CharacterRow::checked_len(rows, width)?;
             }
-            result.push(self.string_array(&text)?);
+            total_units += width;
+            self.preflight_elements(count + total_units.div_ceil(4))?;
+            if units.capacity() > MAX_CHARACTER_UNITS {
+                units = units.into_boxed_slice().into_vec();
+            }
+            let height = usize::from(!any_cell || width != 0);
+            result.push(CharacterRow::from_column_major(
+                height,
+                width,
+                units,
+                &self.cancel,
+            )?);
         }
-        self.cell_value(rows, cols, result)
+        if any_cell {
+            self.cell_value(
+                rows,
+                cols,
+                result.into_iter().map(Array::Character).collect(),
+            )
+        } else {
+            self.character_blocks(result.into_iter().map(|row| vec![row]).collect(), true)
+        }
     }
 
     fn strsplit_call(&self, args: &[Value]) -> Result<Value> {
@@ -995,9 +1083,16 @@ impl Engine {
     }
 
     fn num2cell_call(&self, args: &[Value]) -> Result<Value> {
-        let [value] = args else {
-            return Err("num2cell requires exactly one input".into());
+        let value = match args {
+            [value] => value,
+            // Dense dimension grouping; sparse sources are dispatched earlier.
+            [value, dim] => return dense_num2cell(self, value, dim),
+            _ => return Err("num2cell: expected one or two inputs".into()),
         };
+        // One input never folds an N-D source into a 2-D grid of scalars.
+        if value.is_nd() {
+            return Err(super::nd::unsupported("num2cell", args));
+        }
         let (rows, cols) = match value {
             Value::Matrix(m) => (m.rows(), m.cols()),
             Value::Logical(m) => (m.rows(), m.cols()),

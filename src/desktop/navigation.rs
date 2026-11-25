@@ -10,6 +10,8 @@ pub(super) struct State {
     pub left: Option<Left>,
     pub workspace: bool,
     pub command: bool,
+    pub drawer_collapsed: bool,
+    pub inspector_open: bool,
     focus_request: Option<(u64, FocusPane, u64)>,
 }
 impl Default for State {
@@ -18,6 +20,8 @@ impl Default for State {
             left: Some(Left::Files),
             workspace: true,
             command: true,
+            drawer_collapsed: false,
+            inspector_open: false,
             focus_request: None,
         }
     }
@@ -130,13 +134,19 @@ impl Workspace {
         {
             return;
         }
+        self.navigation.inspector_open = false;
         let id = match pane {
             FocusPane::Command => {
                 self.editor_window.clear_focus();
-                if self.layout.center.is_some() {
+                // Figures and Apps keep their work area: the Command drawer
+                // below it takes the focus.
+                if self.layout.center.is_some()
+                    && matches!(self.mode(), modes::Mode::Command | modes::Mode::Editor)
+                {
                     self.show_command_center();
                 }
                 self.navigation.command = true;
+                self.navigation.drawer_collapsed = false;
                 egui::Id::new("command_input")
             }
             FocusPane::Editor => {

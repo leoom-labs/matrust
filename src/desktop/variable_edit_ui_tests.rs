@@ -13,6 +13,16 @@ fn finish(app: &mut Workspace) {
     }
     assert!(!app.busy, "{}", app.status);
 }
+thread_local! {
+    static CLOCK: std::cell::Cell<f64> = const { std::cell::Cell::new(0.) };
+}
+/// Each test frame is 0.1 s later, so two clicks a few frames apart are not a double-click.
+fn tick() -> f64 {
+    CLOCK.with(|c| {
+        c.set(c.get() + 0.1);
+        c.get()
+    })
+}
 fn frame(
     app: &mut Workspace,
     ctx: &egui::Context,
@@ -27,6 +37,7 @@ fn frame(
                 egui::Pos2::ZERO,
                 egui::vec2(1100., 760.),
             )),
+            time: Some(tick()),
             events: std::iter::once(egui::Event::ModifiersChanged(modifiers))
                 .chain(events)
                 .collect(),
@@ -845,12 +856,7 @@ fn copy_text_row_uses_worker_validation_for_valid_invalid_and_empty_rows() {
         if original.is_empty() {
             let output = idle(&mut app, &ctx);
             assert!(output.shapes.iter().any(|shape| {
-                find(
-                    &shape.shape,
-                    shape.clip_rect,
-                    "Empty character array; no editable code units.",
-                )
-                .is_some()
+                find(&shape.shape, shape.clip_rect, "1\u{00d7}0 empty char array").is_some()
             }));
             assert!(
                 !output
@@ -1051,5 +1057,716 @@ fn character_keyboard_error_is_visible_in_both_themes_and_keeps_grid_focus() {
         );
         assert!(original.same_snapshot(&app.variables["S"]));
         assert!(original.same_snapshot(&app.variables["Alias"]));
+    }
+}
+
+fn open(src: &str) -> (egui::Context, Workspace) {
+    let ctx = egui::Context::default();
+    let mut app = Workspace::with_context(ctx.clone(), true);
+    app.run(src.into());
+    finish(&mut app);
+    app.inspect_variable("A".into());
+    idle(&mut app, &ctx);
+    (ctx, app)
+}
+fn mouse(
+    app: &mut Workspace,
+    ctx: &egui::Context,
+    pos: egui::Pos2,
+    button: egui::PointerButton,
+    modifiers: egui::Modifiers,
+) {
+    for pressed in [true, false] {
+        frame(
+            app,
+            ctx,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button,
+                    pressed,
+                    modifiers,
+                },
+            ],
+            modifiers,
+            false,
+        );
+    }
+}
+fn click_cell(app: &mut Workspace, ctx: &egui::Context, cell: (usize, usize), shift: bool) {
+    let pos = app.numeric_editor.cells[&cell].center();
+    let modifiers = if shift {
+        egui::Modifiers::SHIFT
+    } else {
+        egui::Modifiers::NONE
+    };
+    mouse(app, ctx, pos, egui::PointerButton::Primary, modifiers);
+}
+fn press_keys(app: &mut Workspace, ctx: &egui::Context, k: egui::Key, m: egui::Modifiers) {
+    frame(app, ctx, vec![key(k, m)], m, false);
+}
+/// (rows, cols, row-major reals) of workspace variable `A`.
+fn grid_of(app: &Workspace) -> (usize, usize, Vec<f64>) {
+    let a = &app.variables["A"];
+    let mut v = Vec::new();
+    for r in 0..a.rows() {
+        for c in 0..a.cols() {
+            v.push(match a.scalar(r, c).unwrap() {
+                matrust::Scalar::Real(x) => x,
+                matrust::Scalar::Logical(x) => f64::from(u8::from(x)),
+                other => panic!("{other:?}"),
+            });
+        }
+    }
+    (a.rows(), a.cols(), v)
+}
+fn selection(app: &Workspace) -> (usize, usize, usize, usize) {
+    app.numeric_editor
+        .selection([app.edit_row - 1, app.edit_col - 1])
+}
+fn copy_selection(app: &mut Workspace, ctx: &egui::Context) -> String {
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::Copy],
+        egui::Modifiers::NONE,
+        false,
+    );
+    finish(app);
+    copied(frame(app, ctx, vec![], egui::Modifiers::NONE, false)).expect("copied text")
+}
+fn paste_text(app: &mut Workspace, ctx: &egui::Context, text: &str) {
+    frame(
+        app,
+        ctx,
+        vec![egui::Event::Paste(text.into())],
+        egui::Modifiers::NONE,
+        false,
+    );
+    finish(app);
+    idle(app, ctx);
+}
+
+#[test]
+fn spreadsheet_copy_then_paste_round_trips_through_the_grid() {
+    let (ctx, mut app) = open("A=reshape(1:16,4,4)';");
+    click_cell(&mut app, &ctx, (0, 0), false);
+    click_cell(&mut app, &ctx, (1, 1), true);
+    assert_eq!(selection(&app), (0, 0, 2, 2));
+    let text = copy_selection(&mut app, &ctx);
+    assert_eq!(text, "1\t2\n5\t6");
+    click_cell(&mut app, &ctx, (2, 2), false);
+    paste_text(&mut app, &ctx, &text);
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    let (r, c, v) = grid_of(&app);
+    assert_eq!((r, c), (4, 4));
+    assert_eq!(&v[10..12], &[1., 2.]);
+    assert_eq!(&v[14..16], &[5., 6.]);
+    assert_eq!(v[0], 1.);
+    assert_eq!(v[9], 10.);
+}
+
+#[test]
+fn excel_text_grows_a_2x2_to_the_matlab_result_and_undo_restores_it() {
+    let (ctx, mut app) = open("A=[1 2;3 4];");
+    let original = app.variables["A"].clone();
+    click_cell(&mut app, &ctx, (0, 0), false);
+    paste_text(
+        &mut app,
+        &ctx,
+        "10\t20\t30\t40\r\n50\t60\t70\t80\r\n90\t100\t110\t120\r\n",
+    );
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    let (r, c, v) = grid_of(&app);
+    assert_eq!((r, c), (3, 4));
+    assert_eq!(v[0], 10.);
+    assert_eq!(v[11], 120.);
+    assert_ne!(v.len(), original.rows() * original.cols());
+    // Ctrl+Z restores the exact earlier variable.
+    press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    assert_eq!(grid_of(&app), (2, 2, vec![1., 2., 3., 4.]));
+    assert!(app.variables["A"].same_snapshot(&original));
+    // Ctrl+Y redoes it.
+    press_keys(&mut app, &ctx, egui::Key::Y, egui::Modifiers::CTRL);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(grid_of(&app).0, 3);
+}
+
+#[test]
+fn undo_is_refused_after_the_variable_changed_elsewhere() {
+    let (ctx, mut app) = open("A=[1 2;3 4];");
+    click_cell(&mut app, &ctx, (0, 0), false);
+    paste_text(&mut app, &ctx, "9");
+    assert_eq!(grid_of(&app).2[0], 9.);
+    app.run("A=[5 6 7];".into());
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    click(&mut app, &ctx, "Undo", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    let error = app.cell_error.clone().unwrap_or_default();
+    assert!(error.contains("refused"), "{error:?}");
+    assert_eq!(grid_of(&app), (1, 3, vec![5., 6., 7.]));
+}
+
+#[test]
+fn undo_keeps_at_most_twenty_steps() {
+    let (ctx, mut app) = open("A=[0 0];");
+    click_cell(&mut app, &ctx, (0, 0), false);
+    for i in 1..=22 {
+        paste_text(&mut app, &ctx, &i.to_string());
+    }
+    for _ in 0..30 {
+        press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+    }
+    // 22 edits, 20 undo steps: the value after edit 2 remains.
+    assert_eq!(grid_of(&app).2[0], 2.);
+}
+
+#[test]
+fn header_click_selects_row_or_column_and_ctrl_a_selects_all() {
+    let (ctx, mut app) = open("A=reshape(1:12,3,4)';");
+    let pos = app.numeric_editor.row_headers[&1].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Primary,
+        egui::Modifiers::NONE,
+    );
+    assert_eq!(selection(&app), (1, 0, 1, 3));
+    let pos = app.numeric_editor.row_headers[&2].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Primary,
+        egui::Modifiers::SHIFT,
+    );
+    assert_eq!(selection(&app), (1, 0, 2, 3));
+    let pos = app.numeric_editor.col_headers[&2].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Primary,
+        egui::Modifiers::NONE,
+    );
+    assert_eq!(selection(&app), (0, 2, 4, 1));
+    click_cell(&mut app, &ctx, (1, 1), false);
+    assert_eq!(selection(&app), (1, 1, 1, 1));
+    press_keys(&mut app, &ctx, egui::Key::A, egui::Modifiers::CTRL);
+    assert_eq!(selection(&app), (0, 0, 4, 3));
+    let text = copy_selection(&mut app, &ctx);
+    assert_eq!(text.lines().count(), 4);
+    assert!(text.starts_with("1\t2\t3"));
+}
+
+#[test]
+fn mouse_drag_selects_a_rectangle() {
+    let (ctx, mut app) = open("A=reshape(1:20,4,5)';");
+    let a = app.numeric_editor.cells[&(0, 1)].center();
+    let b = app.numeric_editor.cells[&(2, 3)].center();
+    frame(
+        &mut app,
+        &ctx,
+        vec![
+            egui::Event::PointerMoved(a),
+            egui::Event::PointerButton {
+                pos: a,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+        egui::Modifiers::NONE,
+        false,
+    );
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerMoved(b)],
+        egui::Modifiers::NONE,
+        false,
+    );
+    frame(&mut app, &ctx, vec![], egui::Modifiers::NONE, false);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::PointerButton {
+            pos: b,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+        egui::Modifiers::NONE,
+        false,
+    );
+    assert_eq!(selection(&app), (0, 1, 3, 3));
+    // The grid did not scroll under the drag.
+    assert!(app.numeric_editor.cells.contains_key(&(0, 1)));
+}
+
+#[test]
+fn typing_f2_and_escape_edit_a_cell_in_place() {
+    let (ctx, mut app) = open("A=[1 2;3 4];");
+    click_cell(&mut app, &ctx, (0, 1), false);
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("7".into())],
+        egui::Modifiers::NONE,
+        false,
+    );
+    idle(&mut app, &ctx);
+    assert_eq!(app.numeric_editor.editing(), Some([0, 1]));
+    press_keys(&mut app, &ctx, egui::Key::Enter, egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(grid_of(&app).2, vec![1., 7., 3., 4.]);
+    assert_eq!(app.numeric_editor.editing(), None);
+    // F2 opens the editor on the current literal; Escape cancels.
+    press_keys(&mut app, &ctx, egui::Key::F2, egui::Modifiers::NONE);
+    idle(&mut app, &ctx);
+    assert_eq!(app.numeric_editor.editing(), Some([0, 1]));
+    assert_eq!(app.edit_value, "7");
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("9".into())],
+        egui::Modifiers::NONE,
+        false,
+    );
+    press_keys(&mut app, &ctx, egui::Key::Escape, egui::Modifiers::NONE);
+    idle(&mut app, &ctx);
+    assert_eq!(app.numeric_editor.editing(), None);
+    assert_eq!(grid_of(&app).2, vec![1., 7., 3., 4.]);
+    // The edit made above undoes.
+    press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+    finish(&mut app);
+    assert_eq!(grid_of(&app).2, vec![1., 2., 3., 4.]);
+}
+
+#[test]
+fn nd_empty_label_uses_the_empty_caption_review_f1112() {
+    let ctx = egui::Context::default();
+    let mut app = Workspace::with_context(ctx.clone(), true);
+    for (script, label) in [
+        ("A=ones(3,0,5);", "3\u{00d7}0\u{00d7}5 empty double array"),
+        ("A=false(0,2,2);", "0\u{00d7}2\u{00d7}2 empty logical array"),
+    ] {
+        app.run(script.to_string());
+        finish(&mut app);
+        app.inspect_variable("A".into());
+        let output = idle(&mut app, &ctx);
+        let has = |text: &str| {
+            output
+                .shapes
+                .iter()
+                .any(|shape| find(&shape.shape, shape.clip_rect, text).is_some())
+        };
+        assert!(has(label), "{script}");
+        assert!(!has("N-D array: use indexing"), "{script}");
+    }
+}
+
+#[test]
+fn char_cell_keystroke_rejects_a_non_bmp_unit_review_f1112() {
+    let (ctx, mut app) = open("A=char([65 66]);");
+    click_cell(&mut app, &ctx, (0, 0), false);
+    let before = app.variables["A"].clone();
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("\u{1F600}".into())],
+        egui::Modifiers::NONE,
+        false,
+    );
+    idle(&mut app, &ctx);
+    assert_eq!(
+        app.cell_error.as_deref(),
+        Some("one UTF-16 unit per char cell; use \\uXXXX")
+    );
+    assert_eq!(app.numeric_editor.editing(), None);
+    assert!(before.same_snapshot(&app.variables["A"]));
+    let Array::Character(text) = &app.variables["A"] else {
+        panic!("char");
+    };
+    assert_eq!(text.units(), &[65, 66]);
+    assert!(!text.units().contains(&0xD83D));
+    frame(
+        &mut app,
+        &ctx,
+        vec![egui::Event::Text("é".into())],
+        egui::Modifiers::NONE,
+        false,
+    );
+    idle(&mut app, &ctx);
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    assert_eq!(app.numeric_editor.editing(), Some([0, 0]));
+    assert_eq!(app.edit_value, "\\u00E9");
+    assert!(before.same_snapshot(&app.variables["A"]));
+    press_keys(&mut app, &ctx, egui::Key::Enter, egui::Modifiers::NONE);
+    finish(&mut app);
+    let Array::Character(text) = &app.variables["A"] else {
+        panic!("char");
+    };
+    assert_eq!(text.units(), &[0x00E9, 66]);
+}
+
+#[test]
+fn context_menu_inserts_and_deletes_rows_and_columns() {
+    let (ctx, mut app) = open("A=[1 2;3 4];");
+    let pos = app.numeric_editor.cells[&(0, 0)].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Secondary,
+        egui::Modifiers::NONE,
+    );
+    click(&mut app, &ctx, "Insert row below", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    assert_eq!(grid_of(&app), (3, 2, vec![1., 2., 0., 0., 3., 4.]));
+    // Delete the selected column of the first cell.
+    let pos = app.numeric_editor.cells[&(0, 0)].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Secondary,
+        egui::Modifiers::NONE,
+    );
+    click(&mut app, &ctx, "Delete column(s)", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(grid_of(&app), (3, 1, vec![2., 0., 4.]));
+    // A row header menu acts on that whole row.
+    let pos = app.numeric_editor.row_headers[&1].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Secondary,
+        egui::Modifiers::NONE,
+    );
+    click(&mut app, &ctx, "Delete row(s)", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(grid_of(&app), (2, 1, vec![2., 4.]));
+}
+
+#[test]
+fn double_click_opens_the_cell_editor() {
+    let (ctx, mut app) = open("A=[1 2;3 4];");
+    let pos = app.numeric_editor.cells[&(1, 0)].center();
+    for pressed in [true, false, true, false] {
+        frame(
+            &mut app,
+            &ctx,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            egui::Modifiers::NONE,
+            false,
+        );
+    }
+    idle(&mut app, &ctx);
+    assert_eq!(app.numeric_editor.editing(), Some([1, 0]));
+    assert_eq!(app.edit_value, "3");
+}
+
+#[test]
+fn container_spreadsheets_copy_paste_grow_and_ctrl_z_restore_exactly() {
+    for (src, at, expected) in [
+        ("A=[\"a\" \"b\";\"c\" \"d\"];", (1, 1), "a\tb\nc\td"),
+        ("A={1,'two';3,'four'};", (1, 1), "1\ttwo\n3\tfour"),
+        (
+            "A=table([1;2;3;4],[\"a\";\"b\";\"c\";\"d\"],'VariableNames',{'Amount','Label'});",
+            (3, 0),
+            "1\ta\n2\tb",
+        ),
+    ] {
+        let (ctx, mut app) = open(src);
+        let original = app.variables["A"].clone();
+        if matches!(original, Array::Table(_)) {
+            let out = idle(&mut app, &ctx);
+            assert!(
+                out.shapes
+                    .iter()
+                    .any(|s| find(&s.shape, s.clip_rect, "Amount").is_some())
+            );
+            assert!(
+                out.shapes
+                    .iter()
+                    .any(|s| find(&s.shape, s.clip_rect, "Label").is_some())
+            );
+        }
+        click_cell(&mut app, &ctx, (0, 0), false);
+        click_cell(&mut app, &ctx, (1, 1), true);
+        assert_eq!(selection(&app), (0, 0, 2, 2), "{src}");
+        let text = copy_selection(&mut app, &ctx);
+        assert_eq!(text, expected, "{src}");
+        click_cell(&mut app, &ctx, at, false);
+        paste_text(&mut app, &ctx, &text);
+        assert!(app.cell_error.is_none(), "{src}: {:?}", app.cell_error);
+        let updated = &app.variables["A"];
+        assert_eq!((updated.rows(), updated.cols()), (at.0 + 2, at.1 + 2));
+        for r in 0..2 {
+            for c in 0..2 {
+                assert_eq!(
+                    matrust::variable_edit::cell_literal(updated, at.0 + r, at.1 + c).unwrap(),
+                    matrust::variable_edit::cell_literal(&original, r, c).unwrap()
+                );
+            }
+        }
+        // Workspace's published snapshot drives the size shown by both panes.
+        let size = format!(
+            "{} rows × {} columns · {}",
+            updated.rows(),
+            updated.cols(),
+            workspace_type_label(updated)
+        );
+        let out = idle(&mut app, &ctx);
+        assert!(
+            out.shapes
+                .iter()
+                .any(|s| find(&s.shape, s.clip_rect, &size).is_some())
+        );
+        press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.cell_error.is_none(), "{src}: {:?}", app.cell_error);
+        assert!(app.variables["A"].same_snapshot(&original), "{src}");
+    }
+}
+
+#[test]
+fn table_grid_names_headers_refusal_and_row_menu_use_the_worker() {
+    let (ctx, mut app) = open(
+        "A=table([1;2],[\"a\";\"b\"],'VariableNames',{'Amount','Label'},'RowNames',{'first','second'});",
+    );
+    let original = app.variables["A"].clone();
+    let out = idle(&mut app, &ctx);
+    for label in ["Amount", "Label", "first", "second"] {
+        assert!(
+            out.shapes
+                .iter()
+                .any(|s| find(&s.shape, s.clip_rect, label).is_some()),
+            "{label}"
+        );
+    }
+    // Header selects data rows. Its name is never a cell or a paste destination.
+    let header = app.numeric_editor.col_headers[&0].center();
+    mouse(
+        &mut app,
+        &ctx,
+        header,
+        egui::PointerButton::Primary,
+        egui::Modifiers::NONE,
+    );
+    paste_text(&mut app, &ctx, "abc");
+    assert!(app.cell_error.is_some());
+    assert!(app.variables["A"].same_snapshot(&original));
+    paste_text(&mut app, &ctx, "7");
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    assert_eq!(
+        matrust::variable_edit::cell_literal(&app.variables["A"], 0, 0).unwrap(),
+        "7"
+    );
+    let pos = app.numeric_editor.row_headers[&0].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Secondary,
+        egui::Modifiers::NONE,
+    );
+    click(&mut app, &ctx, "Insert row below", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(app.variables["A"].rows(), 3);
+    assert_eq!(
+        matrust::variable_edit::cell_literal(&app.variables["A"], 1, 1).unwrap(),
+        "<missing>"
+    );
+    let pos = app.numeric_editor.row_headers[&1].center();
+    mouse(
+        &mut app,
+        &ctx,
+        pos,
+        egui::PointerButton::Secondary,
+        egui::Modifiers::NONE,
+    );
+    click(&mut app, &ctx, "Delete row(s)", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert_eq!(app.variables["A"].rows(), 2);
+}
+
+#[test]
+fn container_f2_edits_inline_and_double_click_opens_matrix_contents() {
+    for (src, expected, numeric_child) in [
+        ("A=[\"a\" \"b\"];", "5", false),
+        ("A={'text',[1 2 3]};", "5", true),
+        ("A=table([1;2],'VariableNames',{'Amount'});", "5", false),
+    ] {
+        let (ctx, mut app) = open(src);
+        click_cell(&mut app, &ctx, (0, 0), false);
+        press_keys(&mut app, &ctx, egui::Key::F2, egui::Modifiers::NONE);
+        idle(&mut app, &ctx);
+        assert_eq!(app.numeric_editor.editing(), Some([0, 0]));
+        app.edit_value = "5".into();
+        press_keys(&mut app, &ctx, egui::Key::Enter, egui::Modifiers::NONE);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.cell_error.is_none(), "{src}: {:?}", app.cell_error);
+        assert_eq!(
+            matrust::variable_edit::cell_literal(&app.variables["A"], 0, 0).unwrap(),
+            expected
+        );
+        if numeric_child {
+            assert!(matches!(child(&app.variables["A"], 0), Array::Numeric(_)));
+            let pos = app.numeric_editor.cells[&(0, 1)].center();
+            for pressed in [true, false, true, false] {
+                frame(
+                    &mut app,
+                    &ctx,
+                    vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ],
+                    egui::Modifiers::NONE,
+                    false,
+                );
+            }
+            idle(&mut app, &ctx);
+            assert_eq!(app.typed_inspector.path, vec![1]);
+            assert_eq!(app.numeric_editor.editing(), None);
+            assert_eq!(app.numeric_editor.cells.len(), 3);
+        }
+    }
+}
+
+#[test]
+fn empty_spreadsheets_can_insert_dimensions_and_undo() {
+    for src in ["A=zeros(0,0);", "A=strings(0,0);", "A=cell(0,0);"] {
+        let (ctx, mut app) = open(src);
+        let original = app.variables["A"].clone();
+        click(&mut app, &ctx, "Insert row", egui::Modifiers::NONE);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert_eq!(
+            (app.variables["A"].rows(), app.variables["A"].cols()),
+            (1, 0)
+        );
+        click(&mut app, &ctx, "Insert column", egui::Modifiers::NONE);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.cell_error.is_none(), "{src}: {:?}", app.cell_error);
+        assert_eq!(
+            (app.variables["A"].rows(), app.variables["A"].cols()),
+            (1, 1)
+        );
+        click(&mut app, &ctx, "Undo", egui::Modifiers::NONE);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        click(&mut app, &ctx, "Undo", egui::Modifiers::NONE);
+        finish(&mut app);
+        assert!(app.variables["A"].same_snapshot(&original), "{src}");
+    }
+    let (ctx, mut app) =
+        open("A=table(zeros(0,1),strings(0,1),'VariableNames',{'Amount','Label'});");
+    click(&mut app, &ctx, "Insert row", egui::Modifiers::NONE);
+    finish(&mut app);
+    idle(&mut app, &ctx);
+    assert!(app.cell_error.is_none(), "{:?}", app.cell_error);
+    assert_eq!(
+        (app.variables["A"].rows(), app.variables["A"].cols()),
+        (1, 2)
+    );
+}
+
+#[test]
+fn deleting_all_rows_or_columns_exposes_insert_buttons_without_a_stale_cursor() {
+    for (src, header_row) in [
+        ("A=[7 8];", true),
+        ("A=[\"a\";\"b\"];", false),
+        ("A={1;2};", false),
+    ] {
+        let (ctx, mut app) = open(src);
+        let original = app.variables["A"].clone();
+        let pos = if header_row {
+            app.numeric_editor.row_headers[&0].center()
+        } else {
+            app.numeric_editor.col_headers[&0].center()
+        };
+        mouse(
+            &mut app,
+            &ctx,
+            pos,
+            egui::PointerButton::Secondary,
+            egui::Modifiers::NONE,
+        );
+        click(
+            &mut app,
+            &ctx,
+            if header_row {
+                "Delete row(s)"
+            } else {
+                "Delete column(s)"
+            },
+            egui::Modifiers::NONE,
+        );
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.variables["A"].is_empty());
+        click(
+            &mut app,
+            &ctx,
+            if header_row {
+                "Insert row"
+            } else {
+                "Insert column"
+            },
+            egui::Modifiers::NONE,
+        );
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert_eq!(
+            (app.variables["A"].rows(), app.variables["A"].cols()),
+            (original.rows(), original.cols())
+        );
+        assert!(app.cell_error.is_none(), "{src}: {:?}", app.cell_error);
+        click_cell(&mut app, &ctx, (0, 0), false);
+        press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.variables["A"].is_empty());
+        // The persistent grid keeps Ctrl+Z working even when no cells remain.
+        press_keys(&mut app, &ctx, egui::Key::Z, egui::Modifiers::CTRL);
+        finish(&mut app);
+        idle(&mut app, &ctx);
+        assert!(app.variables["A"].same_snapshot(&original));
     }
 }

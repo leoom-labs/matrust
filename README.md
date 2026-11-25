@@ -25,7 +25,9 @@ One-minute demo (MP4, 0.6 MB, no sound). Try it in your browser at [matrust.dev/
 - Object-oriented MATLAB (`classdef`). `containers.Map` is available.
 - N-dimensional arrays and sparse matrices.
 - Many option flags. Calls outside a function's stated limits are rejected with an error, not approximated.
-- Very long or very large runs. Per-run limits on execution steps, output size, figures and series stop them with an error (see the user guide).
+- Very long or very large runs. The desktop app and the `matrust` command line have no step or per-run output-size limit; Stop or Ctrl+C ends a run. The per-statement evaluation guard and for-loop input guard scale with RAM.
+  Many individual functions still refuse arrays above 32 Mi elements (256 MiB) for now. One displayed value may be up to 32 MiB on desktop/CLI and 2 MiB in the browser; larger values fail with an error, so use semicolons to suppress output.
+- The browser console keeps per-run limits on execution steps (1,000,000) and output (2,000 entries or 2 MiB). Figures and series are limited everywhere (see the user guide).
 
 ## Download
 
@@ -76,11 +78,13 @@ matrust --eval "disp(magic(3))"
 
 Built and tested with Rust 1.99; older versions are untested. `Cargo.lock` pins the dependencies.
 
-Linux, with the desktop app:
+Linux, with the desktop app (sound output needs the ALSA headers: `sudo apt install libasound2-dev`; without sudo, `bash tool/alsa-dev.sh setup` then `eval "$(bash tool/alsa-dev.sh env)"`):
 
 ```
 cargo build --release --features desktop
 ```
+
+The engine alone (`cargo build --release`, no `desktop`) needs no ALSA.
 
 This needs the usual X11 or Wayland development libraries, CMake and a C compiler (HDF5 is built statically).
 

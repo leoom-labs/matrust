@@ -1,0 +1,8 @@
+region,product,units,price
+North,A,10,2.5
+South,B,,3.0
+North,B,7,3.0
+East,A,4,
+South,A,12,2.5
+East,B,,3.0
+North,A,5,2.5

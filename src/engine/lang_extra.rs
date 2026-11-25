@@ -1,7 +1,7 @@
 //! Language helpers: bsxfun, builtin, which/what, inline objects,
 //! clearvars, functions/localfunctions/dbstack, diary and environment queries.
 //! `inline` objects use the tagged-struct facade of lang_more (kind 3).
-use super::{Engine, Execution, Value, lang_more};
+use super::{Engine, Execution, Value, clear_variables::variable_glob, lang_more};
 use crate::{
     Array, CellArray, FunctionHandle, LogicalMatrix, Matrix, Result, StructArray,
     syntax::{self, Expr},
@@ -52,6 +52,7 @@ const M_FILES: &[&str] = &[
     "deblank",
     "dot",
     "factorial",
+    "findall",
     "fieldnames",
     "fileparts",
     "flip",
@@ -106,6 +107,17 @@ const M_FILES: &[&str] = &[
     "usejava",
     "var",
 ];
+/// Fixed method table of a built-in object class (`methods`).
+pub(super) fn lg3_method_table(class: &str) -> Option<&'static [&'static str]> {
+    match class {
+        "inline" => Some(INLINE_METHODS),
+        "MException" => Some(EXCEPTION_METHODS),
+        "containers.Map" => Some(MAP_METHODS),
+        "griddedInterpolant" | "scatteredInterpolant" => Some(INTERPOLANT_METHODS),
+        "fittype" | "cfit" | "sfit" => Some(super::curve_fit::METHODS),
+        _ => None,
+    }
+}
 const INLINE_METHODS: &[&str] = &[
     "argnames",
     "cat",
@@ -155,6 +167,7 @@ const MAP_METHODS: &[&str] = &[
     "size",
     "values",
 ];
+const INTERPOLANT_METHODS: &[&str] = &["delete", "eq", "isvalid"];
 const WHAT_FIELDS: [&str; 10] = [
     "path", "m", "mlapp", "mat", "mex", "mdl", "slx", "p", "classes", "packages",
 ];
@@ -170,7 +183,7 @@ pub(super) struct Lg3State {
     byte: usize,
     /// One entry per entered function frame: its `path::name` and the byte
     /// of the calling statement in the caller.
-    calls: Vec<(String, usize)>,
+    calls: Vec<(String, usize, Option<Arc<str>>)>,
     /// `builtin(name, ...)` in progress: user functions named `name` are
     /// skipped up to this evaluation depth (the dispatch of that call only).
     builtin: Option<(String, usize)>,
@@ -206,6 +219,7 @@ pub(super) fn lg3_handles(name: &str) -> bool {
             | "usejava"
             | "isstudent"
             | "diary"
+            | "import"
     )
 }
 /// The regex crate here lacks Unicode Perl classes: spell \d, \w, \s
@@ -256,16 +270,20 @@ fn lg3_is_inline(value: &Value) -> bool {
     matches!(value, Value::Container(a @ Array::Struct(_)) if lang_more::lng_class(a) == "inline")
 }
 fn lg3_path_text(path: &Path) -> String {
-    path.display().to_string()
+    // Human-readable path for display.
+    super::env_files::envx_path_text(path)
 }
-/// `*` matches any run of characters; the whole name must match.
-fn lg3_wildcard(pattern: &str) -> Result<regex::Regex> {
-    let body = pattern
-        .split('*')
-        .map(regex::escape)
-        .collect::<Vec<_>>()
-        .join(".*");
-    regex::Regex::new(&format!("^{body}$")).map_err(|e| e.to_string())
+/// Win32 trims dots and spaces from ordinary paths. Keep the verbatim spelling
+/// when a component would otherwise lose its identity.
+fn lg3_which_path(path: &Path) -> String {
+    #[cfg(windows)]
+    if path.components().any(|part| {
+        matches!(part, std::path::Component::Normal(name)
+            if matches!(name.as_encoded_bytes().last(), Some(b'.' | b' ')))
+    }) {
+        return path.to_string_lossy().into_owned();
+    }
+    lg3_path_text(path)
 }
 /// genvarname's conversion of one candidate to a valid name.
 fn lg3_valid_name(candidate: &str) -> String {
@@ -316,21 +334,10 @@ fn lg3_diary_open(path: &Path) -> std::result::Result<std::fs::File, String> {
         .open(path)
         .map_err(|e| format!("Could not open diary file '{}' ({e}).", lg3_path_text(path)))
 }
-/// Line (1-based) of `byte` in the file at `path`, as the parser saw it.
-fn lg3_line(path: &Path, byte: usize) -> usize {
-    let Ok(source) = std::fs::read(path) else {
-        return 1;
-    };
-    let skip = if source.starts_with(&[0xef, 0xbb, 0xbf]) {
-        3
-    } else {
-        0
-    };
-    let end = (skip + byte).min(source.len());
-    1 + source[skip.min(end)..end]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count()
+/// Line (1-based) of `byte` in the executing source, as the parser saw it.
+fn lg3_line(source: &str, byte: usize) -> usize {
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+    crate::syntax::Diagnostic::new(source, byte, String::new()).line
 }
 
 impl Engine {
@@ -374,13 +381,14 @@ impl Engine {
         }
     }
     /// `@name`: bound to the running file when `name` is one of its local
-    /// functions, so `functions` can report the file.
-    pub(super) fn lg3_named_handle(&self, name: &str) -> Result<Value> {
-        let value = self.named_handle(name)?;
-        Ok(match self.lg3_local_file(name) {
-            Some(file) => Value::Container(FunctionHandle::local(name, &file).into()),
-            None => value,
-        })
+    /// functions, so `functions` can report the file; bound to the private
+    /// file when `name` is a private function of the running file's folder
+    /// (`prv_named_handle` has the whole order).
+    pub(super) fn lg3_named_handle(&mut self, name: &str) -> Result<Value> {
+        if let Some(handle) = super::user_functions::nested::handle(&self.functions, name) {
+            return Ok(Value::Container(Array::Handle(handle)));
+        }
+        self.prv_named_handle(name)
     }
     fn lg3_folder(&self) -> Option<PathBuf> {
         self.current_folder().map(Path::to_path_buf)
@@ -401,28 +409,161 @@ impl Engine {
             .unwrap_or_default();
         lg3_path_text(&root.join("toolbox").join("matlab").join(name))
     }
-    /// The .mr/.m file `name` in the function lookup folder.
-    fn lg3_user_file(&self, name: &str) -> Option<PathBuf> {
-        if !crate::files::valid_name(name) {
-            return None;
+    /// `which name`, optionally restricted to method files of `only_class`.
+    /// A class that has the method file answers with that file alone (the
+    /// `-all` flag is then ignored). A class that does not falls through to
+    /// the ordinary lookup and does not list other classes' method files.
+    fn lg3_which_list(
+        &self,
+        name: &str,
+        all: bool,
+        only_class: Option<&str>,
+    ) -> Vec<(String, Option<String>)> {
+        if let Some(class) = only_class {
+            let hits = crate::help::class_method_files(&self.help_path(), class, name, false);
+            if let Some(hit) = hits.into_iter().next() {
+                return vec![(
+                    lg3_which_path(&hit.path),
+                    Some(format!("{} method", hit.class)),
+                )];
+            }
+            return self.lg3_which_entries(name, all, false);
         }
-        let folder = self
-            .function_directory()
-            .map(Path::to_path_buf)
-            .or_else(|| self.file_directory.clone())?;
-        ["mr", "m"]
-            .iter()
-            .map(|e| folder.join(format!("{name}.{e}")))
-            .find(|p| p.is_file())
+        self.lg3_which_entries(name, all, true)
     }
-    /// `which name`: what the name resolves to, or None.
-    fn lg3_which(&self, name: &str) -> Option<String> {
+    /// The answers of `which name` in the order a call by the running code
+    /// looks the name up; the first one is what the call runs, `-all` lists
+    /// every one. Each is the text the function form returns and, for a
+    /// local function or a class method, the comment the statement form adds.
+    /// The variable; an explicitly imported name; a function of the running
+    /// source (a local function as `file (name)`); a wildcard-imported name;
+    /// a private function of the running file's folder; the current folder
+    /// and the search path; the builtin each would shadow. Method files in
+    /// `@Class` folders (and `Cls.method` / `pkg.Cls.method`) come last, and
+    /// only when `methods` is set: they are the answer when nothing else
+    /// matched, and extra lines of `which -all` otherwise. A package file
+    /// (`a.fn`) still wins over a method of class `a`.
+    fn lg3_which_entries(
+        &self,
+        name: &str,
+        all: bool,
+        methods: bool,
+    ) -> Vec<(String, Option<String>)> {
+        let mut found: Vec<(String, Option<String>)> = Vec::new();
         if self.contains_array(name) {
-            return Some("variable".into());
+            found.push(("variable".into(), None));
+            if !all {
+                return found;
+            }
         }
-        if let Some(path) = self.lg3_user_file(name) {
-            return Some(lg3_path_text(&path));
+        let plain = crate::files::valid_name(name);
+        // Files the import list of the running workspace gives the name.
+        let imported = |wildcard: bool| -> Vec<PathBuf> {
+            let mut files = Vec::new();
+            for entry in self.functions.imp_list() {
+                let qualified = match entry.strip_suffix(".*") {
+                    Some(package) if wildcard => format!("{package}.{name}"),
+                    None if !wildcard && entry.rsplit('.').next() == Some(name) => entry,
+                    _ => continue,
+                };
+                files.extend(self.spath_files(&qualified, all));
+                if !all && !files.is_empty() {
+                    break;
+                }
+            }
+            files
+        };
+        for step in 0..5 {
+            let mut files = Vec::new();
+            match step {
+                0 if plain => files = imported(false),
+                1 if plain => {
+                    // A function of the source the running code belongs to.
+                    let Some(source) = self.ctx_own_source(name) else {
+                        continue;
+                    };
+                    let local = match (self.lg3_local_file(name), source) {
+                        (Some(file), _) => Some(file),
+                        // The main function of the running file: its file.
+                        (None, Some(file)) => {
+                            files.push(file);
+                            None
+                        }
+                        // Text run without a file: every function is local.
+                        (None, None) => match self.document_path.clone() {
+                            Some(document) => Some(document),
+                            None => {
+                                found.push(("local function".into(), None));
+                                None
+                            }
+                        },
+                    };
+                    if let Some(file) = local {
+                        let parent = file
+                            .file_stem()
+                            .map(|stem| stem.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        found.push((
+                            format!("{} ({name})", lg3_which_path(&file)),
+                            Some(format!("Local function of {parent}")),
+                        ));
+                    }
+                }
+                2 if plain => files = imported(true),
+                3 => files = self.prv_files(name),
+                4 => {
+                    files = self.spath_files(name, all);
+                    if (all || files.is_empty())
+                        && let Ok(path) = self.files_read_path(name, "")
+                        && path.is_file()
+                    {
+                        files.push(path);
+                    }
+                }
+                _ => {}
+            }
+            for path in files {
+                let text = lg3_which_path(&path);
+                if !found.iter().any(|(listed, _)| *listed == text) {
+                    found.push((text, None));
+                }
+            }
+            if !all && !found.is_empty() {
+                found.truncate(1);
+                return found;
+            }
         }
+        found.extend(self.lg3_which_builtin(name).map(|text| (text, None)));
+        if methods && (all || found.is_empty()) {
+            self.lg3_which_methods(name, all, &mut found);
+        }
+        found
+    }
+    /// Method files of `@Class` folders on the path, scanned whether or not
+    /// the class was ever loaded. Appended after builtins; a path already
+    /// listed (the class file) is not repeated.
+    fn lg3_which_methods(&self, name: &str, all: bool, found: &mut Vec<(String, Option<String>)>) {
+        let folders = self.help_path();
+        let hits = if crate::files::valid_name(name) {
+            crate::help::method_files(&folders, name, all)
+        } else {
+            let Some((class, method)) = crate::help::qualified_method(name) else {
+                return;
+            };
+            crate::help::class_method_files(&folders, &class, &method, all)
+        };
+        for hit in hits {
+            let text = lg3_which_path(&hit.path);
+            if found.iter().any(|(listed, _)| listed == &text) {
+                continue;
+            }
+            found.push((text, Some(format!("{} method", hit.class))));
+            if !all {
+                break;
+            }
+        }
+    }
+    fn lg3_which_builtin(&self, name: &str) -> Option<String> {
         if KEYWORDS.contains(&name) {
             return Some(format!("built-in ({})", self.lg3_install(name)));
         }
@@ -433,6 +574,57 @@ impl Engine {
             return Some(format!("built-in ({})", self.lg3_install(name)));
         }
         None
+    }
+    /// `which(name)`, `which(name, '-all')`, `which(name, obj)` and
+    /// `which('name(var)')` when `var` is one workspace variable. The
+    /// unquoted command `which name(obj)` is not a call the file-command
+    /// lexer accepts.
+    fn lg3_which_ask(&self, args: &[Value]) -> Result<(String, bool, Option<String>)> {
+        lg3_arity(args, 1, 2)?;
+        let raw = self.lg3_string(&args[0])?;
+        let mut all = false;
+        let mut class = None;
+        if let Some(second) = args.get(1) {
+            if let Some(text) = self.lg3_text(second) {
+                all = text == "-all";
+            } else if let Some(name) = self.lg3_which_object(second) {
+                class = Some(name);
+            } else {
+                return Err(STRING.into());
+            }
+        }
+        if class.is_none()
+            && let Some((name, of_class)) = self.lg3_which_call_name(&raw)
+        {
+            return Ok((name, all, of_class));
+        }
+        Ok((raw, all, class))
+    }
+    /// Class of a user object, when `value` is one.
+    fn lg3_which_object(&self, value: &Value) -> Option<String> {
+        match value {
+            Value::Container(array) => super::classdef::object_class(array),
+            _ => None,
+        }
+    }
+    /// `name(var)` when `var` is a single workspace name. Missing `var`
+    /// leaves the text unchanged. A variable that is not a user object
+    /// resolves `name` with no class.
+    fn lg3_which_call_name(&self, raw: &str) -> Option<(String, Option<String>)> {
+        let (name, rest) = raw.split_once('(')?;
+        let inside = rest.strip_suffix(')')?.trim();
+        let name = name.trim();
+        if !crate::files::valid_name(name) || !crate::files::valid_name(inside) {
+            return None;
+        }
+        if !self.contains_array(inside) {
+            return None;
+        }
+        let class = self
+            .container_variables
+            .get(inside)
+            .and_then(super::classdef::object_class);
+        Some((name.to_owned(), class))
     }
 
     /// Single-output dispatch; `None` when `name` is not ours.
@@ -528,6 +720,7 @@ impl Engine {
                 lg3_arity(args, 0, 0)?;
                 lg3_bool(false)
             }
+            "import" => self.imp_call(args)?,
             "diary" => {
                 self.lg3_diary(args)?;
                 Value::Void
@@ -570,7 +763,7 @@ impl Engine {
         {
             return Ok(None);
         }
-        let values = self.function_arguments(args, None, out)?;
+        let values = super::string_class::arguments(self, name, args, out)?;
         let outputs = match name {
             "builtin" => self.lg3_builtin(&values, targets.len(), Some(targets), out)?,
             "dbstack" => self.lg3_dbstack(&values, targets.len())?,
@@ -608,15 +801,37 @@ impl Engine {
         if super::browser::file_command(name, None) {
             return Err(super::browser::NO_FILES.into());
         }
-        let values = self.function_arguments(args, None, out)?;
+        let values = super::string_class::arguments(self, name, args, out)?;
         let text = match name {
             "which" => {
-                lg3_arity(&values, 1, 2)?;
-                let target = self.lg3_string(&values[0])?;
-                match self.lg3_which(&target) {
-                    Some(v) if v == "variable" => format!("{target} is a variable."),
-                    Some(path) => path,
-                    None => format!("'{target}' not found."),
+                let (target, all, class) = self.lg3_which_ask(&values)?;
+                let found = self.lg3_which_list(&target, all, class.as_deref());
+                if found.is_empty() {
+                    format!("'{target}' not found.")
+                } else {
+                    found
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (v, note))| {
+                            let line = match v.as_str() {
+                                "variable" => return format!("{target} is a variable."),
+                                "local function" => format!("{target} is a local function."),
+                                _ => v.clone(),
+                            };
+                            // A method stays `% Class method` on a later line.
+                            // Any other later hit is `% Shadowed`.
+                            if let Some(note) = note
+                                && (i == 0 || note.ends_with(" method"))
+                            {
+                                format!("{line}  % {note}")
+                            } else if i > 0 {
+                                format!("{line}  % Shadowed")
+                            } else {
+                                line
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 }
             }
             "what" => {
@@ -824,6 +1039,18 @@ impl Engine {
         }
         Ok(values)
     }
+    /// Run `call` as `builtin(name, ...)` dispatches `name`: user functions
+    /// of that name are skipped at this evaluation depth, callbacks the
+    /// builtin runs are deeper and resolve normally.
+    pub(super) fn lg3_shielded<T>(&mut self, name: &str, call: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = self
+            .lg3
+            .builtin
+            .replace((name.to_owned(), self.evaluation_depth));
+        let result = call(self);
+        self.lg3.builtin = saved;
+        result
+    }
     /// True while `builtin(name, ...)` dispatches `name`: user functions of
     /// that name are not candidates.
     pub(super) fn lg3_builtin_only(&self, name: &str) -> bool {
@@ -866,19 +1093,15 @@ impl Engine {
     }
 
     fn lg3_which_call(&mut self, args: &[Value]) -> Result<Value> {
-        lg3_arity(args, 1, 2)?;
-        let name = self.lg3_string(&args[0])?;
-        let all = match args.get(1) {
-            Some(v) => self.lg3_string(v)? == "-all",
-            None => false,
-        };
-        let found = self.lg3_which(&name);
+        let (name, all, class) = self.lg3_which_ask(args)?;
+        let found = self.lg3_which_list(&name, all, class.as_deref());
+        // The function form returns paths only; the statement prints the note.
+        let list: Vec<String> = found.into_iter().map(|(text, _)| text).collect();
         Ok(Value::Container(if all {
-            let list: Vec<_> = found.into_iter().collect();
             self.lg3_cell(list.len(), usize::from(!list.is_empty()), &list)?
         } else {
-            match found {
-                Some(text) => self.lg3_char(&text)?,
+            match list.first() {
+                Some(text) => self.lg3_char(text)?,
                 None => self.lg3_char("")?,
             }
         }))
@@ -954,7 +1177,7 @@ impl Engine {
         };
         let class = match self.lg3_text(&args[0]) {
             Some(class) => class,
-            None => lang_more::lng_class(&args[0].clone().array(&self.cancel)?).to_owned(),
+            None => lang_more::lng_class(&args[0].clone().array(&self.cancel)?).into_owned(),
         };
         let found = match class.as_str() {
             "inline" => INLINE_METHODS.contains(&method.as_str()),
@@ -1081,7 +1304,7 @@ impl Engine {
                     let compiled = if regexp {
                         lg3_regex(pattern)?
                     } else {
-                        lg3_wildcard(pattern)?
+                        variable_glob(pattern)?
                     };
                     if except {
                         keep.push(compiled);
@@ -1121,7 +1344,29 @@ impl Engine {
             ));
         };
         let Some((function, captured)) = handle.anonymous_parts() else {
+            if let Some(function) = super::user_functions::nested::bound(handle) {
+                let name = super::user_functions::nested::qualified_name(function);
+                let file = function.file().map(lg3_path_text).unwrap_or_default();
+                let fields = vec![
+                    ("function", self.lg3_char(&name)?),
+                    ("type", self.lg3_char("nested")?),
+                    ("file", self.lg3_char(&file)?),
+                    (
+                        "workspace",
+                        super::user_functions::nested::workspace(self, function)?,
+                    ),
+                ];
+                return Ok(Value::Container(self.lg3_struct(fields)?));
+            }
             let name = handle.func2str().to_owned();
+            if let Some(path) = handle.private_file() {
+                let fields = vec![
+                    ("function", self.lg3_char(&name)?),
+                    ("type", self.lg3_char("simple")?),
+                    ("file", self.lg3_char(&lg3_path_text(path))?),
+                ];
+                return Ok(Value::Container(self.lg3_struct(fields)?));
+            }
             if let Some(path) = handle.file() {
                 // A local function: its file and the chain of parents.
                 let parent = path
@@ -1136,8 +1381,8 @@ impl Engine {
                 ];
                 return Ok(Value::Container(self.lg3_struct(fields)?));
             }
-            let file = match self.lg3_user_file(&name) {
-                Some(path) => lg3_path_text(&path),
+            let file = match self.spath_files(&name, false).first() {
+                Some(path) => lg3_path_text(path),
                 None if M_FILES.contains(&name.as_str()) => self.lg3_install(&format!("{name}.m")),
                 None => String::new(),
             };
@@ -1192,18 +1437,15 @@ impl Engine {
     fn lg3_frames(&self) -> Vec<(String, String, usize)> {
         let calls = &self.lg3.calls;
         let mut frames = Vec::new();
-        for (depth, (function, _)) in calls.iter().enumerate().rev() {
+        for (depth, (function, _, source)) in calls.iter().enumerate().rev() {
             let (path, name) = function.rsplit_once("::").unwrap_or(("", function));
             if name.starts_with('<') || name.is_empty() {
                 continue;
             }
             let byte = calls.get(depth + 1).map_or(self.lg3.byte, |c| c.1);
-            let line = if path.is_empty() {
-                1
-            } else {
-                lg3_line(Path::new(path), byte)
-            };
-            frames.push((path.to_owned(), name.to_owned(), line));
+            let line = source.as_deref().map_or(1, |source| lg3_line(source, byte));
+            let leaf = name.rsplit('/').next().unwrap_or(name);
+            frames.push((path.to_owned(), leaf.to_owned(), line));
         }
         frames
     }
@@ -1409,7 +1651,7 @@ impl Engine {
             Some((object, rest)) if lg3_is_inline(object) => {
                 self.lg3_inline_eval(object, rest.to_vec(), out).map(Some)
             }
-            _ => Ok(None),
+            _ => super::curve_fit::feval(self, args, out),
         }
     }
     /// `f(args)` where `f` holds an inline object; None for other values.
@@ -1559,17 +1801,63 @@ impl Engine {
     /// Frame bookkeeping for dbstack: a function frame was entered or left.
     pub(super) fn lg3_enter(&mut self, function: &str) {
         let byte = self.lg3.byte;
-        self.lg3.calls.push((function.to_owned(), byte));
+        self.lg3.calls.push((function.to_owned(), byte, None));
+    }
+    pub(super) fn lg3_frame_source(&mut self, source: Arc<str>) {
+        if let Some(frame) = self.lg3.calls.last_mut() {
+            frame.2 = Some(source);
+        }
     }
     pub(super) fn lg3_leave(&mut self) {
-        if let Some((_, byte)) = self.lg3.calls.pop() {
+        if let Some((_, byte, _)) = self.lg3.calls.pop() {
             self.lg3.byte = byte;
+        }
+    }
+    /// `path::name` for a file-backed script. Empty and `<...>` names are not frames.
+    pub(super) fn lg3_script_label(path: &Path) -> Option<String> {
+        let name = path.file_stem().and_then(|stem| stem.to_str())?;
+        if name.is_empty() || name.starts_with('<') {
+            return None;
+        }
+        Some(format!("{}::{name}", path.display()))
+    }
+    /// Enter `label` for `body`. The frame and the caller's statement byte are
+    /// restored when `body` returns, including on error.
+    pub(super) fn lg3_scoped<T>(
+        &mut self,
+        label: &str,
+        source: Arc<str>,
+        body: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.lg3_enter(label);
+        self.lg3_frame_source(source);
+        let value = body(self);
+        self.lg3_leave();
+        value
+    }
+    /// A named document that is a script is one stack frame. Interactive text
+    /// has no document path, so it does not invent a caller.
+    pub(super) fn lg3_document_script<T>(
+        &mut self,
+        source: Arc<str>,
+        body: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let label = self
+            .document_path
+            .as_deref()
+            .and_then(Self::lg3_script_label);
+        match label {
+            Some(label) => self.lg3_scoped(&label, source, body),
+            None => body(self),
         }
     }
     pub(super) fn lg3_step(&mut self, byte: usize) {
-        if self.lg3.evals.last() != Some(&self.lg3.calls.len()) {
+        if !self.lg3_eval_active() {
             self.lg3.byte = byte;
         }
+    }
+    pub(super) fn lg3_eval_active(&self) -> bool {
+        self.lg3.evals.last() == Some(&self.lg3.calls.len())
     }
     pub(super) fn lg3_eval_begin(&mut self) {
         self.lg3.evals.push(self.lg3.calls.len());

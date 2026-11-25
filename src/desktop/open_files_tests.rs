@@ -124,7 +124,9 @@ fn file_preflight_preserves_workspace_plot_and_forwards_data_loads() {
     let figure = app.figure.as_ref().unwrap().clone();
     app.open_path("values.csv".into());
     finish(&mut app);
-    assert!(app.csv_import.is_some() && !app.variables.contains_key("values"));
+    import_tool_tests::settle(&mut app, &ctx, egui::vec2(1440., 900.));
+    assert!(import_tool_tests::chosen(&app).is_some_and(|p| p.ends_with("values.csv")));
+    assert!(!app.variables.contains_key("values"));
     click_label(&mut app,&ctx,"Import");finish(&mut app);
     assert!(app.variables.contains_key("values"));
     assert!(data.same_snapshot(&app.variables["keep"]));
@@ -171,12 +173,24 @@ mod root_open_picker_cases {
         }
         app.layout.toolstrip_collapsed=compact;
         let (tab,text)=match kind {
-            Kind::Supported=>("Home",if compact {"Open script"} else {"Open"}),
-            Kind::Figure=>("Plots","Open figure"),Kind::Image=>("Plots","Open plot image"),_=>unreachable!(),
+            Kind::Supported=>("Command",if compact {"Open script"} else {"Open"}),
+            Kind::Figure=>("Figures","Open figure"),Kind::Image=>("Figures","Open plot image"),_=>unreachable!(),
         };
         click(app,ctx,size,tab,true);
-        if !compact && size.x < tokens::OVERFLOW_WIDTH && kind == Kind::Image {
-            click(app,ctx,size,"More",false);
+        if compact {
+            click(app,ctx,size,"Menu",true);
+            click(app,ctx,size,"File",true);
+            if kind == Kind::Supported { return label(app,ctx,size,"Open…",false); }
+            return label(app,ctx,size,if kind == Kind::Figure {"Open figure…"} else {"Open plot image…"},false);
+        }
+        let mut output=frame_at(app,ctx,size,vec![]);
+        for _ in 0..2 {output=frame_at(app,ctx,size,vec![]);}
+        let visible=output.shapes.iter().any(|s|text_position(&s.shape,text)
+            .is_some_and(|p|s.clip_rect.contains(p)));
+        // Narrow action rows overflow into More when the Inspector toggle takes space.
+        if !compact && (kind == Kind::Image || !visible) {
+            // The toolstrip's More is the topmost; pane headers have their own.
+            click(app,ctx,size,"More",true);
         }
         label(app,ctx,size,text,false)
     }
@@ -255,13 +269,13 @@ mod root_open_picker_cases {
         for post in [false,true] {for case in 0..11 {
             if post && case==10 {continue;}
             let (ctx,mut app,_dir)=setup(SIZE);app.layout.center=None;app.layout.mode=layout::PaneMode::Editor;
-            let keep=app.variables["keep"].clone();let layout=app.layout;
+            let keep=app.variables["keep"].clone();
             app.root_open.picker=Some(|app,kind|{
                 assert_eq!(kind,Kind::Figure);let path=app.folder.join("must-not-open.mfig");
                 if let Some(case)=app.status.strip_prefix("Open picker case "){let case=case.parse().unwrap();invalidate(app,case);}
                 Some(vec![path])
             });
-            let point=trigger(&mut app,&ctx,SIZE,Kind::Figure,false,false);pointer_frame(&mut app,&ctx,SIZE,point,true);
+            let point=trigger(&mut app,&ctx,SIZE,Kind::Figure,false,false);let layout=app.layout;pointer_frame(&mut app,&ctx,SIZE,point,true);
             if post {app.status=format!("Open picker case {case}");pointer_frame(&mut app,&ctx,SIZE,point,false);}
             else {discard(&mut app,&ctx,SIZE,release(point),|app,ctx|{
                 if case==10 {ctx.memory_mut(|m|m.request_focus(egui::Id::new("late_open_owner")));}else{invalidate(app,case);}

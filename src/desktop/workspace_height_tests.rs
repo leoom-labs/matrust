@@ -155,3 +155,119 @@ fn selected_value_label_and_arrow_each_toggle_once_without_changing_shared_value
         }
     }
 }
+
+#[test]
+fn first_selection_keeps_rows_in_place_and_selected_value_header_unclipped() {
+    for size in [egui::vec2(1600.,1000.),egui::vec2(1024.,640.)] {
+        for dock in ["Right","Below Files"] {
+            let ctx=egui::Context::default();let mut app=legacy_sample_desktop(ctx.clone(),true);
+            app.run("T=table([1;2]);k=3;x=1:1000;".into());finish(&mut app);
+            choose_workspace_position(&mut app,&ctx,size,dock);
+            let row=|app:&mut Workspace|{
+                for _ in 0..4 {frame_at(app,&ctx,size,vec![]);}
+                let output=frame_at(app,&ctx,size,vec![]);
+                let labels=workspace_height_labels(&output);
+                let k=labels.iter().find(|(s,_,_)|s=="k").unwrap_or_else(||panic!("row k at {size:?} {dock}")).1;
+                (k,labels)
+            };
+            app.selected=None;
+            let (before,_)=row(&mut app);
+            // A double-click's first click selects; the second must land on the same row.
+            app.selected=Some("T".into());
+            let (after,labels)=row(&mut app);
+            assert_eq!(before,after,"row k moved at {size:?} {dock}");
+            let (_,label,clip)=labels.iter().find(|(s,_,_)|s=="Selected value").expect("Selected value header");
+            assert!(clip.contains_rect(*label),"Clipped Selected value at {size:?} {dock}: {label:?} in {clip:?}");
+        }
+    }
+}
+
+#[test]
+fn colorbar_end_labels_stay_inside_the_figure_pane() {
+    for size in [egui::vec2(1600.,1000.),egui::vec2(1024.,640.)] {
+        let ctx=egui::Context::default();let mut app=legacy_sample_desktop(ctx.clone(),true);
+        app.run("x=0:0.1:1; plot(x,x.^2); colorbar;".into());finish(&mut app);
+        for _ in 0..4 {frame_at(&mut app,&ctx,size,vec![]);}
+        let output=frame_at(&mut app,&ctx,size,vec![]);
+        let labels=workspace_height_labels(&output);
+        let ends:Vec<_>=labels.iter().filter(|(s,_,_)|s=="1"||s=="0").collect();
+        assert!(ends.len()>=2,"colorbar end labels at {size:?}");
+        for (text,rect,clip) in ends {
+            assert!(clip.expand(0.5).contains_rect(*rect),"Clipped colorbar label {text} at {size:?}: {rect:?} in {clip:?}");
+        }
+    }
+}
+
+fn find_colorbar_outline(shape: &egui::Shape) -> Option<egui::Rect> {
+    match shape {
+        egui::Shape::Rect(r)
+            if r.fill == egui::Color32::TRANSPARENT
+                && (r.stroke.width - 1.).abs() < 0.1
+                && (r.rect.width() - 14.).abs() < 0.5
+                && r.rect.height() > 40. =>
+        {
+            Some(r.rect)
+        }
+        egui::Shape::Vec(shapes) => shapes.iter().find_map(find_colorbar_outline),
+        _ => None,
+    }
+}
+
+#[test]
+fn colorbar_title_draws_above_vertical_bar_without_clipping_axes_title_or_ticks() {
+    for size in [egui::vec2(1600., 1000.), egui::vec2(1024., 640.)] {
+        let ctx = egui::Context::default();
+        let mut app = legacy_sample_desktop(ctx.clone(), true);
+        app.run(
+            "x=0:0.5:1; plot(x,x); title('Axes Title'); h=colorbar; h.Label.String='Side Label'; h.Title.String=\"f value\";"
+                .into(),
+        );
+        finish(&mut app);
+        for _ in 0..4 {
+            frame_at(&mut app, &ctx, size, vec![]);
+        }
+        let output = frame_at(&mut app, &ctx, size, vec![]);
+        let bar_rect = output
+            .shapes
+            .iter()
+            .find_map(|s| find_colorbar_outline(&s.shape))
+            .expect("colorbar outline rect");
+        let labels = workspace_height_labels(&output);
+        let (_, cb_title, cb_clip) = labels
+            .iter()
+            .find(|(s, _, _)| s == "f value")
+            .expect("colorbar title ink");
+        let (_, side_label, side_clip) = labels
+            .iter()
+            .find(|(s, _, _)| s == "Side Label")
+            .expect("colorbar side label ink");
+        let (_, ax_title, ax_clip) = labels
+            .iter()
+            .find(|(s, _, _)| s == "Axes Title")
+            .expect("axes title ink");
+        let (_, top_tick, tick_clip) = labels
+            .iter()
+            .find(|(s, r, _)| s == "1" && r.left() > bar_rect.right())
+            .expect("upper colorbar tick");
+
+        assert!(cb_clip.expand(0.5).contains_rect(*cb_title), "clipped colorbar title: {cb_title:?} in {cb_clip:?}");
+        assert!(side_clip.expand(0.5).contains_rect(*side_label), "clipped side label");
+        assert!(ax_clip.expand(0.5).contains_rect(*ax_title), "clipped axes title");
+        assert!(tick_clip.expand(0.5).contains_rect(*top_tick), "clipped upper tick");
+        assert!(cb_title.bottom() <= bar_rect.top(), "title {cb_title:?} not above bar {bar_rect:?}");
+        assert!((cb_title.center().x - bar_rect.center().x).abs() < 2.0, "title {cb_title:?} not centered on bar {bar_rect:?}");
+        assert!(ax_title.bottom() <= cb_title.top() + 1.0, "axes title {ax_title:?} overlaps colorbar title {cb_title:?}");
+
+        app.run("h.Title.String=\"g value\";".into());
+        finish(&mut app);
+        for _ in 0..2 {
+            frame_at(&mut app, &ctx, size, vec![]);
+        }
+        let updated = frame_at(&mut app, &ctx, size, vec![]);
+        let updated_labels = workspace_height_labels(&updated);
+        assert!(updated_labels.iter().any(|(s, r, c)| s == "g value" && c.expand(0.5).contains_rect(*r)));
+        assert!(!updated_labels.iter().any(|(s, _, _)| s == "f value"));
+        assert!(updated_labels.iter().any(|(s, _, _)| s == "Side Label"));
+        assert!(updated_labels.iter().any(|(s, _, _)| s == "Axes Title"));
+    }
+}

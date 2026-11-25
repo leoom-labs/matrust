@@ -243,11 +243,11 @@ impl Workspace {
             .height();
         self.workspace_variables_ui_bounded(ui, height, true);
     }
-    /// Header filter of the Workspace card: a filter icon until it is used,
-    /// then the field. An emptied field folds back into the icon.
+    /// Header filter of the Workspace card: a "Filter" button until it is
+    /// used, then the field and "Clear". An emptied field folds back.
     pub(super) fn workspace_filter_control(&mut self, ui: &mut egui::Ui) {
         if !self.workspace_tools.filter_open && self.workspace_tools.filter.is_empty() {
-            let icon = panels::icon_button(ui, panels::Glyph::Filter, "Filter variables");
+            let icon = panels::header_tool(ui, "Filter", "Filter variables", "Filter variables");
             focus_areas::register(ui, &icon, focus_areas::Area::Workspace);
             if icon.clicked() {
                 self.workspace_tools.filter_open = true;
@@ -255,8 +255,15 @@ impl Workspace {
             }
             return;
         }
-        // The icon clears; the field sits left of it. Leave the title ("Workspace") its room.
-        if panels::icon_button(ui, panels::Glyph::Filter, "Clear variable filter").clicked() {
+        // "Clear" clears; the field sits left of it. Leave the title ("Workspace") its room.
+        if panels::header_tool(
+            ui,
+            "Clear",
+            "Clear variable filter",
+            "Clear variable filter",
+        )
+        .clicked()
+        {
             self.workspace_tools.filter.clear();
             self.workspace_tools.filter_open = false;
             return;

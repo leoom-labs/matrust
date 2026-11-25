@@ -263,7 +263,7 @@ mod tests {
         for (rows, cols, kind) in [
             (0, 1, PlotKind::Line),
             (1, MAX_POINTS + 1, PlotKind::Line),
-            (2, 65, PlotKind::Line),
+            (2, matrust::plot::MAX_PLOT_SERIES + 1, PlotKind::Line),
             (1, 10001, PlotKind::Bar),
         ] {
             let request = Request {

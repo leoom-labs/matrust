@@ -81,7 +81,8 @@ fn mat_v73_native_handle_does_not_survive_in_unrelated_child() {
         Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
-                "hdf5_inheritance_hold_child",
+                // Full name: this file runs as a module of tests/suites/exports.rs.
+                "mat_v73_handle_inheritance::hdf5_inheritance_hold_child",
                 "--ignored",
                 "--nocapture",
                 "--test-threads=1",

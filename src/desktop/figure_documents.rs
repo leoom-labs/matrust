@@ -519,13 +519,13 @@ impl Documents {
                 .history
                 .navigate(&current, redo, self.1.wrapping_add(1))?,
         );
-        Ok(Execution {
-            output: vec![format!(
+        Ok(Execution::with_output(
+            vec![format!(
                 "{} edit in figure {id}",
                 if redo { "Redid" } else { "Undid" }
             )],
-            clear_console: false,
-        })
+            false,
+        ))
     }
     pub fn take_conflict(&mut self) -> Option<FigureConflict> {
         self.2.take()
@@ -655,7 +655,12 @@ impl Documents {
         let job = if let Job::ScriptViewContext(job, views) = job {
             if !matches!(
                 &*job,
-                Job::ScriptInFolder(..) | Job::DocumentInFolder(..) | Job::SelectionInFolder(..)
+                Job::ScriptInFolder(..)
+                    | Job::UnsavedDocumentInFolder(..)
+                    | Job::ExportAppScript(..)
+                    | Job::ExportVolumeSettings(..)
+                    | Job::DocumentInFolder(..)
+                    | Job::SelectionInFolder(..)
             ) {
                 return (Err("Figure views require a script job".into()), None);
             }
@@ -709,10 +714,10 @@ impl Documents {
             if let Some(id) = existing {
                 engine.diagnostic = None;
                 engine.failed_output = Execution::default();
-                return (engine.select_figure(id).map(|_| Execution {
-                    output: vec![format!("Selected open figure {id}; local edits retained. Use Reload figure to read disk changes, or Open separate disk copy to compare.")],
-                    clear_console: false,
-                }), None);
+                return (engine.select_figure(id).map(|_| Execution::with_output(
+                    vec![format!("Selected open figure {id}; local edits retained. Use Reload figure to read disk changes, or Open separate disk copy to compare.")],
+                    false,
+                )), None);
             }
             Job::OpenFigure(path)
         } else {
@@ -766,20 +771,20 @@ impl Documents {
             engine.failed_output = Execution::default();
             self.save(engine, *id, path, *view, *confirmed).map(|v| {
                 source_version = Some(v);
-                Execution {
-                    output: vec![format!(
+                Execution::with_output(
+                    vec![format!(
                         "Saved editable figure {}",
                         crate::path_label::display(path)
                     )],
-                    clear_console: false,
-                }
+                    false,
+                )
             })
         } else if let Some(path) = &open {
             engine.diagnostic = None;
             engine.failed_output = Execution::default();
             Self::open(engine,path,reload).map(|v| {
                 source_version=Some(v);
-                Execution { output:vec![format!("{} figure {}{}",if reload.is_some(){"Reloaded"}else{"Opened"},crate::path_label::display(path),if path.extension().is_some_and(|s|s.eq_ignore_ascii_case("fig")){" (supported MATLAB 2-D data/styles imported; fonts and unspecified marker sizes use MatRust defaults; normalized axes positions are retained; callbacks are not executed)"}else{""})], clear_console:false }
+                Execution::with_output(vec![format!("{} figure {}{}",if reload.is_some(){"Reloaded"}else{"Opened"},crate::path_label::display(path),if path.extension().is_some_and(|s|s.eq_ignore_ascii_case("fig")){" (supported MATLAB 2-D data/styles imported; fonts and unspecified marker sizes use MatRust defaults; normalized axes positions are retained; callbacks are not executed)"}else{""})], false)
             })
         } else if let Some((id, redo, view)) = navigation {
             self.navigate(engine, id, redo, view)

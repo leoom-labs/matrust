@@ -44,7 +44,7 @@ fn limit(path: &Path) -> Result<usize> {
     Ok(if is_matlab(path)? {
         super::fig_mat::LIMIT
     } else {
-        17_000_000
+        super::NATIVE_FIGURE_LIMIT
     })
 }
 fn version(bytes: &[u8], cancel: &AtomicBool) -> Result<Version> {

@@ -164,7 +164,7 @@ fn read_impl<const STRICT: bool>(
         }
         let text = std::str::from_utf8(&bytes).map_err(|_| "CSV is not valid UTF-8")?;
         let text = if line_number == 1 {
-            text.trim_start_matches('\u{feff}')
+            text.strip_prefix('\u{feff}').unwrap_or(text)
         } else {
             text
         };
@@ -420,7 +420,7 @@ fn serial<const STRICT: bool>(
         line_number += 1;
         let line = std::str::from_utf8(&line).map_err(|_| "CSV is not valid UTF-8")?;
         let line = if line_number == 1 {
-            line.trim_start_matches('\u{feff}')
+            line.strip_prefix('\u{feff}').unwrap_or(line)
         } else {
             line
         };

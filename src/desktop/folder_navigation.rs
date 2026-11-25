@@ -96,9 +96,6 @@ impl Workspace {
             self.folder_navigation.focus_address = true;
             self.folder_navigation.address_open = !self.folder_search.visible;
         }
-        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::F5)) {
-            self.refresh_folder();
-        }
     }
     pub(super) fn folder_address_focus(&mut self, response: &egui::Response) {
         if self.folder_navigation.focus_address {

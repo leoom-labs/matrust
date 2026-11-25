@@ -1,6 +1,5 @@
 //! Everyday elementwise functions (mod, rem, fix, sign, hypot, atan2) and the
-//! dispatcher for the everyday math modules. The reference has no implicit expansion:
-//! operands must have equal shapes or one of them must be a scalar.
+//! dispatcher for the everyday math modules.
 use super::{Engine, Value};
 use crate::{Complex64, ComplexMatrix, LogicalMatrix, Matrix, Result};
 
@@ -8,8 +7,29 @@ use crate::{Complex64, ComplexMatrix, LogicalMatrix, Matrix, Result};
 pub(super) fn has_multiple_outputs(name: &str) -> bool {
     matches!(
         name,
-        "meshgrid" | "ndgrid" | "eig" | "svd" | "polyfit" | "xcorr"
+        "meshgrid" | "ndgrid" | "eig" | "svd" | "polyfit" | "xcorr" | "xcov"
     )
+}
+
+pub(super) fn binary_function(name: &str) -> Option<fn(f64, f64) -> f64> {
+    Some(match name {
+        "mod" => mod_value,
+        "rem" => rem_value,
+        "hypot" => f64::hypot,
+        "atan2" => f64::atan2,
+        _ => return None,
+    })
+}
+
+pub(super) fn real_elementwise(
+    engine: &Engine,
+    a: &Matrix,
+    b: &Matrix,
+    f: impl Fn(f64, f64) -> f64 + Sync + Send,
+) -> Result<Matrix> {
+    let (rows, cols) = crate::matrix::expansion_shape((a.rows(), a.cols()), (b.rows(), b.cols()))?;
+    engine.preflight_elements(Matrix::checked_len(rows, cols)?)?;
+    a.zip_checked(b, f, || engine.check_cancel())
 }
 
 /// MATLAB's round-off compensation: with a non-integer divisor, a quotient
@@ -99,15 +119,20 @@ impl Engine {
         }
     }
 
-    /// Reject element counts that cannot fit in the statement budget before
-    /// any large allocation.
+    /// Reject element counts (8-byte units) that cannot fit in the statement
+    /// budget or in the memory budget before any large allocation.
     pub(super) fn preflight_elements(&self, elements: usize) -> Result<()> {
-        if self
-            .evaluated_elements
-            .checked_add(elements)
-            .is_none_or(|n| n > 32 * 1024 * 1024)
+        // An overflowing count exceeds any finite budget.
+        let projected = self.evaluated_elements.saturating_add(elements);
+        if let Some(units) = self.limits.evaluation_units
+            && projected > units
         {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
+            return Err(super::limits::evaluation_error(units));
+        }
+        // One allocation of `elements` units must fit the memory budget on its own,
+        // whatever the evaluation budget.
+        if elements > super::limits::memory_units(&self.limits) {
+            return Err(super::limits::memory_error("Statement", &self.limits));
         }
         Ok(())
     }
@@ -124,15 +149,13 @@ impl Engine {
             "mod" | "rem" | "hypot" | "atan2" => {
                 self.check_cancel()?;
                 Self::arity_check(name, args, &[2])?;
+                let f = binary_function(name).expect("a binary elementary function");
+                if args.iter().any(Value::is_nd) {
+                    return super::nd::everyday_binary(self, name, &args[0], &args[1], f).map(Some);
+                }
                 let a = self.real_arg(name, &args[0])?;
                 let b = self.real_arg(name, &args[1])?;
-                let f: fn(f64, f64) -> f64 = match name {
-                    "mod" => mod_value,
-                    "rem" => rem_value,
-                    "hypot" => f64::hypot,
-                    _ => f64::atan2,
-                };
-                Value::Matrix(a.zip(&b, f)?)
+                Value::Matrix(real_elementwise(self, &a, &b, f)?)
             }
             "fix" | "sign" => {
                 self.check_cancel()?;
@@ -144,9 +167,10 @@ impl Engine {
                 self.array_function(name, args)?
             }
             "rand" | "randn" | "randi" | "rng" => self.random_call(name, args)?,
+            "profile" | "profsave" => super::profiler::call(self, name, args, out)?,
             "tic" | "toc" => self.stopwatch_call(name, args, out, true)?,
             "rank" => self.rank_call(args)?,
-            "meshgrid" | "ndgrid" | "eig" | "svd" | "polyfit" | "xcorr" => {
+            "meshgrid" | "ndgrid" | "eig" | "svd" | "polyfit" | "xcorr" | "xcov" => {
                 return Ok(Some(self.everyday_outputs_call(name, args, 1)?.remove(0)));
             }
             _ => return Ok(None),
@@ -168,6 +192,7 @@ impl Engine {
             "svd" => self.svd_call(args, count),
             "polyfit" => self.polyfit_call(args, count),
             "xcorr" => self.xcorr_call(args, count),
+            "xcov" => self.xcov_call(args, count),
             _ => Err(format!("{name} does not support {count} outputs")),
         }
     }

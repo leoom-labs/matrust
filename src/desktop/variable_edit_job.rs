@@ -1,6 +1,6 @@
 //! Revision-guarded requests executed by the existing workspace worker.
 use matrust::{
-    Engine, Result,
+    Array, Engine, Result,
     variable_edit::{self, Rect, Target},
 };
 use std::sync::Arc;
@@ -18,6 +18,10 @@ pub enum Action {
     Paste(String),
     Copy,
     CopyText,
+    /// Insert or delete whole rows or columns.
+    Reshape(variable_edit::Shape),
+    /// Publish an earlier whole variable (undo / redo).
+    Restore(Array),
 }
 pub struct Request {
     pub revision: Token,
@@ -51,6 +55,12 @@ pub fn perform(engine: &mut Engine, revision: &Token, request: Request) -> Finis
             Action::Paste(text) => {
                 variable_edit::paste_tsv(engine, &request.target, request.rectangle, &text)
                     .map(Effect::Edited)
+            }
+            Action::Reshape(shape) => {
+                variable_edit::reshape(engine, &request.target, shape).map(Effect::Edited)
+            }
+            Action::Restore(previous) => {
+                variable_edit::restore(engine, &request.target, &previous).map(Effect::Edited)
             }
             Action::CopyText => {
                 variable_edit::copy_text_row(engine, &request.target).map(Effect::Copied)

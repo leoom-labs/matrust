@@ -85,6 +85,8 @@ impl Workspace {
             if previous.is_none_or(|old| (old - size).length() > 0.5) {
                 for panel in [
                     "workspace",
+                    "figure_navigator",
+                    "figure_inspector",
                     "workspace_variables",
                     "workspace_variables_left",
                     "console",
@@ -178,16 +180,19 @@ impl Workspace {
     /// the Editor. Without a figure the middle column takes the width.
     pub(super) fn figure_column(&self) -> bool {
         self.layout.center.is_some()
-            && self.toolkits.selected_tool().is_none()
+            && self.docked_tool().is_none()
+            && !self.apps_home
             // An image or PDF preview is its own window: it never opens the
             // column, which would only show the empty "No figures" card.
             && self.figure.is_some()
-            && (self.central_command() || self.layout.mode == PaneMode::Editor)
+            && (self.central_command() || self.layout.mode != PaneMode::Figure)
+            // Separate windows: a popped-out figure leaves no stub behind.
+            && !(self.separate_windows() && self.detached.contains(self.current_figure))
     }
 
     /// An open script sits above the Command Window in the middle column.
     pub(super) fn editor_above_command(&self) -> bool {
-        self.toolkits.selected_tool().is_none()
+        self.docked_tool().is_none()
             && self.central_command()
             && self
                 .layout
@@ -195,10 +200,14 @@ impl Workspace {
                 .is_some_and(|center| center.editor_revealed)
             && !self.has_startup_placeholder()
             && !self.editor_window.detached
+            && !self.command_only
     }
 
     pub(super) fn show_command_center(&mut self) {
-        self.toolkits.deselect_tool();
+        if self.docked_tool().is_some() {
+            self.toolkits.deselect_tool();
+        }
+        self.apps_home = false;
         self.document_save.command_selected();
         self.layout
             .center
@@ -212,7 +221,11 @@ impl Workspace {
     }
 
     pub(super) fn select_document_layout(&mut self, mode: PaneMode) {
-        self.toolkits.deselect_tool();
+        if self.docked_tool().is_some() {
+            self.toolkits.deselect_tool();
+        }
+        self.apps_home = false;
+        self.command_only = false;
         if let Some(center) = &mut self.layout.center {
             center.command = false;
             if mode != PaneMode::Figure {
@@ -229,131 +242,6 @@ impl Workspace {
         self.recovery_dirty = true;
     }
 
-    pub(super) fn center_tabs(&mut self, root: &mut egui::Ui) {
-        let center = self.layout.center;
-        // Documents have no tab row of their own: the Command Window, the
-        // editor and the figure are cards. Open tools add the row.
-        if self.toolkits.tabs().next().is_none() {
-            return;
-        }
-        let pending = self.file_action_pending() || self.allow_close;
-        let documents = self.toolkits.selected_tool().is_none();
-        egui::Panel::top("desktop_center_tabs")
-            .show_separator_line(false)
-            .frame(
-                egui::Frame::new()
-                    .fill(tokens::palette(root.ctx()).canvas)
-                    .inner_margin(egui::Margin::symmetric(tokens::XS as i8, 2)),
-            )
-            .resizable(false)
-            .show(root, |ui| {
-                if tokens::compact(ui.ctx()) {
-                    tokens::dense(ui);
-                }
-                // A long tab row scrolls rather than cutting the last tab.
-                egui::ScrollArea::horizontal()
-                    .id_salt("desktop_center_tabs_scroll")
-                    .show_themed(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let Some(center) = center else {
-                                // Legacy layouts have no document tabs; one tab returns to them.
-                                let label = match self.layout.mode {
-                                    PaneMode::Editor => "Editor",
-                                    PaneMode::Figure => "Figure",
-                                    PaneMode::Split => "Editor and figure",
-                                };
-                                if ui
-                                    .add_enabled(
-                                        !pending,
-                                        egui::Button::selectable(documents, label),
-                                    )
-                                    .clicked()
-                                {
-                                    self.toolkits.deselect_tool();
-                                    self.legacy_documents_selected();
-                                }
-                                self.tool_tabs(ui, pending);
-                                return;
-                            };
-                            if ui
-                                .add_enabled(
-                                    !pending,
-                                    egui::Button::selectable(
-                                        documents && center.command,
-                                        "Command",
-                                    ),
-                                )
-                                .clicked()
-                            {
-                                self.show_command_center();
-                            }
-                            if center.editor_revealed
-                                && !center.command
-                                && ui
-                                    .add_enabled(
-                                        !pending,
-                                        egui::Button::selectable(
-                                            documents
-                                                && !center.command
-                                                && self.layout.mode == PaneMode::Editor,
-                                            "Editor",
-                                        ),
-                                    )
-                                    .clicked()
-                            {
-                                self.select_document_layout(PaneMode::Editor);
-                            }
-                            if self.figure.is_some()
-                                && !center.command
-                                && ui
-                                    .add_enabled(
-                                        !pending,
-                                        egui::Button::selectable(
-                                            documents
-                                                && !center.command
-                                                && self.layout.mode == PaneMode::Figure,
-                                            "Figure",
-                                        ),
-                                    )
-                                    .clicked()
-                            {
-                                self.select_document_layout(PaneMode::Figure);
-                            }
-                            self.tool_tabs(ui, pending);
-                        });
-                    });
-            });
-    }
-
-    // Tool tabs follow the document tabs in opening order. Close (x) matches
-    // the former window close and stays available like it.
-    fn tool_tabs(&mut self, ui: &mut egui::Ui, pending: bool) {
-        let selected = self.toolkits.selected_tool();
-        let tabs: Vec<_> = self.toolkits.tabs().collect();
-        for tool in tabs {
-            ui.scope(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.;
-                let label = self.toolkits.tab_label(tool);
-                if ui
-                    .add_enabled(
-                        !pending,
-                        egui::Button::selectable(selected == Some(tool), label),
-                    )
-                    .clicked()
-                {
-                    self.select_tool_tab(tool);
-                }
-                if ui
-                    .add(egui::Button::new("\u{d7}").frame(false))
-                    .on_hover_text(format!("Close {}", tool.label()))
-                    .clicked()
-                {
-                    self.close_tool_tab(tool);
-                }
-            });
-        }
-    }
-
     // The shown document takes Save/Close back from a hidden model.
     fn legacy_documents_selected(&mut self) {
         self.document_save.activate(match self.layout.mode {
@@ -366,6 +254,13 @@ impl Workspace {
     /// Closes a tool tab. When it was shown, the other open tool takes over
     /// exactly as if its tab were clicked, else the documents tab.
     pub(super) fn close_tool_tab(&mut self, tool: toolkits::Tool) {
+        if tool == toolkits::Tool::App(apps::AppKind::AppDesigner)
+            && self.toolkits.apps.app_designer.is_dirty()
+        {
+            self.toolkits.apps.app_designer.close_confirm = true;
+            self.select_tool_tab(tool);
+            return;
+        }
         let shown = self.toolkits.selected_tool() == Some(tool);
         self.toolkits.close_tool(tool);
         if tool == toolkits::Tool::Model {
@@ -405,6 +300,8 @@ impl Workspace {
         self.layout.center.as_mut().unwrap().editor_revealed = editor_revealed;
         // Tools stay open; the fresh layout selects Command.
         self.toolkits.deselect_tool();
+        self.apps_home = false;
+        self.command_only = false;
         self.compact_figure = false;
         self.navigation = Default::default();
         self.collapse_editor_columns();
@@ -417,6 +314,8 @@ impl Workspace {
         ctx.data_mut(|data| {
             for panel in [
                 "workspace",
+                "figure_navigator",
+                "figure_inspector",
                 "workspace_variables",
                 "workspace_variables_left",
                 "console",
@@ -429,6 +328,8 @@ impl Workspace {
     }
 
     pub(super) fn reveal_editor(&mut self) {
+        self.apps_home = false;
+        self.command_only = false;
         if self.layout.center.is_some() {
             self.select_document_layout(PaneMode::Editor);
             self.reveal_editor_window();
@@ -524,7 +425,7 @@ impl Workspace {
         let name = self.documents[self.active].title();
         panels::header_with(editor, "Editor", Some(&name), active, |ui| {
             ui.spacing_mut().item_spacing.x = tokens::XS;
-            let more = panels::icon_button(ui, panels::Glyph::More, "Editor actions");
+            let more = panels::header_tool(ui, "More", "Editor actions", "Editor actions");
             egui::Popup::menu(&more)
                 .id(egui::Id::new("editor_actions"))
                 .show(|ui| {
@@ -534,13 +435,8 @@ impl Workspace {
                         self.pane_toggle(ui, PaneMode::Editor);
                     }
                 });
-            if panels::icon_button_with(
-                ui,
-                panels::Glyph::Search,
-                "Find / replace",
-                "Find / replace · Ctrl F",
-            )
-            .clicked()
+            if panels::header_tool(ui, "Find", "Find / replace", "Find / replace · Ctrl F")
+                .clicked()
             {
                 self.editor.open(false);
             }
@@ -551,6 +447,17 @@ impl Workspace {
             // A floating scrollbar overlaps these short draggable tabs. Reserve
             // its own strip so scrollbar dragging and tab dragging stay distinct.
             row.spacing_mut().scroll.floating = false;
+            // Tabs are text 2 on the pane; the active one is text 1 on the
+            // 2 px accent underline, no box.
+            let p = tokens::palette(row.ctx());
+            let visuals = row.visuals_mut();
+            visuals.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+            visuals.widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+            visuals.widgets.inactive.fg_stroke.color = p.text_muted;
+            visuals.widgets.hovered.bg_stroke = egui::Stroke::NONE;
+            visuals.widgets.hovered.weak_bg_fill = p.surface_sunken;
+            visuals.selection.bg_fill = egui::Color32::TRANSPARENT;
+            visuals.selection.stroke = egui::Stroke::new(1., p.text);
             self.script_tab_order_ui(row);
             let mut tabs = egui::ScrollArea::horizontal()
                 .id_salt("script_tabs")
@@ -646,6 +553,16 @@ impl Workspace {
         self.script_editor_views(editor);
     }
     pub(super) fn figure_pane(&mut self, figure_ui: &mut egui::Ui) {
+        if self.mode() == modes::Mode::Figures && self.layout.center.is_some() {
+            egui::Frame::new().inner_margin(24).show(figure_ui, |ui| {
+                self.figure_pane_inner(ui);
+            });
+        } else {
+            self.figure_pane_inner(figure_ui);
+        }
+    }
+
+    fn figure_pane_inner(&mut self, figure_ui: &mut egui::Ui) {
         if self.layout.figure_tiling.is_some() {
             // Tile rows are chrome too: compact windows use the dense rows of
             // the single-figure header, so each tile keeps room for its axes.
@@ -664,6 +581,7 @@ impl Workspace {
         if let Some(figure) = &self.figure {
             if figure.layout.is_some() {
                 self.plot_points = Vec::new();
+                self.plot_point_indices = Vec::new();
                 if !self
                     .subplot_canvas
                     .matches_source(self.current_figure, figure)
@@ -979,7 +897,7 @@ impl Workspace {
         let name = self.figure.is_some().then(|| self.figure_name());
         panels::header(figure_ui, &title, name.as_deref(), |ui| {
             ui.spacing_mut().item_spacing.x = tokens::XS;
-            let more = panels::icon_button(ui, panels::Glyph::More, "Actions");
+            let more = panels::header_tool(ui, "More", "Actions", "Figure actions");
             focus_areas::register(ui, &more, focus_areas::Area::Figure(self.current_figure));
             egui::Popup::menu(&more).show(|ui| {
                 self.figure_menu_head(ui, &mut command);
@@ -1094,10 +1012,11 @@ impl Workspace {
             let plot_rect = figure_ui.available_rect_before_wrap();
             let settled = !self.reset_plot && !self.restore_plot_view;
             let rendered = figure_ui.add_enabled_ui(!self.busy, |ui| {
-                figure_view::show_interactive(
+                figure_view::show_interactive_indexed(
                     ui,
                     &self.restored_figure_view(f),
                     &self.plot_points,
+                    Some(&self.plot_point_indices),
                     self.plot_axes,
                     self.reset_plot,
                     marker.map(|(_, point)| point),
@@ -1120,6 +1039,27 @@ impl Workspace {
                 };
                 edit.preserve_manual_view(Some(view.bounds), view.auto);
                 self.submit(Job::EditFigure(Box::new(edit)));
+            } else if !self.busy
+                && let Some(delta) = view.rotate
+            {
+                // Left drag on a 3-D axes rotates it; View follows in the model.
+                let mut updated = f.clone();
+                updated.axes.view = matrust::plot::view3d::drag_view(f.axes.view, delta);
+                self.submit(Job::ViewFigure(Box::new(worker::FigureEdit {
+                    view_before: None,
+                    id: self.current_figure,
+                    original: f.clone(),
+                    updated,
+                })));
+            } else if !self.busy
+                && let Some(slice_num) = view.slice_number
+                && let Some(edit) = crate::figure_geometry::scene::slice_number_edit(
+                    self.current_figure,
+                    f,
+                    slice_num,
+                )
+            {
+                self.submit(Job::ViewFigure(Box::new(edit)));
             }
             // The figure column also paints beside the Editor and Command
             // layouts. An untouched paint that shows another view than the

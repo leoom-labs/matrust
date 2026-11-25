@@ -1,0 +1,29 @@
+id,setup,op,check
+scalar_sum_n10,n=10;,s=0; for k=1:n; s=s+k; end;,s
+inline_2k1_n10,n=10;,s=0; for k=1:n; s=s+(2*k+1); end;,s
+anon_2k1_n10,n=10; f=@(k) 2*k+1;,s=0; for k=1:n; s=s+f(k); end;,s
+filefn_2k1_n10,n=10;,s=0; for k=1:n; s=s+p0_speed_call(k); end;,s
+vec_2k1_n10,n=10; k=1:n;,s=sum(2*k+1);,s
+vec_add_sum_n10,n=10; x=1:n; y=n:-1:1;,z=x+y; s=sum(z);,s
+vec_elementwise_n10,n=10; x=1:n;,y=x.*x-x; s=sum(y);,s
+scalar_sum_n20,n=20;,s=0; for k=1:n; s=s+k; end;,s
+inline_2k1_n20,n=20;,s=0; for k=1:n; s=s+(2*k+1); end;,s
+anon_2k1_n20,n=20; f=@(k) 2*k+1;,s=0; for k=1:n; s=s+f(k); end;,s
+filefn_2k1_n20,n=20;,s=0; for k=1:n; s=s+p0_speed_call(k); end;,s
+vec_2k1_n20,n=20; k=1:n;,s=sum(2*k+1);,s
+vec_add_sum_n20,n=20; x=1:n; y=n:-1:1;,z=x+y; s=sum(z);,s
+vec_elementwise_n20,n=20; x=1:n;,y=x.*x-x; s=sum(y);,s
+scalar_sum_n1e5,n=100000;,s=0; for k=1:n; s=s+k; end;,s
+inline_2k1_n1e5,n=100000;,s=0; for k=1:n; s=s+(2*k+1); end;,s
+anon_2k1_n1e5,n=100000; f=@(k) 2*k+1;,s=0; for k=1:n; s=s+f(k); end;,s
+filefn_2k1_n1e5,n=100000;,s=0; for k=1:n; s=s+p0_speed_call(k); end;,s
+vec_2k1_n1e5,n=100000; k=1:n;,s=sum(2*k+1);,s
+vec_add_sum_n1e5,n=100000; x=1:n; y=n:-1:1;,z=x+y; s=sum(z);,s
+vec_elementwise_n1e5,n=100000; x=1:n;,y=x.*x-x; s=sum(y);,s
+scalar_sum_n1e7,n=10000000;,s=0; for k=1:n; s=s+k; end;,s
+inline_2k1_n1e7,n=10000000;,s=0; for k=1:n; s=s+(2*k+1); end;,s
+anon_2k1_n1e7,n=10000000; f=@(k) 2*k+1;,s=0; for k=1:n; s=s+f(k); end;,s
+filefn_2k1_n1e7,n=10000000;,s=0; for k=1:n; s=s+p0_speed_call(k); end;,s
+vec_2k1_n1e7,n=10000000; k=1:n;,s=sum(2*k+1);,s
+vec_add_sum_n1e7,n=10000000; x=1:n; y=n:-1:1;,z=x+y; s=sum(z);,s
+vec_elementwise_n1e7,n=10000000; x=1:n;,y=x.*x-x; s=sum(y);,s

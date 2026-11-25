@@ -42,18 +42,17 @@ const TOO_MANY: &str = "Too many input arguments.";
 const RUN: usize = 4096;
 /// Nominal row x key x comparison-level bound of sortrows (the real path's).
 const MAX_SORT_WORK: usize = 512 * 1024 * 1024;
-const CIRCSHIFT_WARNING: &str = "CIRCSHIFT(X,K) with scalar K and where size(X,1)==1 will change behavior in future versions. To\nretain current behavior, use CIRCSHIFT(X,[K,0]) instead.";
 
 /// Sort key of one complex value: NaN last, then abs, then angle in (-pi, pi].
 #[derive(Clone, Copy)]
-struct Key {
+pub(super) struct Key {
     nan: bool,
     abs: f64,
     angle: f64,
 }
 
 impl Key {
-    fn of(z: C) -> Self {
+    pub(super) fn of(z: C) -> Self {
         let angle = libm::atan2(z.im, z.re);
         Self {
             nan: z.re.is_nan() || z.im.is_nan(),
@@ -65,7 +64,7 @@ impl Key {
             },
         }
     }
-    fn cmp(&self, other: &Self) -> Ordering {
+    pub(super) fn cmp(&self, other: &Self) -> Ordering {
         match (self.nan, other.nan) {
             (true, true) => Ordering::Equal,
             (true, false) => Ordering::Greater,
@@ -147,7 +146,7 @@ fn sign(z: C) -> C {
 
 /// Midpoint: A + (B-A)/2, or (A+B)/2 when the signs
 /// differ or either value is infinite.
-fn mean_of(a: C, b: C) -> C {
+pub(super) fn mean_of(a: C, b: C) -> C {
     let infinite = |z: C| z.re.is_infinite() || z.im.is_infinite();
     if sign(a) != sign(b) || infinite(a) || infinite(b) {
         let s = a + b;
@@ -198,7 +197,7 @@ const PAR_DISPERSION: usize = 512 * 1024;
 /// below 2^-1022 of the largest one are lost to the first division. NaNs are
 /// skipped when `omit_nan`; otherwise NaN or Inf gives NaN. One value or all
 /// zeros (or equal values) give 0.
-fn dispersion_lane(
+pub(super) fn dispersion_lane(
     at: impl Fn(usize) -> C,
     len: usize,
     population: bool,
@@ -285,7 +284,7 @@ impl Engine {
         &mut self,
         name: &str,
         args: &[Value],
-        out: &mut Execution,
+        _out: &mut Execution,
     ) -> Result<Option<Value>> {
         if !NAMES.contains(&name) {
             return Ok(None);
@@ -313,16 +312,7 @@ impl Engine {
             "median" => self.cxr_median(args)?,
             "round" | "floor" | "ceil" | "fix" => self.cxr_round(name, args)?,
             "flip" | "fliplr" | "flipud" => self.cxr_flip(name, args)?,
-            "circshift" => {
-                let warn = args.len() == 2
-                    && complex_arg(&args[0]).rows() == 1
-                    && matches!(&args[1], Value::Matrix(k) if k.len() == 1);
-                let value = self.array_function("circshift", args)?;
-                if warn {
-                    self.lang_utils_call("warning", &[Value::Text(CIRCSHIFT_WARNING.into())], out)?;
-                }
-                value
-            }
+            "circshift" => self.array_function("circshift", args)?,
             "nnz" => {
                 if args.len() > 1 {
                     return Err(TOO_MANY.into());
@@ -522,7 +512,7 @@ impl Engine {
         }
         if !(1..=3).contains(&count) {
             return Err(format!(
-                "Use {name}(A[, 0|1|[] [, dim|'all']][, 'omitnan'|'includenan']); vector weights and vector dimensions are not implemented"
+                "Use {name}(A[, 0|1|[] [, dim|'all']][, 'omitnan'|'includenan']); vector weights are not implemented"
             ));
         }
         let population = match args.get(1).filter(|_| count >= 2) {
@@ -612,7 +602,7 @@ impl Engine {
     /// Stable cancellable merge sort of `order`: std-sorted runs of `RUN`
     /// items, then linear merge passes that poll as they go (the shape of
     /// `arx_sort`); ties keep their input order like `sort_by`.
-    fn cxr_sort_by(
+    pub(super) fn cxr_sort_by(
         &self,
         order: &mut [usize],
         compare: impl Fn(usize, usize) -> Ordering,

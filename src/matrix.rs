@@ -1,26 +1,60 @@
 use crate::Result;
 use nalgebra::{DMatrix, DMatrixView, DMatrixViewMut};
 use rayon::prelude::*;
-use std::{fmt, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 mod calculus;
 mod coordinate_proof;
 mod elementwise;
 mod median;
 mod product;
 pub use median::MedianAxis;
+pub(crate) use median::MedianScratch;
 mod reductions;
 pub use reductions::{
-    Extreme, find_nonzero, find_nonzero_complex, find_shape, truth_along, truth_along_complex,
+    Extreme, complex_pair_picks_second, find_nonzero, find_nonzero_complex, find_shape,
+    truth_along, truth_along_complex,
 };
 mod statistics;
+pub(crate) use statistics::dispersion_lane;
 pub use statistics::{Dispersion, StatisticsAxis};
 mod transform;
 
-/// Allocation bound per dense result (128 MiB). The engine also limits workspace size.
+/// Element bound per dense result of any class: 48 Mi native (a 16 MP RGB image),
+/// 16 Mi on wasm. The engine's `Limits` also bound memory per statement and workspace.
+#[cfg(not(target_arch = "wasm32"))]
+pub const MAX_ELEMENTS: usize = 48 * 1024 * 1024;
+#[cfg(target_arch = "wasm32")]
 pub const MAX_ELEMENTS: usize = 16 * 1024 * 1024;
 const PAR_ELEMENTS: usize = 64 * 1024;
 const PAR_GEMM_WORK: usize = 8 * 1024 * 1024;
 const FAST_GEMM_WORK: usize = 64 * 64 * 64;
+
+pub(crate) const INCOMPATIBLE_SIZES: &str = "Arrays have incompatible sizes for this operation.";
+
+/// The result extent is the non-singleton extent, including zero.
+pub(crate) fn expansion_extent(a: usize, b: usize) -> Result<usize> {
+    if a == b || b == 1 {
+        Ok(a)
+    } else if a == 1 {
+        Ok(b)
+    } else {
+        Err(INCOMPATIBLE_SIZES.into())
+    }
+}
+
+pub(crate) fn expansion_shape(a: (usize, usize), b: (usize, usize)) -> Result<(usize, usize)> {
+    Ok((expansion_extent(a.0, b.0)?, expansion_extent(a.1, b.1)?))
+}
+
+/// Maps a column-major result index back to a compatible operand.
+pub(crate) fn expanded_2d_index(i: usize, output: (usize, usize), input: (usize, usize)) -> usize {
+    match input {
+        _ if input == output => i,
+        (1, 1) => 0,
+        (1, _) => i / output.0,
+        _ => i % output.0,
+    }
+}
 
 /// Immutable, shared, column-major f64 storage. Assignment and lookup are O(1).
 #[derive(Clone, Debug)]
@@ -30,6 +64,7 @@ pub struct Matrix {
     pub(crate) storage: Arc<DMatrix<f64>>,
     rows: usize,
     cols: usize,
+    nd: Option<Arc<Vec<usize>>>,
     coordinates: Option<Arc<coordinate_proof::CoordinateProof>>,
     uniform: Option<f64>,
 }
@@ -39,6 +74,7 @@ impl Matrix {
         Self {
             rows: matrix.nrows(),
             cols: matrix.ncols(),
+            nd: None,
             storage: Arc::new(matrix),
             coordinates: None,
             uniform: None,
@@ -51,6 +87,7 @@ impl Matrix {
         Ok(Self {
             rows: storage.len(),
             cols: 1,
+            nd: None,
             storage,
             coordinates: None,
             uniform: None,
@@ -110,6 +147,30 @@ impl Matrix {
     }
     pub fn cols(&self) -> usize {
         self.cols
+    }
+    pub fn dims(&self) -> Cow<'_, [usize]> {
+        self.nd.as_deref().map_or_else(
+            || Cow::Owned(vec![self.rows, self.cols]),
+            |dims| Cow::Borrowed(dims.as_slice()),
+        )
+    }
+    pub fn ndims(&self) -> usize {
+        self.nd.as_ref().map_or(2, |dims| dims.len())
+    }
+    pub fn is_nd(&self) -> bool {
+        self.nd.is_some()
+    }
+    /// Reshape only the metadata while retaining immutable shared storage.
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        let dims = crate::array::normalize_dims(dims)?;
+        if dims[0] != self.rows
+            || dims[1..].iter().try_fold(1usize, |n, &d| n.checked_mul(d)) != Some(self.cols)
+        {
+            return Err("reshape dimensions do not match folded matrix storage".into());
+        }
+        let mut result = self.clone();
+        result.nd = (dims.len() > 2).then(|| Arc::new(dims));
+        Ok(result)
     }
     pub fn len(&self) -> usize {
         self.storage.len()
@@ -230,6 +291,14 @@ impl Matrix {
         Self::from_owned(out)
     }
     pub fn zip(&self, rhs: &Self, f: impl Fn(f64, f64) -> f64 + Sync + Send) -> Result<Self> {
+        self.zip_checked(rhs, f, || Ok(()))
+    }
+    pub(crate) fn zip_checked(
+        &self,
+        rhs: &Self,
+        f: impl Fn(f64, f64) -> f64 + Sync + Send,
+        check: impl Fn() -> Result<()>,
+    ) -> Result<Self> {
         if self.len() == 1 {
             return Ok(rhs.map(|b| f(self.data()[0], b)));
         }
@@ -237,7 +306,33 @@ impl Matrix {
             return Ok(self.map(|a| f(a, rhs.data()[0])));
         }
         if (self.rows(), self.cols()) != (rhs.rows(), rhs.cols()) {
-            return Err("Array dimensions must agree (only scalar expansion is supported)".into());
+            let (rows, cols) =
+                expansion_shape((self.rows(), self.cols()), (rhs.rows(), rhs.cols()))?;
+            let count = Self::checked_len(rows, cols)?;
+            check()?;
+            let mut data = Vec::with_capacity(count);
+            if count != 0 {
+                let (a_row, b_row) = (usize::from(self.rows() != 1), usize::from(rhs.rows() != 1));
+                let (a_col, b_col) = (
+                    if self.cols() == 1 { 0 } else { self.rows() },
+                    if rhs.cols() == 1 { 0 } else { rhs.rows() },
+                );
+                let mut next_check = 8192;
+                for col in 0..cols {
+                    let (a, b) = (col * a_col, col * b_col);
+                    for first in (0..rows).step_by(8192) {
+                        data.extend((first..(first + 8192).min(rows)).map(|row| {
+                            f(self.data()[a + row * a_row], rhs.data()[b + row * b_row])
+                        }));
+                        if data.len() >= next_check {
+                            check()?;
+                            next_check = data.len() + 8192;
+                        }
+                    }
+                }
+                check()?;
+            }
+            return Self::from_column_vec(rows, cols, data);
         }
         let mut out = DMatrix::zeros(self.rows(), self.cols());
         if self.len() >= PAR_ELEMENTS {
@@ -410,6 +505,7 @@ impl Matrix {
             uniform: self.uniform,
             rows,
             cols,
+            nd: None,
         })
     }
     pub fn concatenate(mut blocks: Vec<Vec<Self>>) -> Result<Self> {
@@ -467,9 +563,12 @@ impl Matrix {
         if self.is_empty() {
             return format!("[] ({}x{})", self.rows(), self.cols());
         }
+        if self.rows() == 1 && self.cols() == 1 {
+            return format_preview_cell(self.get(0, 0));
+        }
         for r in 0..self.rows().min(limit) {
             for c in 0..self.cols().min(limit) {
-                let _ = write!(s, "{:>12.6} ", self.get(r, c));
+                let _ = write!(s, "{:>12} ", format_preview_cell(self.get(r, c)));
             }
             if self.cols() > limit {
                 s.push_str("...");
@@ -480,6 +579,13 @@ impl Matrix {
             s.push_str("...\n");
         }
         s.trim_end().to_owned()
+    }
+}
+fn format_preview_cell(v: f64) -> String {
+    if v.is_finite() && v == v.trunc() && v.abs() < 1e9 {
+        format!("{}", v as i64)
+    } else {
+        format!("{v:.6}")
     }
 }
 impl fmt::Display for Matrix {
@@ -522,5 +628,31 @@ mod indexed_write_tests {
                 .unwrap()
         );
         assert_eq!(matrix.data().as_ptr(), alias.data().as_ptr());
+    }
+
+    #[test]
+    fn preview_formats_whole_doubles_without_trailing_zeros_and_keeps_fractions() {
+        let whole = Matrix::scalar(724.);
+        let frac = Matrix::scalar(724.5);
+        let row = Matrix::from_column_vec(1, 2, vec![724., 1.5]).unwrap();
+        let s = crate::StructArray::from_slots(
+            1,
+            1,
+            vec!["n".into(), "f".into(), "row".into()],
+            vec![
+                std::sync::Arc::new(whole.into()),
+                std::sync::Arc::new(frac.into()),
+                std::sync::Arc::new(row.into()),
+            ],
+            &std::sync::atomic::AtomicBool::new(false),
+        )
+        .unwrap();
+        assert_eq!(s.get(0, 0).unwrap().preview(32), "724");
+        assert_eq!(s.get(1, 0).unwrap().preview(32), "724.500000");
+        assert_eq!(
+            s.get(2, 0).unwrap().preview(32),
+            "         724     1.500000"
+        );
+        assert_eq!(Matrix::scalar(-0.).preview(32), "0");
     }
 }

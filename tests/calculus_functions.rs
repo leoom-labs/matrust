@@ -237,8 +237,10 @@ fn calculus_bounds_cancellation_and_failed_assignments_preserve_inputs() {
     let cancel = AtomicBool::new(false);
     let a = Matrix::filled(32768, 2, 1.).unwrap();
     let pointer = a.data().as_ptr();
+    // Order 16384 is just under 16*48 Mi subtractions; 16385 crosses that
+    // work limit before any output is allocated.
     assert!(
-        a.difference(16384, 1, &cancel)
+        a.difference(16385, 1, &cancel)
             .unwrap_err()
             .contains("work limit")
     );

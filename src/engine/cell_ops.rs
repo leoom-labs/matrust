@@ -61,9 +61,11 @@ impl Engine {
                 return self.cel_concatenate_warn(rows, out).map(Some);
             }
         }
-        let container = args
-            .first()
-            .is_some_and(|v| matches!(v, Value::Container(Array::Cell(_) | Array::Struct(_))));
+        let container = args.first().is_some_and(|v| {
+            matches!(v, Value::Container(Array::Cell(_) | Array::Struct(_)))
+                || (name == "circshift"
+                    && matches!(v, Value::Container(Array::Str(_)) | Value::QuotedString(_)))
+        });
         if container
             && name != "squeeze"
             && (name != "rot90" || matches!(args.first(), Some(Value::Container(Array::Struct(_)))))
@@ -146,6 +148,16 @@ impl Engine {
                 )?
                 .into())
             }
+            Array::Str(s) => {
+                let mut data = Vec::with_capacity(n);
+                for i in 0..n {
+                    if i.is_multiple_of(1024) {
+                        self.check_cancel()?;
+                    }
+                    data.push(s.data()[at(i)].clone());
+                }
+                Ok(Array::Str(crate::StringArray::new(rows, cols, data)?))
+            }
             Array::Character(c) => {
                 let mut units = Vec::with_capacity(n);
                 for i in 0..n {
@@ -174,6 +186,13 @@ impl Engine {
     }
 
     fn cel_shape(&self, name: &str, args: &[Value]) -> Result<Value> {
+        // Not a struct to rearrange: transpose(D) returning D unchanged would
+        // make transpose(D)\B solve with the untransposed matrix.
+        if super::linear_algebra2::is_decomposition(&args[0]) {
+            return Err(format!(
+                "Undefined function '{name}' for input arguments of type 'decomposition'."
+            ));
+        }
         let a = args[0].clone().array(&self.cancel)?;
         let (r, c) = (a.rows(), a.cols());
         let arity = match name {
@@ -282,6 +301,9 @@ impl Engine {
                     if dim <= 2 {
                         shift[dim as usize - 1] = k;
                     }
+                } else if shifts.len() == 1 {
+                    let dim = usize::from(r == 1 && c != 1);
+                    shift[dim] = self.cel_integer(&args[1])?;
                 } else {
                     for (i, &k) in shifts.data().iter().enumerate() {
                         shift[i] = self.cel_integer(&Value::Matrix(Matrix::scalar(k)))?;
@@ -556,11 +578,11 @@ impl Engine {
     pub(super) fn cel_subscript(
         &mut self,
         arg: &crate::syntax::Expr,
-        bound: usize,
+        bound: impl Into<Option<usize>>,
         maximum: usize,
         out: &mut Execution,
     ) -> Result<(super::indexing::Indices, (usize, usize))> {
-        let result = self.subscript_with_limit(arg, Some(bound), crate::matrix::MAX_ELEMENTS, out);
+        let result = self.subscript_with_limit(arg, bound.into(), crate::matrix::MAX_ELEMENTS, out);
         let (indices, shape) = result.map_err(|e| {
             if e.starts_with("Index must be") {
                 self.raise(
@@ -610,15 +632,52 @@ impl Engine {
         deletion: bool,
         out: &mut Execution,
     ) -> Result<Array> {
-        if args.is_empty() || args.len() > 2 {
+        self.cel_assign_end(old, false, args, content, value, deletion, out)
+    }
+
+    /// `cel_assign` where `field_end` gives a missing target an `end` of 0.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn cel_assign_end(
+        &mut self,
+        old: Option<Array>,
+        field_end: bool,
+        args: &[crate::syntax::Expr],
+        content: bool,
+        value: Array,
+        deletion: bool,
+        out: &mut Execution,
+    ) -> Result<Array> {
+        if args.len() > 2 {
+            let target = old.as_ref().or((!content).then_some(&value));
+            return Err(match target {
+                Some(Array::Struct(_)) => super::nd::STRUCT_ND,
+                Some(Array::Graphics(_)) => "Graphics assignment requires one or two subscripts",
+                _ => super::nd::CELL_ND,
+            }
+            .into());
+        }
+        if args.is_empty() {
             return Err("Container indexing requires one or two subscripts".into());
         }
+        let has_end = content || field_end || old.is_some();
+        let create = old.is_none() && !content && !matches!(value, Array::Cell(_));
         let old = match old {
             Some(a) => a,
             None if content || matches!(value, Array::Cell(_)) => {
                 CellArray::empty(0, 0, &self.cancel)?.into()
             }
-            None => return Err("Undefined container variable".into()),
+            None => match &value {
+                Array::Struct(s) => {
+                    StructArray::filled_empty(0, 0, s.field_names().to_vec(), &self.cancel)?.into()
+                }
+                Array::Character(_) => {
+                    CharacterRow::from_column_major(0, 0, Vec::new(), &self.cancel)?.into()
+                }
+                Array::Graphics(_) => {
+                    crate::GraphicsArray::from_shared(0, 0, Vec::new(), &self.cancel)?.into()
+                }
+                _ => return Err("Undefined container variable".into()),
+            },
         };
         let old = match (&old, &value) {
             (Array::Struct(a), Array::Struct(b))
@@ -640,17 +699,31 @@ impl Engine {
         } else {
             1
         };
-        let (first, _) = self.cel_subscript(
+        let (mut first, _) = self.cel_subscript(
             &args[0],
-            if args.len() == 1 { old.len() } else { r },
+            has_end.then_some(if args.len() == 1 { old.len() } else { r }),
             MAX,
             out,
         )?;
-        let second = if args.len() == 2 {
-            Some(self.cel_subscript(&args[1], c, MAX, out)?.0)
+        let mut second = if args.len() == 2 {
+            Some(
+                self.cel_subscript(&args[1], has_end.then_some(c), MAX, out)?
+                    .0,
+            )
         } else {
             None
         };
+        if create {
+            super::indexed_assignment::infer_assignment_colons(
+                &mut first,
+                second.as_mut(),
+                (value.rows(), value.cols()),
+                (
+                    self.colon_subscript(&args[0]),
+                    args.get(1).is_some_and(|a| self.colon_subscript(a)),
+                ),
+            )?;
+        }
         let extent = |indices: &super::indexing::Indices| {
             (0..indices.len())
                 .map(|i| indices.at(i) + 1)
@@ -659,6 +732,9 @@ impl Engine {
         };
         let (er, ec) = (extent(&first), second.as_ref().map_or(0, extent));
         if deletion && !content {
+            if matches!(old, Array::Graphics(_)) {
+                return Err("Graphics handle replacement requires a handle array".into());
+            }
             if (args.len() == 1 && er > old.len()) || (args.len() == 2 && (er > r || ec > c)) {
                 return Err("Matrix index is out of range for deletion.".into());
             }
@@ -724,6 +800,10 @@ impl Engine {
                 ));
             }
             (Array::Character(_), false, _) => self.cel_char(&value)?.into(),
+            (Array::Graphics(_), false, Array::Graphics(_)) => value,
+            (Array::Graphics(_), false, _) => {
+                return Err("Graphics handle replacement requires a handle array".into());
+            }
             (Array::Struct(a), false, Array::Struct(b)) => {
                 if a.field_count() != b.field_count()
                     || a.field_names().iter().any(|f| b.field_index(f).is_none())
@@ -781,6 +861,15 @@ impl Engine {
             return Err("Attempt to grow array along ambiguous dimension.".into());
         };
         let n = self.cel_admit(rows, cols, fields)?;
+        if let (Array::Graphics(old), Array::Graphics(source)) = (&old, &replacement)
+            && count == 1
+            && (rows, cols) == (r, c)
+        {
+            let index = first.at(0) + second.as_ref().map_or(0, |col| col.at(0) * rows);
+            return Ok(old
+                .replaced(index, source.get_linear(0)?.clone(), &self.cancel)?
+                .into());
+        }
         // None denotes the canonical growth fill ([] fields/cells, char(0)).
         let mut origins = vec![None; n];
         for i in 0..old.len() {
@@ -822,6 +911,24 @@ impl Engine {
                     });
                 }
                 Ok(CharacterRow::from_column_major(rows, cols, units, &self.cancel)?.into())
+            }
+            Array::Graphics(_) => {
+                let mut handles = Vec::with_capacity(n);
+                let placeholder = Arc::new(crate::GraphicsHandle::placeholder());
+                for (i, origin) in origins.into_iter().enumerate() {
+                    if i.is_multiple_of(1024) {
+                        self.check_cancel()?;
+                    }
+                    handles.push(if let Some((new, index)) = origin {
+                        let Array::Graphics(a) = (if new { &replacement } else { &old }) else {
+                            unreachable!()
+                        };
+                        a.get_linear(index)?.clone()
+                    } else {
+                        placeholder.clone()
+                    });
+                }
+                Ok(crate::GraphicsArray::from_shared(rows, cols, handles, &self.cancel)?.into())
             }
             Array::Cell(_) | Array::Struct(_) => {
                 let empty = Arc::new(Array::Numeric(Matrix::filled(0, 0, 0.)?));
@@ -978,7 +1085,7 @@ impl Engine {
         let mut sorted = false;
         let mut first = false;
         for arg in args {
-            match self.text_value(arg.clone())?.to_ascii_lowercase().as_str() {
+            match self.set_flag_text(arg)?.ok_or("Unknown option.")?.as_str() {
                 "rows" => options.rows = true,
                 "stable" => options.stable = true,
                 "sorted" => sorted = true,
@@ -1003,7 +1110,8 @@ impl Engine {
 
     fn cel_flags(&self, args: &[Value], allowed: &[&str]) -> Result<()> {
         for arg in args {
-            if !allowed.contains(&self.text_value(arg.clone())?.to_ascii_lowercase().as_str()) {
+            let flag = self.set_flag_text(arg)?.ok_or("Unknown option.")?;
+            if !allowed.contains(&flag.as_str()) {
                 return Err("Unknown option.".into());
             }
         }
@@ -1545,7 +1653,7 @@ impl Engine {
 }
 
 impl Engine {
-    /// Evaluate each subscript once and stage all writes before publishing.
+    /// Evaluate each subscript once and stage workspace writes before publishing.
     pub(super) fn cel_assign_outputs(
         &mut self,
         destinations: &[Option<crate::syntax::Expr>],
@@ -1569,6 +1677,8 @@ impl Engine {
                     let Some(old @ Array::Struct(_)) = self.array(name) else {
                         return Err("Attempt to reference field of non-structure array".into());
                     };
+                    // Object properties keep the access rules of `obj.p = v`.
+                    self.cls_check_settable(&old, field, out)?;
                     let positions = if let Some(args) = args {
                         self.container_positions(&old, args, out)?.1
                     } else {
@@ -1633,6 +1743,7 @@ impl Engine {
                         field,
                         positions,
                         values,
+                        out,
                     )?
                 }
                 CelOutputTarget::Ignore => unreachable!(),
@@ -1649,7 +1760,13 @@ impl Engine {
         self.merge_workspace(updates)?;
         if !quiet {
             for name in names {
-                let text = self.display_text(name, &self.array(name).unwrap())?;
+                let array = self.array(name).unwrap();
+                // A user object shows through its class (its disp method).
+                if super::classdef::is_object(&array) {
+                    self.cls_echo(name, &array, out)?;
+                    continue;
+                }
+                let text = self.display_text(name, &array)?;
                 self.emit(out, text)?;
             }
         }
@@ -1658,15 +1775,25 @@ impl Engine {
 
     fn cel_assign_output_slots(
         &mut self,
-        old: Array,
+        mut old: Array,
         field: Option<&str>,
         positions: Vec<usize>,
         values: Vec<Array>,
+        out: &mut Execution,
     ) -> Result<Array> {
         if positions.iter().any(|&position| position >= old.len()) {
             return Err("Index exceeds matrix dimensions.".into());
         }
         if let Some(field) = field {
+            if super::classdef::is_object(&old) {
+                // User objects have scalar storage. Apply each selected write
+                // to the staged object, including any changes made by its setter.
+                let steps = [crate::syntax::PathStep::Field(field.to_owned())];
+                for value in values {
+                    old = self.assign_step(Some(old), &steps, value, false, out)?;
+                }
+                return Ok(old);
+            }
             let Array::Struct(s) = &old else {
                 return Err("Attempt to reference field of non-structure array".into());
             };
@@ -1769,6 +1896,11 @@ impl Engine {
         rows: Vec<Vec<Value>>,
         out: &mut Execution,
     ) -> Result<Value> {
+        if rows.iter().map(Vec::len).sum::<usize>() > 1
+            && rows.iter().flatten().any(super::classdef::is_object_value)
+        {
+            return Err(super::classdef::OBJECT_ARRAYS.into());
+        }
         let mut warn = false;
         if rows
             .iter()

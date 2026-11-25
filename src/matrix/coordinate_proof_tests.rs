@@ -393,10 +393,8 @@ fn derived_nan_geometry_accepts_payload_variance_but_source_nan_and_zero_are_exa
 #[test]
 #[cfg(target_pointer_width = "64")]
 fn original_cell_logical_slot_layout_is_preserved_and_proof_allocation_is_charged() {
-    // Original x64: Matrix=24, CellArray=48, Array=56, logical SLOT=64.
-    // Matrix now uses the existing largest variant's 48-byte envelope; CellArray
-    // retains 48 bytes by packing checked <=65,536 nodes / <=256MiB retention.
-    assert_eq!(std::mem::size_of::<Matrix>(), 48);
+    // N-D arrays task: thin shape pointer adds at most eight bytes per storage type.
+    assert_eq!(std::mem::size_of::<Matrix>(), 56);
     assert_eq!(std::mem::size_of::<CellArray>(), 48);
     assert_eq!(std::mem::size_of::<Array>(), 56);
     assert_eq!(crate::containers::SLOT, 64);

@@ -1,0 +1,37 @@
+% Original fixture: small NOT/don't-care controller, no MathWorks examples.
+[System]
+Name='workshop''s controller'
+Type='mamdani'
+Version=2.0
+NumInputs=2
+NumOutputs=1
+NumRules=2
+AndMethod='min'
+OrMethod='probor'
+ImpMethod='prod'
+AggMethod='max'
+DefuzzMethod='centroid'
+
+[Input1]
+Name='drive'
+Range=[0 1]
+NumMFs=2
+MF1='low':'trimf',[0 0 1]
+MF2='high':'trimf',[0 1 1]
+
+[Input2]
+Name='load'
+Range=[-1 1]
+NumMFs=1
+MF1='middle':'gaussmf',[0.5 0]
+
+[Output1]
+Name='command'
+Range=[0 1]
+NumMFs=2
+MF1='low':'trimf',[0 0 1]
+MF2='high':'trimf',[0 1 1]
+
+[Rules]
+-1 0 , 1 (0.7) : 1
+2 -1 , -2 (1) : 2

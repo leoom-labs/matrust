@@ -22,7 +22,7 @@ impl Engine {
             }
         }
         if !(1..=2).contains(&count) {
-            return Err("Use median(A[, dim|'all'][, 'omitnan'|'includenan']); weights, vector dimensions and multiple outputs are not implemented".into());
+            return Err("Use median(A[, dim|'all'][, 'omitnan'|'includenan']); weights and multiple outputs are not implemented".into());
         }
         let input = match &args[0] {
             Value::Matrix(matrix) => matrix,
@@ -33,16 +33,22 @@ impl Engine {
             MedianAxis::Default
         } else {
             match &args[1] {
-            Value::Text(flag) if flag.eq_ignore_ascii_case("all") => MedianAxis::All,
-            Value::Matrix(dim) if dim.len() == 1 => {
-                let value = dim.as_scalar()?;
-                if !value.is_finite() || value < 1. || value.fract() != 0. || value > MAX_ELEMENTS as f64 {
-                    return Err(format!("median dimension must be a positive integer <= {MAX_ELEMENTS}"));
+                Value::Text(flag) if flag.eq_ignore_ascii_case("all") => MedianAxis::All,
+                Value::Matrix(dim) if dim.len() == 1 => {
+                    let value = dim.as_scalar()?;
+                    if !value.is_finite()
+                        || value < 1.
+                        || value.fract() != 0.
+                        || value > MAX_ELEMENTS as f64
+                    {
+                        return Err(format!(
+                            "median dimension must be a positive integer <= {MAX_ELEMENTS}"
+                        ));
+                    }
+                    MedianAxis::Dimension(value as usize)
                 }
-                MedianAxis::Dimension(value as usize)
+                _ => return Err("Invalid median dimension or option".into()),
             }
-            _ => return Err("median dimension must be a positive integer or 'all'; vector dimensions and weights are not implemented".into()),
-        }
         };
         let outputs = self
             .evaluated_elements

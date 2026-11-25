@@ -115,16 +115,19 @@ fn v73_typed_logical_import_and_unsupported_numeric_values() {
     };
     assert_eq!((empty.rows(), empty.cols()), (0, 3));
     {
+        // N-D arrays load since the legacy N-D work (GNU Octave 10.3: double, 2x3x2, 0..11).
         let name = "three_d";
-        assert!(
-            catalog
-                .variables()
-                .find(|v| v.name == name)
-                .unwrap()
-                .unavailable
-                .is_some()
+        let info = catalog.variables().find(|v| v.name == name).unwrap();
+        assert!(info.unavailable.is_none());
+        let loaded = files::load_selected_arrays(&catalog, &names(&[name]), &cancel).unwrap();
+        let Array::Numeric(nd) = &loaded[name] else {
+            panic!("three_d class lost")
+        };
+        assert_eq!(nd.dims().as_ref(), &[2, 3, 2]);
+        assert_eq!(
+            nd.data(),
+            (0..12).map(f64::from).collect::<Vec<_>>().as_slice()
         );
-        assert!(files::load_selected_workspace(&catalog, &names(&[name]), &cancel).is_err());
     }
     let text = catalog.variables().find(|v| v.name == "text_data").unwrap();
     assert!(text.unavailable.is_none());

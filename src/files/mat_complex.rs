@@ -64,30 +64,49 @@ pub(super) fn read_array(
     cancel: &AtomicBool,
 ) -> Result<Array> {
     check_cancel(cancel)?;
-    if info.class != "double" || !info.complex || info.unavailable.is_some() {
+    if !matches!(info.class.as_str(), "double" | "single")
+        || !info.complex
+        || info.unavailable.is_some()
+    {
         return Err("Unsupported complex MAT metadata".into());
     }
     let rows = info.dimensions[0];
-    let cols = info.dimensions[1];
+    let cols = crate::files::checked_dimension_product(&info.dimensions[1..])?;
     let count = ComplexMatrix::checked_len(rows, cols)?;
     let mut values = Vec::new();
     values
         .try_reserve_exact(count)
         .map_err(|_| "Cannot allocate complex MAT array")?;
     let used = component(reader, count, remaining, cancel, |numbers| {
-        values.extend(numbers.iter().map(|&re| Complex64::new(re, 0.)));
+        values.extend(numbers.iter().map(|&re| {
+            Complex64::new(
+                if info.class == "single" {
+                    (re as f32) as f64
+                } else {
+                    re
+                },
+                0.,
+            )
+        }));
     })?;
     let mut next = 0;
     let imaginary = component(reader, count, remaining - used, cancel, |numbers| {
         for (value, &im) in values[next..next + numbers.len()].iter_mut().zip(numbers) {
-            value.im = im;
+            value.im = if info.class == "single" {
+                (im as f32) as f64
+            } else {
+                im
+            };
         }
         next += numbers.len();
     })?;
     if used + imaginary != remaining {
         return Err("Trailing complex MAT component data".into());
     }
-    Ok(ComplexMatrix::from_column_vec(rows, cols, values, cancel)?.into())
+    Ok(ComplexMatrix::from_column_vec(rows, cols, values, cancel)?
+        .with_dims(&info.dimensions)?
+        .with_single_class(info.class == "single")
+        .into())
 }
 
 #[cfg(test)]

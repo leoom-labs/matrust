@@ -1,0 +1,112 @@
+{
+  "fields": {
+    "SOPClassUID": "1.2.840.10008.5.1.4.1.1.7",
+    "SOPInstanceUID": "1.2.826.0.1.3680043.10.543.1",
+    "StudyInstanceUID": "1.2.826.0.1.3680043.10.543.2",
+    "SeriesInstanceUID": "1.2.826.0.1.3680043.10.543.3",
+    "Modality": "OT",
+    "PatientID": "SYNTHETIC-ONLY",
+    "StudyDate": "20000102",
+    "StudyTime": "030405.125",
+    "Rows": 2,
+    "Columns": 3,
+    "SamplesPerPixel": 1,
+    "PhotometricInterpretation": "MONOCHROME2",
+    "PlanarConfiguration": 0,
+    "NumberOfFrames": 1,
+    "BitsAllocated": 16,
+    "BitsStored": 12,
+    "HighBit": 11,
+    "PixelRepresentation": 0,
+    "PixelSpacing": [
+      0.5,
+      0.75
+    ],
+    "ImagePositionPatient": [
+      -10.5,
+      2.25,
+      0.0
+    ],
+    "ImageOrientationPatient": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    "RescaleIntercept": -1024.0,
+    "RescaleSlope": 1.5,
+    "WindowCenter": [
+      40.0,
+      80.0
+    ],
+    "WindowWidth": [
+      400.0,
+      800.0
+    ],
+    "SelectorSSValue": [
+      -123,
+      321
+    ],
+    "SelectorUSValue": [
+      1,
+      65535,
+      42
+    ],
+    "SelectorSLValue": [
+      -2147483648,
+      2147483647
+    ],
+    "SelectorULValue": [
+      0,
+      4294967295
+    ],
+    "SelectorSVValue": [
+      -9223372036854775808,
+      9223372036854775807
+    ],
+    "SelectorUVValue": [
+      0,
+      18446744073709551615
+    ],
+    "SelectorFLValue": [
+      -1.25,
+      2.5
+    ],
+    "SelectorFDValue": [
+      -123.125,
+      1e+100
+    ],
+    "StudyDescription": "  Synthetic UTF-8 café",
+    "SpecificCharacterSet": "ISO_IR 192",
+    "PatientName.FamilyName": "Synthetic",
+    "PatientName.GivenName": "Zoë",
+    "PatientName.MiddleName": "Test",
+    "PatientName.NamePrefix": "Dr",
+    "PatientName.NameSuffix": "III",
+    "Width": 3,
+    "Height": 2,
+    "BitDepth": 12,
+    "ColorType": "grayscale",
+    "Format": "DICOM",
+    "TransferSyntaxUID": "1.2.840.10008.1.2.1"
+  },
+  "classes": {
+    "Rows": "uint16",
+    "Columns": "uint16",
+    "SamplesPerPixel": "uint16",
+    "PlanarConfiguration": "uint16",
+    "BitsAllocated": "uint16",
+    "BitsStored": "uint16",
+    "HighBit": "uint16",
+    "PixelRepresentation": "uint16",
+    "SelectorSSValue": "int16",
+    "SelectorUSValue": "uint16",
+    "SelectorSLValue": "int32",
+    "SelectorULValue": "uint32",
+    "SelectorSVValue": "int64",
+    "SelectorUVValue": "uint64",
+    "SelectorFLValue": "single"
+  }
+}

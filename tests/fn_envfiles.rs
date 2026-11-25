@@ -9,44 +9,14 @@ use std::{
 };
 
 const CORPUS: &str = include_str!("fixtures/fn/envfiles-expected.txt");
-// Existing evaluator/display behavior outside this task (display edits are
-// forbidden). These cases still execute and check class, size and all values:
-// only the precise display discrepancy listed here is accepted below.
-const KNOWN: &[(usize, &str)] = &[
-    (
-        36,
-        "Existing cell renderer does not shorten long text to the oracle's 0x1A ellipsis",
-    ),
-    (
-        41,
-        "Existing struct array renderer right-aligns field names instead of indenting four spaces",
-    ),
-    (
-        47,
-        "Existing struct array renderer right-aligns field names instead of indenting four spaces",
-    ),
-    (
-        54,
-        "Existing cell renderer does not shorten long text to the oracle's 0x1A ellipsis",
-    ),
-    (
-        57,
-        "Existing cell renderer does not shorten long text to the oracle's 0x1A ellipsis",
-    ),
-];
+// Display differences once accepted here (cell-text ellipsis 36/54/57, struct-array
+// field indent 41/47) are fixed; every case now compares exactly or under HARNESS.
+const KNOWN: &[(usize, &str)] = &[];
 
 /// Every case with a relaxed comparison or relocated input appears here.
 /// ENV character widths depend on the host, engine version and temp-name
 /// generator; verify a row (or empty character array), not reference path length.
 const HARNESS: &[(usize, &str)] = &[
-    (
-        54,
-        "KNOWN: compare the full id with the exact oracle-shortened display",
-    ),
-    (
-        57,
-        "KNOWN: compare the full id with the exact oracle-shortened display",
-    ),
     (
         1,
         "Platform predicate: exact host logical scalar instead of Windows value",
@@ -115,7 +85,7 @@ const HARNESS: &[(usize, &str)] = &[
     ),
     (
         47,
-        "Remove MATLAB desktop help hyperlink only; apply only the precise KNOWN display rule",
+        "Remove MATLAB desktop help hyperlink only; exact result",
     ),
     (
         49,
@@ -161,7 +131,10 @@ const HARNESS: &[(usize, &str)] = &[
         77,
         "ENV error: replace the oracle current-folder prefix with test folder",
     ),
-    (78, "ENV: character row, variable MatRust version width"),
+    (
+        78,
+        "ENV: character row; script release text, not the oracle width",
+    ),
     (79, "ENV: character row, variable MatRust release width"),
     (80, "ENV: character row, variable MatRust build-date width"),
     (81, "ENV: class, size and exact ordered field names"),
@@ -352,7 +325,8 @@ fn check(case: &Case) -> Result<bool, String> {
     if case.id >= 76 {
         return Ok(true);
     }
-    let mut expected = case.console.clone();
+    // The oracle's `evalc` saved the cell-text ellipsis (U+2026) as 0x1A (36, 54, 57).
+    let mut expected = case.console.replace('\u{1a}', "\u{2026}");
     if matches!(case.id, 1..=3 | 5..=6) {
         let value = match case.id {
             1 => usize::from(cfg!(windows)).to_string(),
@@ -386,36 +360,6 @@ fn check(case: &Case) -> Result<bool, String> {
         } else {
             Ok(true)
         };
-    }
-    if KNOWN.iter().any(|(id, _)| *id == case.id) {
-        let adjusted = match case.id {
-            36 => actual.replace(
-                "'MATLAB:RMDIR:NoDirectoriesRemoved'",
-                "'MATLAB:RMDIR:NoDirectoriesR\u{1a}'",
-            ),
-            54 => actual.replace(
-                "'MATLAB:COPYFILE:FileDoesNotExist'",
-                "'MATLAB:COPYFILE:FileDoesNot\u{1a}'",
-            ),
-            57 => actual.replace(
-                "'MATLAB:MOVEFILE:FileDoesNotExist'",
-                "'MATLAB:MOVEFILE:FileDoesNot\u{1a}'",
-            ),
-            41 | 47 => actual
-                .lines()
-                .map(|line| {
-                    if ["name", "date", "bytes", "isdir", "datenum"].contains(&line.trim()) {
-                        format!("    {}\n", line.trim())
-                    } else {
-                        format!("{line}\n")
-                    }
-                })
-                .collect(),
-            _ => actual.replacen("\nans =", "\nx =", 1),
-        };
-        if adjusted == expected {
-            return Ok(false);
-        }
     }
     Err(format!(
         "console\n expected {expected:?}\n actual   {actual:?}"
@@ -507,11 +451,8 @@ fn pause_is_cancellable_zero_and_disabled_return_promptly() {
         "pause(0); pause(-1); pause('off'); pause(10); state=pause('query'); pause('on');",
     );
     assert!(start.elapsed() < Duration::from_secs(2));
-    assert!(
-        e.execute("pause")
-            .unwrap_err()
-            .contains("not supported yet")
-    );
+    // Without a console host there is no key to wait for: bare pause returns.
+    assert!(e.execute("pause").is_ok());
     let cancel = e.cancellation();
     let worker = std::thread::spawn(move || e.execute("pause(60)"));
     std::thread::sleep(Duration::from_millis(30));
@@ -595,16 +536,55 @@ fn local_clock_serial_date_version_and_temp_names_have_real_meaning() {
     assert!(e.variables["elapsed"].data()[0] > 0.);
     assert!(e.variables["cpu"].data()[0] >= 0.);
     assert_eq!(console(&mut e, "disp(v.Name)"), "MatRust\n");
-    assert_eq!(
-        console(&mut e, "disp(version)"),
-        format!("MatRust {}\n", env!("CARGO_PKG_VERSION"))
+    assert_eq!(console(&mut e, "disp(version)"), "24.2.0.0 (R2024b)\n");
+    // ifem/tool/myunique.m:10-14: v=version; ix=regexp(v,'(')+2; iy=regexp(v,')')-2
+    console(
+        &mut e,
+        "v=version; ix=regexp(v,'(')+2; iy=regexp(v,')')-2; year=str2double(v(ix:iy)); rel=v(regexp(v,'(')+1:regexp(v,')')-1);",
     );
+    assert_eq!(e.variables["year"].data(), &[2024.]);
+    assert_eq!(console(&mut e, "disp(rel)"), "R2024b\n");
+    // Public version page: '-description' is empty on a general release
+    // with no update. https://www.mathworks.com/help/matlab/ref/version.html
+    console(
+        &mut e,
+        "d=version('-description'); empty_desc=isempty(d); char_desc=ischar(d); sz=size(d);",
+    );
+    let description = e.array("d").unwrap();
+    assert_eq!(description.class(), "char");
+    assert_eq!((description.rows(), description.cols()), (0, 0));
+    assert_eq!(e.logical_variables["empty_desc"].data(), &[1]);
+    assert_eq!(e.logical_variables["char_desc"].data(), &[1]);
+    assert_eq!(e.variables["sz"].data(), &[0., 0.]);
     console(
         &mut e,
         "a=tempname(pwd); b=tempname(pwd); different=~strcmp(a,b); absent=exist(a,'file');",
     );
     assert_eq!(e.logical_variables["different"].data(), &[1]);
     assert_eq!(e.variables["absent"].data(), &[0.]);
+}
+
+fn cli_banner(flag: &str) -> String {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_matrust"))
+        .arg(flag)
+        .output()
+        .unwrap_or_else(|error| panic!("matrust {flag}: {error}"));
+    assert!(
+        output.status.success(),
+        "matrust {flag} status {:?}\n{}",
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .replace("\r\n", "\n")
+}
+
+#[test]
+fn cli_version_flags_report_the_package_banner() {
+    let expected = format!("MatRust {}\n", env!("CARGO_PKG_VERSION"));
+    assert_eq!(cli_banner("--version"), expected);
+    assert_eq!(cli_banner("-V"), expected);
 }
 
 #[test]

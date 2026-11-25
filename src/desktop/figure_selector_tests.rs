@@ -385,3 +385,207 @@ fn docked_long_title_is_fully_painted_with_controls_and_axes_in_both_themes() {
         }
     }
 }
+
+#[allow(dead_code)]
+mod figure_font_style_tests {
+    use crate::figure_geometry::Geometry;
+    use crate::figure_view::title_artwork_tests::{paint, visit_shapes};
+    use eframe::egui;
+    use matrust::plot::Figure;
+    use std::sync::atomic::AtomicBool;
+
+    const SIZE: egui::Vec2 = egui::vec2(920., 560.);
+
+    fn figure(script: &str) -> Figure {
+        let mut engine = matrust::Engine::default();
+        engine.execute(script).unwrap();
+        engine.figure.unwrap()
+    }
+
+    fn ordinary(figure: &Figure) -> egui::FullOutput {
+        let Geometry::Ordinary(geometry) =
+            Geometry::prepare(1, figure, &AtomicBool::new(false)).unwrap()
+        else {
+            panic!("expected ordinary figure");
+        };
+        let ctx = egui::Context::default();
+        for _ in 0..3 {
+            paint(&ctx, figure, &geometry, true, SIZE, vec![]);
+        }
+        let (output, _) = paint(&ctx, figure, &geometry, true, SIZE, vec![]);
+        output
+    }
+
+    fn layout(figure: &Figure) -> egui::FullOutput {
+        let mut canvas = crate::subplot_view::Canvas::default();
+        let ctx = egui::Context::default();
+        let mut output = egui::FullOutput::default();
+        for _ in 0..4 {
+            output = crate::headless::run(
+                &ctx,
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SIZE)),
+                    ..Default::default()
+                },
+                |root| {
+                    egui::CentralPanel::default().show(root, |ui| {
+                        canvas.show(ui, 1, figure, false, None);
+                    });
+                },
+            );
+        }
+        output
+    }
+
+    fn text_shapes(output: &egui::FullOutput, label: &str) -> Vec<(f32, bool, egui::Pos2)> {
+        let mut found = Vec::new();
+        for item in &output.shapes {
+            visit_shapes(&item.shape, item.clip_rect, &mut |shape, _| {
+                if let egui::Shape::Text(text) = shape
+                    && text.galley.text() == label
+                {
+                    let section = &text.galley.job.sections[0];
+                    found.push((
+                        section.format.font_id.size,
+                        section.format.italics,
+                        text.pos,
+                    ));
+                }
+            });
+        }
+        found
+    }
+
+    fn assert_style(
+        output: &egui::FullOutput,
+        label: &str,
+        expected_size: f32,
+        expected_bold: bool,
+        expected_italic: bool,
+    ) {
+        let shapes = text_shapes(output, label);
+        let expected_count = if expected_bold { 2 } else { 1 };
+        assert_eq!(
+            shapes.len(),
+            expected_count,
+            "{label:?}: expected {expected_count} text shapes (bold={expected_bold}), got {shapes:?}"
+        );
+        for (size, italic, _) in &shapes {
+            assert!(
+                (*size - expected_size).abs() < 1e-3,
+                "{label:?}: expected size {expected_size}, got {size}"
+            );
+            assert_eq!(
+                *italic, expected_italic,
+                "{label:?}: expected italic={expected_italic}, got {italic}"
+            );
+        }
+        if expected_bold {
+            assert_ne!(
+                shapes[0].2, shapes[1].2,
+                "{label:?}: bold overprint must offset the second copy"
+            );
+        }
+    }
+
+    #[test]
+    fn desktop_legend_paints_fontsize_bold_and_italic_and_keeps_default() {
+        let styled = figure(
+            "plot(1:3); legend('a','FontSize',24,'FontWeight','bold','FontAngle','italic');",
+        );
+        let output = ordinary(&styled);
+        assert_style(&output, "a", 32., true, true);
+
+        let default = figure("plot(1:3); legend('a');");
+        let output = ordinary(&default);
+        assert_style(&output, "a", 12., false, false);
+    }
+
+    #[test]
+    fn desktop_axes_labels_title_and_text_paint_bold_and_italic() {
+        let styled = figure(
+            "plot(1:3); \
+             title('T','FontWeight','bold','FontAngle','italic'); \
+             xlabel('X','FontWeight','bold','FontAngle','italic'); \
+             ylabel('Y','FontWeight','bold','FontAngle','italic'); \
+             text(2,2,'A','FontSize',18,'FontWeight','bold','FontAngle','italic');",
+        );
+        let output = ordinary(&styled);
+        for item in &output.shapes {
+            visit_shapes(&item.shape, item.clip_rect, &mut |shape, _| {
+                if let egui::Shape::Text(text) = shape
+                    && text.galley.text() == "A"
+                {
+                    assert!(
+                        text.galley.job.sections[0]
+                            .format
+                            .coords
+                            .as_ref()
+                            .iter()
+                            .any(|(tag, value)| tag.to_be_bytes() == *b"wght" && *value == 700.)
+                    );
+                }
+            });
+        }
+        assert_style(&output, "T", 12., true, true);
+        assert_style(&output, "X", 12., true, true);
+        assert_style(&output, "Y", 12., true, true);
+        assert_style(&output, "A", 24., true, true);
+
+        let default = figure("plot(1:3); title('T'); xlabel('X'); ylabel('Y');");
+        let output = ordinary(&default);
+        assert_style(&output, "T", 12., false, false);
+        assert_style(&output, "X", 12., false, false);
+        assert_style(&output, "Y", 12., false, false);
+
+        let plot3 = figure(
+            "plot3(1:3,1:3,1:3); \
+             zlabel('Z','FontWeight','bold','FontAngle','italic');",
+        );
+        let output = ordinary(&plot3);
+        assert_style(&output, "Z", 11. * 4. / 3., true, true);
+    }
+
+    #[test]
+    fn axis_off_hides_bold_axis_labels() {
+        let hidden = figure(
+            "plot(1:3); xlabel('X','FontWeight','bold'); ylabel('Y','FontWeight','bold'); axis off;",
+        );
+        let output = ordinary(&hidden);
+        for label in ["X", "Y"] {
+            assert!(text_shapes(&output, label).is_empty(), "painted {label}");
+        }
+    }
+
+    #[test]
+    fn desktop_tiled_labels_title_and_subtitle_paint_bold_and_italic() {
+        let tiled = figure(
+            "t=tiledlayout(1,1); nexttile; plot(1:3); \
+             title('Tile','FontWeight','bold','FontAngle','italic'); \
+             title(t,'TT','FontWeight','bold','FontAngle','italic'); \
+             subtitle(t,'TS','FontSize',24,'FontWeight','bold','FontAngle','italic'); \
+             xlabel(t,'TX','FontWeight','bold','FontAngle','italic'); \
+             ylabel(t,'TY','FontWeight','bold','FontAngle','italic');",
+        );
+        let output = layout(&tiled);
+        assert_style(&output, "Tile", 13., true, true);
+        assert_style(&output, "TT", 12., true, true);
+        assert_style(&output, "TS", 32., true, true);
+        assert_style(&output, "TX", 12., true, true);
+        assert_style(&output, "TY", 12., true, true);
+    }
+
+    #[test]
+    fn desktop_subtitle_paints_explicit_size_at_four_thirds_and_keeps_default_10_2_px() {
+        let explicit = figure(
+            "plot(1:3); title('T'); \
+             subtitle('S','FontSize',24,'FontWeight','bold','FontAngle','italic');",
+        );
+        let output = ordinary(&explicit);
+        assert_style(&output, "S", 32., true, true);
+
+        let untouched = figure("plot(1:3); title('T'); subtitle('S');");
+        let output = ordinary(&untouched);
+        assert_style(&output, "S", 10.2, false, false);
+    }
+}

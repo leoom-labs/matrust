@@ -292,3 +292,112 @@ fn figure_close_all_clean_file_menu_closes_without_prompt_and_guards_other_work(
     assert!(!app.can_close_all_figures());
     assert!(!app.pending_quit && !app.allow_close);
 }
+
+fn count_label(output: &egui::FullOutput, label: &str) -> usize {
+    fn walk(shape: &egui::Shape, label: &str) -> usize {
+        match shape {
+            egui::Shape::Text(t) => usize::from(t.galley.text() == label),
+            egui::Shape::Vec(shapes) => shapes.iter().map(|s| walk(s, label)).sum(),
+            _ => 0,
+        }
+    }
+    output.shapes.iter().map(|s| walk(&s.shape, label)).sum()
+}
+
+fn second_prompt_never_shown(ctx: &egui::Context) -> bool {
+    ctx.memory(|m| m.area_rect(egui::Id::new("unsaved_scripts")).is_none())
+}
+
+#[test]
+fn quit_with_unsaved_figures_and_scripts_asks_once_then_discards_everything() {
+    let ctx = egui::Context::default();
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = setup(&ctx, dir.path(), 2, true);
+    let size = Vec2::new(960., 650.);
+    app.request_quit(&ctx);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert_eq!(count_label(&output, "Unsaved work"), 1);
+    assert_eq!(count_label(&output, "Script: Untitled.mr"), 1);
+    assert_eq!(count_label(&output, "Save all"), 1);
+    click(
+        &ctx,
+        &mut app,
+        size,
+        point(&output, "Discard changes", size),
+    );
+    for _ in 0..3 {
+        let output = frame(&ctx, &mut app, size, vec![]);
+        assert_eq!(count_label(&output, "Unsaved work"), 0, "second prompt");
+    }
+    assert!(app.allow_close, "{}", app.status);
+    assert!(second_prompt_never_shown(&ctx), "second prompt");
+    assert!(!app.documents.iter().any(|d| d.dirty));
+}
+
+#[test]
+fn quit_save_all_saves_figures_then_scripts_without_a_second_prompt() {
+    let ctx = egui::Context::default();
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = setup(&ctx, dir.path(), 2, true);
+    let script = dir.path().join("kept.mr");
+    std::fs::write(&script, "old = 1;").unwrap();
+    app.documents[0] = Document::open(&script).unwrap();
+    app.documents[0].text = "Unsaved script retained".into();
+    app.documents[0].changed();
+    let size = Vec2::new(960., 650.);
+    app.request_quit(&ctx);
+    for _ in 0..3 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    assert_eq!(count_label(&output, "Script: kept.mr"), 1);
+    click(&ctx, &mut app, size, point(&output, "Save all", size));
+    for _ in 0..60 {
+        finish(&mut app);
+        frame(&ctx, &mut app, size, vec![]);
+        if app.allow_close {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert!(app.allow_close, "{}", app.status);
+    assert!(second_prompt_never_shown(&ctx), "second prompt");
+    assert_eq!(
+        std::fs::read_to_string(&script).unwrap(),
+        "Unsaved script retained"
+    );
+}
+
+#[test]
+fn quit_with_many_long_script_names_keeps_actions_on_screen_and_escape_cancels() {
+    let ctx = egui::Context::default();
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = Workspace::with_context(ctx.clone(), true);
+    app.documents.clear();
+    for i in 0..12 {
+        let path = dir.path().join(format!("{i:02}{}.m", "w".repeat(240)));
+        std::fs::write(&path, "a = 1;").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.text = format!("kept_{i} = 1;");
+        doc.changed();
+        app.documents.push(doc);
+    }
+    app.active = 0;
+    let size = Vec2::new(1024., 640.);
+    app.request_quit(&ctx);
+    assert!(app.pending_quit && app.figure_close.is_none());
+    for _ in 0..3 {
+        frame(&ctx, &mut app, size, vec![]);
+    }
+    let output = frame(&ctx, &mut app, size, vec![]);
+    for label in ["Save", "Discard changes", "Cancel"] {
+        point(&output, label, size);
+    }
+    frame(&ctx, &mut app, size, vec![escape(true)]);
+    frame(&ctx, &mut app, size, vec![escape(false)]);
+    assert!(!app.pending_quit && !app.allow_close);
+    assert!(app.documents.iter().all(|d| d.dirty));
+}

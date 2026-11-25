@@ -190,14 +190,7 @@ impl Engine {
         Ok(())
     }
     fn arx_budget(&self, elements: usize, buffers: usize) -> Result<()> {
-        if self
-            .evaluated_elements
-            .checked_add(elements.saturating_mul(buffers))
-            .is_none_or(|n| n > 32 * 1024 * 1024)
-        {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-        }
-        Ok(())
+        self.preflight_elements(elements.saturating_mul(buffers))
     }
     fn arx_array(&self, value: &Value, name: &str, real: bool) -> Result<Array> {
         let a = value.clone().array(&self.cancel)?;
@@ -417,21 +410,42 @@ impl Engine {
         }
         let a = args[0].clone().array(&self.cancel)?;
         for b in &args[1..] {
-            if !self.arx_equal(&a, &b.clone().array(&self.cancel)?)? {
+            if !self.arx_equal(&a, &b.clone().array(&self.cancel)?, 0)? {
                 return Ok(arx_bool(false));
             }
         }
         Ok(arx_bool(true))
     }
-    fn arx_equal(&self, a: &Array, b: &Array) -> Result<bool> {
+    fn arx_equal(&self, a: &Array, b: &Array, network_depth: usize) -> Result<bool> {
         self.check_cancel()?;
+        if let Some((a, b)) = super::objects::fis_comparison(self, a, b) {
+            if network_depth >= 64 {
+                return Err("isequaln: fuzzy object nesting is too deep".into());
+            }
+            return super::fuzzy::equal(&a, &b, |a, b| self.arx_equal(a, b, network_depth + 1));
+        }
+        if let Some((a, b)) = super::objects::nnet_comparison(self, a, b)? {
+            if network_depth >= 64 {
+                return Err("isequaln: network nesting is too deep".into());
+            }
+            return self.arx_equal(&a, &b, network_depth + 1);
+        }
         if (a.rows(), a.cols()) != (b.rows(), b.cols()) {
             return Ok(false);
         }
         match (a, b) {
+            (Array::Str(a), Array::Str(b)) => {
+                for (i, (a, b)) in a.data().iter().zip(b.data()).enumerate() {
+                    self.arx_poll(i)?;
+                    if a != b {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
             (Array::Cell(a), Array::Cell(b)) => {
                 for i in 0..a.len() {
-                    if !self.arx_equal(a.get_linear(i)?, b.get_linear(i)?)? {
+                    if !self.arx_equal(a.get_linear(i)?, b.get_linear(i)?, network_depth)? {
                         return Ok(false);
                     }
                 }
@@ -446,9 +460,38 @@ impl Engine {
                         return Ok(false);
                     };
                     for i in 0..a.len() {
-                        if !self.arx_equal(a.get(f, i)?, b.get(g, i)?)? {
+                        if !self.arx_equal(a.get(f, i)?, b.get(g, i)?, network_depth)? {
                             return Ok(false);
                         }
+                    }
+                }
+                Ok(true)
+            }
+            // isequaln: NaT equals NaT and NaN equals NaN.
+            (Array::Categorical(a), Array::Categorical(b)) => {
+                super::categorical_fns::equal(a, b, true, &self.cancel)
+            }
+            (a @ Array::Datetime(_), b @ Array::Datetime(_))
+            | (a @ Array::Duration(_), b @ Array::Duration(_)) => {
+                Ok(super::datetime_fns::arrays_equal(a, b, true, &self.cancel)?.unwrap_or(false))
+            }
+            // Tables as in isequal (names, row names, row times, variables),
+            // each part compared with missing values equal.
+            (Array::Table(a), Array::Table(b)) => {
+                if a.names() != b.names()
+                    || a.row_names() != b.row_names()
+                    || a.is_timetable() != b.is_timetable()
+                {
+                    return Ok(false);
+                }
+                if let (Some(x), Some(y)) = (a.row_times(), b.row_times())
+                    && !self.arx_equal(x, y, network_depth)?
+                {
+                    return Ok(false);
+                }
+                for (x, y) in a.columns().iter().zip(b.columns()) {
+                    if !self.arx_equal(x, y, network_depth)? {
+                        return Ok(false);
                     }
                 }
                 Ok(true)

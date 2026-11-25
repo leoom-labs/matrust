@@ -169,13 +169,13 @@ fn unsupported_color_storage_and_unrepresented_explicit_grid_styles_are_not_drop
             assert!(error.contains(key), "{error}");
         }
     }
-    for key in ["XMinorGrid", "YMinorGrid"] {
-        let error = decode_matlab_figure(&projection(num(&[1.; 3]), Some((key, mat::text("on")))))
-            .unwrap_err();
-        assert!(error.contains(key), "{error}");
-        assert!(
-            decode_matlab_figure(&projection(num(&[1.; 3]), Some((key, mat::text("off"))))).is_ok()
-        );
+    for (axis, key) in ["XMinorGrid", "YMinorGrid"].into_iter().enumerate() {
+        // Minor grids are represented now; only their explicit style is not.
+        for state in [false, true] {
+            let value = mat::text(if state { "on" } else { "off" });
+            let figure = decode_matlab_figure(&projection(num(&[1.; 3]), Some((key, value))));
+            assert_eq!(figure.unwrap().axes.minor_grid[axis], state);
+        }
         assert!(
             decode_matlab_figure(&projection(
                 num(&[1.; 3]),

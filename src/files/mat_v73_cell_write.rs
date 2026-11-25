@@ -1,7 +1,10 @@
 //! Genuine legacy object-reference cell datasets and UTF-16 leaves.
 use super::{h, write_class, write_leaf, write_values};
 use crate::{Array, Result};
-use hdf5::{Dataset, File, ObjectReference1, types::FixedAscii};
+use hdf5::{
+    File, Location, ObjectReference1,
+    types::{FixedAscii, VarLenArray},
+};
 use std::{collections::BTreeMap, sync::Arc};
 
 // At most 10000 top-level variables plus 65536 recursively counted slots.
@@ -20,11 +23,44 @@ pub(super) fn preflight(
         return Err("MAT cell graph exceeds 75536 visited objects".into());
     }
     match value {
+        Array::Str(_) => {
+            return Err("string arrays cannot be saved to MAT files yet; use cellstr(...)".into());
+        }
         Array::Handle(_) => return Err("save: function handles are not supported yet".into()),
+        Array::Table(_) => {
+            return Err("save: table variables cannot be saved yet".into());
+        }
+        Array::Categorical(_) => return Err("categorical is not supported by save yet".into()),
+        Array::Datetime(_) | Array::Duration(_) => {
+            return Err("datetime/duration variables cannot be saved yet".into());
+        }
         Array::Graphics(_) => return Err(
             "MAT persistence of graphics handles is not implemented, including cell descendants"
                 .into(),
         ),
+        Array::Struct(st) => {
+            // A fieldless group has no reference dataset from which readers can
+            // infer a non-scalar shape. Never silently collapse it to 1x1.
+            if st.field_count() == 0 && st.len() > 1 {
+                return Err(
+                    "MAT v7.3: non-scalar structs without fields are not supported yet".into(),
+                );
+            }
+            if depth >= 16 {
+                return Err("Struct nesting exceeds 16 levels".into());
+            }
+            *slots = slots
+                .checked_add(st.slot_count().max(st.len()))
+                .ok_or("Struct slot overflow")?;
+            if *slots > 65536 {
+                return Err("MAT workspace exceeds 65536 recursive struct slots".into());
+            }
+            for i in 0..st.slot_count() {
+                preflight(st.slot(i)?, depth + 1, nodes, slots, checkpoint)
+                    .map_err(|e| format!("{}: {e}", st.field_names()[i % st.field_count()]))?;
+            }
+        }
+        Array::Sparse(_) => return Err("sparse variables cannot be saved to v7.3 yet".into()),
         Array::Cell(cell) => {
             if depth >= 16 {
                 return Err("Cell nesting exceeds 16 levels".into());
@@ -70,45 +106,95 @@ impl<'a> Writer<'a> {
         name: &str,
         value: &Array,
         checkpoint: &mut impl FnMut() -> Result<()>,
-    ) -> Result<Dataset> {
+    ) -> Result<Location> {
+        if let Array::Struct(st) = value {
+            let location = if st.is_empty() {
+                let ds = h(self.file.new_dataset::<u64>().shape(2).create(name))?;
+                h(ds.write_raw(&[st.rows() as u64, st.cols() as u64]))?;
+                h(h(ds.new_attr::<u8>().create("MATLAB_empty"))?.write_scalar(&1))?;
+                h(ds.as_location())?
+            } else {
+                let group = h(self.file.create_group(name))?;
+                for (f, field) in st.field_names().iter().enumerate() {
+                    checkpoint()?;
+                    let path = format!("{name}/{field}");
+                    if st.len() == 1 {
+                        self.write_root(&path, st.get(f, 0)?, checkpoint)?;
+                    } else {
+                        let mut refs = Vec::with_capacity(st.len());
+                        for e in 0..st.len() {
+                            refs.push(self.reference(st.get(f, e)?, checkpoint)?);
+                        }
+                        write_values(self.file, &path, st.rows(), st.cols(), &refs, checkpoint)?;
+                    }
+                }
+                h(group.as_location())?
+            };
+            let class = FixedAscii::<6>::from_ascii("struct").map_err(|e| e.to_string())?;
+            h(
+                h(location.new_attr::<FixedAscii<6>>().create("MATLAB_class"))?
+                    .write_scalar(&class),
+            )?;
+            let fields = st
+                .field_names()
+                .iter()
+                .map(|name| {
+                    let chars = name
+                        .bytes()
+                        .map(|c| FixedAscii::<1>::from_ascii(&[c]).map_err(|e| e.to_string()))
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(VarLenArray::from_slice(&chars))
+                })
+                .collect::<Result<Vec<VarLenArray<FixedAscii<1>>>>>()?;
+            h(h(location
+                .new_attr::<VarLenArray<FixedAscii<1>>>()
+                .shape(fields.len())
+                .create("MATLAB_fields"))?
+            .write_raw(&fields))?;
+            return Ok(location);
+        }
         let Array::Cell(cell) = value else {
-            return write_leaf(self.file, name, value, checkpoint);
+            return h(write_leaf(self.file, name, value, checkpoint)?.as_location());
         };
         if cell.is_empty() {
-            return write_leaf(self.file, name, value, checkpoint);
+            return h(write_leaf(self.file, name, value, checkpoint)?.as_location());
         }
+        let mut refs = Vec::with_capacity(cell.len());
+        for i in 0..cell.len() {
+            refs.push(self.reference(cell.get_linear(i)?, checkpoint)?);
+        }
+        let dataset = write_values(self.file, name, cell.rows(), cell.cols(), &refs, checkpoint)?;
+        write_class(&dataset, value)?;
+        h(dataset.as_location())
+    }
+    fn reference(
+        &mut self,
+        child: &Arc<Array>,
+        checkpoint: &mut impl FnMut() -> Result<()>,
+    ) -> Result<ObjectReference1> {
+        checkpoint()?;
         if !self.group_created {
             let group = h(self.file.create_group("#refs#"))?;
             let path = FixedAscii::<7>::from_ascii("/#refs#").map_err(|e| e.to_string())?;
             h(h(group.new_attr::<FixedAscii<7>>().create("H5PATH"))?.write_scalar(&path))?;
             self.group_created = true;
         }
-        let mut refs = Vec::<ObjectReference1>::new();
-        refs.try_reserve_exact(cell.len())
-            .map_err(|_| "Cannot allocate bounded cell references")?;
-        for i in 0..cell.len() {
-            checkpoint()?;
-            let child = cell.get_linear(i)?;
-            let key = Arc::as_ptr(child) as usize;
-            let target = if let Some(path) = self.targets.get(&key) {
-                path.clone()
-            } else {
-                if self.next >= 65536 {
-                    return Err("MAT cell targets exceed 65536".into());
-                }
-                let path = format!("/#refs#/r{:06}", self.next);
-                self.next += 1;
-                let dataset = self.write_root(&path, child.as_ref(), checkpoint)?;
-                let text = FixedAscii::<128>::from_ascii(&path).map_err(|e| e.to_string())?;
-                h(h(dataset.new_attr::<FixedAscii<128>>().create("H5PATH"))?.write_scalar(&text))?;
-                self.targets.insert(key, path.clone());
-                path
-            };
-            refs.push(h(self.file.reference(&target))?);
-        }
-        let dataset = write_values(self.file, name, cell.rows(), cell.cols(), &refs, checkpoint)?;
-        write_class(&dataset, value)?;
-        Ok(dataset)
+        let key = Arc::as_ptr(child) as usize;
+        let target = if let Some(path) = self.targets.get(&key) {
+            path.clone()
+        } else {
+            if self.next >= 65536 {
+                return Err("MAT cell targets exceed 65536".into());
+            }
+            let path = format!("/#refs#/r{:06}", self.next);
+            self.next += 1;
+            let location = self.write_root(&path, child, checkpoint)?;
+            let text = FixedAscii::<128>::from_ascii(&path).map_err(|e| e.to_string())?;
+            h(h(location.new_attr::<FixedAscii<128>>().create("H5PATH"))?.write_scalar(&text))?;
+            self.targets.insert(key, path.clone());
+            path
+        };
+        h(self.file.reference(&target))
     }
 }
 

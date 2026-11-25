@@ -97,7 +97,7 @@ fn command_mode_and_selection_obey_raw_logical_line_boundaries() {
         assert_eq!(engine.variables["D"].data(), &[9.]);
         let source = [
             "% Unicode \u{3bb}",
-            "skip=missing;",
+            "skip=uifigure;",
             "R=twice(4);",
             "function y=twice(x)",
             "y=x*2;",

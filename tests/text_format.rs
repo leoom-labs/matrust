@@ -477,6 +477,395 @@ fn num2cell_checks_the_cell_bound_first() {
     );
 }
 
+fn assert_full_cells(
+    engine: &Engine,
+    name: &str,
+    shape: (usize, usize),
+    block_shape: (usize, usize),
+    class: &str,
+    expected: &[&[f64]],
+) {
+    let Some(Array::Cell(cells)) = engine.array(name) else {
+        panic!("{name} is not a cell array");
+    };
+    assert_eq!((cells.rows(), cells.cols()), shape, "{name}");
+    assert_eq!(cells.len(), expected.len(), "{name}");
+    for (i, &values) in expected.iter().enumerate() {
+        let item = cells.get_linear(i).unwrap();
+        assert_eq!((item.rows(), item.cols()), block_shape, "{name} slot {i}");
+        assert_eq!(item.class(), class, "{name} slot {i}");
+        match item.as_ref() {
+            Array::Numeric(m) => assert_eq!(m.data(), values, "{name} slot {i}"),
+            Array::Logical(m) => assert!(
+                m.data().len() == values.len()
+                    && m.data()
+                        .iter()
+                        .map(|&x| f64::from(x))
+                        .eq(values.iter().copied()),
+                "{name} slot {i}"
+            ),
+            other => panic!("{name} slot {i} is not full numeric or logical: {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn num2cell_groups_sparse_columns_for_find() {
+    let mut e = Engine::default();
+    e.set_sparse_full_limit(2);
+    run(&mut e, "a = sparse([1,3],[1,2],[1,1],3,2);");
+    assert!(
+        e.execute("full(a)")
+            .unwrap_err()
+            .contains("converted to full")
+    );
+    run(
+        &mut e,
+        "c = num2cell(a,1); [b] = num2cell(a,1); n = numel(num2cell(a,1));
+         f = cellfun(@find,c,'UniformOutput',false); f1 = f{1}; f2 = f{2};",
+    );
+    for name in ["c", "b"] {
+        assert_full_cells(
+            &e,
+            name,
+            (1, 2),
+            (3, 1),
+            "double",
+            &[&[1., 0., 0.], &[0., 0., 1.]],
+        );
+    }
+    assert_eq!(numbers_of(&e, "n"), vec![2.]);
+    assert_eq!(numbers_of(&e, "f1"), vec![1.]);
+    assert_eq!(numbers_of(&e, "f2"), vec![3.]);
+    let message = e.execute("[x,y] = num2cell(a,1);").unwrap_err();
+    assert!(message.contains("does not support 2 outputs"), "{message}");
+    assert!(e.array("x").is_none() && e.array("y").is_none());
+}
+
+#[test]
+fn num2cell_groups_sparse_rows_and_whole_matrices() {
+    let mut e = Engine::default();
+    e.set_sparse_full_limit(2);
+    run(
+        &mut e,
+        "a=sparse([1 3],[1 2],[1 1],3,2); l=logical(a);
+         r=num2cell(a,2); w=num2cell(a,[1;2]);
+         lc=num2cell(l,1); lr=num2cell(l,2); lw=num2cell(l,[1 2]);
+         f1=find(r{1}); f2=find(r{2}); f3=find(r{3}); [i,j]=find(w{1});",
+    );
+    for (name, class) in [("r", "double"), ("lr", "logical")] {
+        assert_full_cells(
+            &e,
+            name,
+            (3, 1),
+            (1, 2),
+            class,
+            &[&[1., 0.], &[0., 0.], &[0., 1.]],
+        );
+    }
+    for (name, class) in [("w", "double"), ("lw", "logical")] {
+        assert_full_cells(
+            &e,
+            name,
+            (1, 1),
+            (3, 2),
+            class,
+            &[&[1., 0., 0., 0., 0., 1.]],
+        );
+    }
+    assert_full_cells(
+        &e,
+        "lc",
+        (1, 2),
+        (3, 1),
+        "logical",
+        &[&[1., 0., 0.], &[0., 0., 1.]],
+    );
+    assert_eq!(numbers_of(&e, "f1"), vec![1.]);
+    assert!(numbers_of(&e, "f2").is_empty());
+    assert_eq!(numbers_of(&e, "f3"), vec![2.]);
+    assert_eq!(numbers_of(&e, "i"), vec![1., 3.]);
+    assert_eq!(numbers_of(&e, "j"), vec![1., 2.]);
+}
+
+#[test]
+fn num2cell_groups_empty_sparse_dimensions() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "a=sparse(0,3); b=logical(sparse(3,0)); z=sparse(0,0);
+         ac=num2cell(a,1); ar=num2cell(a,2); aw=num2cell(a,[1 2]);
+         bc=num2cell(b,1); br=num2cell(b,2); bw=num2cell(b,[1 2]);
+         zw=num2cell(z,[1 2]);",
+    );
+    assert_full_cells(&e, "ac", (1, 3), (0, 1), "double", &[&[], &[], &[]]);
+    assert_full_cells(&e, "ar", (0, 1), (1, 3), "double", &[]);
+    assert_full_cells(&e, "aw", (1, 1), (0, 3), "double", &[&[]]);
+    assert_full_cells(&e, "bc", (1, 0), (3, 1), "logical", &[]);
+    assert_full_cells(&e, "br", (3, 1), (1, 0), "logical", &[&[], &[], &[]]);
+    assert_full_cells(&e, "bw", (1, 1), (3, 0), "logical", &[&[]]);
+    assert_full_cells(&e, "zw", (1, 1), (0, 0), "double", &[&[]]);
+}
+
+#[test]
+fn num2cell_preserves_one_input_scalars_and_sparse_cell_bound() {
+    let mut e = Engine::default();
+    e.set_sparse_full_limit(0);
+    run(
+        &mut e,
+        "a=sparse(2,1,4,2,1); s=num2cell(a); l=num2cell(logical(a));
+         sz=num2cell(sparse(0)); sn=num2cell(sparse(4));
+         lz=num2cell(logical(sparse(0))); ln=num2cell(logical(sparse(1)));
+         d=num2cell([1 2;3 4]);",
+    );
+    assert_full_cells(&e, "s", (2, 1), (1, 1), "double", &[&[0.], &[4.]]);
+    assert_full_cells(&e, "l", (2, 1), (1, 1), "logical", &[&[0.], &[1.]]);
+    for (name, class, value) in [
+        ("sz", "double", 0.),
+        ("sn", "double", 4.),
+        ("lz", "logical", 0.),
+        ("ln", "logical", 1.),
+    ] {
+        assert_full_cells(&e, name, (1, 1), (1, 1), class, &[&[value]]);
+    }
+    assert_full_cells(
+        &e,
+        "d",
+        (2, 2),
+        (1, 1),
+        "double",
+        &[&[1.], &[3.], &[2.], &[4.]],
+    );
+    for expr in ["num2cell(sparse(65537,1))", "num2cell(sparse(65537,1),2)"] {
+        let message = e.execute(expr).unwrap_err();
+        assert!(message.contains("result exceeds 65536 cells"), "{message}");
+    }
+}
+
+#[test]
+fn num2cell_validates_sparse_group_dimensions_exactly() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "a=sparse(2,1,4,2,1); h=bitshift(uint64(1),53); axes=[h,h+uint64(1)];
+         c=num2cell(a,axes); col=num2cell(a,[1,h]); w=num2cell(a,sparse([1 2]));",
+    );
+    let Some(Array::Typed(axes)) = e.array("axes") else {
+        panic!("expected exact uint64 axes");
+    };
+    assert_eq!(axes.class(), matrust::NumericClass::Uint64);
+    assert_eq!((axes.int(0), axes.int(1)), (1 << 53, (1 << 53) + 1));
+    assert_full_cells(&e, "c", (2, 1), (1, 1), "double", &[&[0.], &[4.]]);
+    for name in ["col", "w"] {
+        assert_full_cells(&e, name, (1, 1), (2, 1), "double", &[&[0., 4.]]);
+    }
+    for dim in ["[2 1]", "sparse([2 1])", "[h,1]"] {
+        let message = e.execute(&format!("num2cell(a,{dim})")).unwrap_err();
+        assert!(
+            message.contains("must be listed in ascending order"),
+            "{message}"
+        );
+    }
+    for dim in ["[h,h]", "[3 3]", "[1 1]"] {
+        let message = e.execute(&format!("num2cell(a,{dim})")).unwrap_err();
+        assert!(message.contains("dimensions must be distinct"), "{message}");
+    }
+    for dim in ["[]", "0", "-1", "1.5", "Inf", "[1 2;3 4]", "sparse([1 0])"] {
+        let message = e.execute(&format!("num2cell(a,{dim})")).unwrap_err();
+        assert!(message.contains("vector of positive integers"), "{message}");
+    }
+}
+
+#[test]
+fn num2cell_checks_sparse_axis_scratch_before_output() {
+    let mut e = Engine::default();
+    run(&mut e, "a=sparse(1,1); d=3:66;");
+    let mut limits = e.limits_active();
+    limits.memory_bytes = 64 * size_of::<u64>() - 1;
+    e.limits_set(limits);
+    run(&mut e, "assert(numel(num2cell(a,3)) == 1);");
+    let check = "assert(numel(num2cell(a,d)) == 1);";
+    let message = e.execute(check).unwrap_err();
+    assert!(message.contains("num2cell exceeds"), "{message}");
+    limits.memory_bytes += 1;
+    e.limits_set(limits);
+    run(&mut e, check);
+}
+
+type DenseBlock = (Vec<usize>, &'static str, Vec<(f64, f64)>);
+
+/// Outer cell shape and every block of a dense num2cell result as
+/// (dimensions, class, column-major values with their imaginary parts).
+fn dense_blocks(engine: &Engine, name: &str) -> ((usize, usize), Vec<DenseBlock>) {
+    let Some(Array::Cell(cells)) = engine.array(name) else {
+        panic!("{name} is not a cell array");
+    };
+    let blocks = (0..cells.len()).map(|i| {
+        let item = cells.get_linear(i).unwrap();
+        let values = match item.as_ref() {
+            Array::Numeric(m) => m.data().iter().map(|&v| (v, 0.)).collect(),
+            Array::Logical(m) => m.data().iter().map(|&v| (f64::from(v), 0.)).collect(),
+            Array::Typed(m) => (0..m.len()).map(|k| (m.real(k), 0.)).collect(),
+            Array::Complex(m) => m.data().iter().map(|v| (v.re, v.im)).collect(),
+            other => panic!("{name} slot {i} is not a dense block: {other:?}"),
+        };
+        (item.dims().to_vec(), item.class(), values)
+    });
+    ((cells.rows(), cells.cols()), blocks.collect())
+}
+
+fn real_block(dims: &[usize], class: &'static str, values: &[f64]) -> DenseBlock {
+    let values = values.iter().map(|&v| (v, 0.)).collect();
+    (dims.to_vec(), class, values)
+}
+
+// GNU Octave 10.3: A=reshape(1:6,2,3), C=num2cell(A,1) is 1x3 with C{2}=[3;4];
+// B=reshape(1:8,2,2,2), num2cell(B,[1 3]) is 1x2 of 2x1x2 blocks [1;2;5;6] and
+// [3;4;7;8]; num2cell(B,[2 3]) is 2x1 of 1x2x2 blocks, the second 2 4 6 8.
+#[test]
+fn num2cell_groups_dense_dimensions_into_blocks() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "a = reshape(1:6,2,3); c = num2cell(a,1); n = numel(c); x = c{2}; sz = size(c);
+         r = num2cell(a,2); w = num2cell(a,[1 2]); [o] = num2cell(a,1);
+         b = reshape(1:8,2,2,2); d = num2cell(b,[1 3]); nd = numel(d); p = num2cell(b,[2 3]);
+         total = sum(cellfun(@numel, c)); one = num2cell(a);",
+    );
+    assert_eq!(numbers_of(&e, "n"), vec![3.]);
+    assert_eq!(numbers_of(&e, "sz"), vec![1., 3.]);
+    assert_eq!(numbers_of(&e, "x"), vec![3., 4.]);
+    assert_eq!(numbers_of(&e, "nd"), vec![2.]);
+    assert_eq!(numbers_of(&e, "total"), vec![6.]);
+    let columns = [[1., 2.], [3., 4.], [5., 6.]].map(|v| real_block(&[2, 1], "double", &v));
+    for name in ["c", "o"] {
+        assert_eq!(dense_blocks(&e, name), ((1, 3), columns.to_vec()), "{name}");
+    }
+    let rows = [[1., 3., 5.], [2., 4., 6.]].map(|v| real_block(&[1, 3], "double", &v));
+    assert_eq!(dense_blocks(&e, "r"), ((2, 1), rows.to_vec()));
+    let whole = real_block(&[2, 3], "double", &[1., 2., 3., 4., 5., 6.]);
+    assert_eq!(dense_blocks(&e, "w"), ((1, 1), vec![whole]));
+    let d = [[1., 2., 5., 6.], [3., 4., 7., 8.]].map(|v| real_block(&[2, 1, 2], "double", &v));
+    assert_eq!(dense_blocks(&e, "d"), ((1, 2), d.to_vec()));
+    let p = [[1., 3., 5., 7.], [2., 4., 6., 8.]].map(|v| real_block(&[1, 2, 2], "double", &v));
+    assert_eq!(dense_blocks(&e, "p"), ((2, 1), p.to_vec()));
+    // One input still makes one scalar cell per element.
+    let scalars = [1., 2., 3., 4., 5., 6.].map(|v| real_block(&[1, 1], "double", &[v]));
+    assert_eq!(dense_blocks(&e, "one"), ((2, 3), scalars.to_vec()));
+    let message = e.execute("[x1,x2] = num2cell(a,1);").unwrap_err();
+    assert!(message.contains("does not support 2 outputs"), "{message}");
+}
+
+#[test]
+fn num2cell_dense_blocks_keep_class_and_exact_values() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "h = bitshift(uint64(1),53);
+         u = [h+uint64(1), h+uint64(3); h+uint64(5), h+uint64(7)]; cu = num2cell(u,2);
+         m = intmax('int64'); s = reshape([m-7 m-6 m-5 m-4 m-3 m-2 m-1 m],2,2,2);
+         cs = num2cell(s,[1 3]);
+         l = logical([1 0 1; 0 1 1]); cl = num2cell(l,1);
+         z = single([1 2;3 4]); z(1,2) = 2+3i; cz = num2cell(z,2); kz = class(cz{1});
+         q = [1+2i 3; 4 5-1i]; cq = num2cell(q,1);
+         ea = num2cell(zeros(0,3),1); eb = num2cell(zeros(0,3),2); v = num2cell([7 8 9],3);",
+    );
+    // Adjacent odd 64-bit integers above 2^53 that no double can tell apart.
+    let exact = |name: &str, class: matrust::NumericClass, dims: &[usize]| {
+        let Some(Array::Cell(cells)) = e.array(name) else {
+            panic!("{name} is not a cell array");
+        };
+        let blocks = (0..cells.len()).map(|i| match cells.get_linear(i).unwrap().as_ref() {
+            Array::Typed(block) => {
+                assert_eq!(
+                    (block.class(), &*block.dims()),
+                    (class, dims),
+                    "{name} slot {i}"
+                );
+                (0..block.len()).map(|k| block.int(k)).collect::<Vec<_>>()
+            }
+            other => panic!("{name} slot {i}: {other:?}"),
+        });
+        ((cells.rows(), cells.cols()), blocks.collect::<Vec<_>>())
+    };
+    let h = 1i128 << 53;
+    assert_eq!(
+        exact("cu", matrust::NumericClass::Uint64, &[1, 2]),
+        ((2, 1), vec![vec![h + 1, h + 3], vec![h + 5, h + 7]])
+    );
+    let m = i128::from(i64::MAX);
+    assert_eq!(
+        exact("cs", matrust::NumericClass::Int64, &[2, 1, 2]),
+        (
+            (1, 2),
+            vec![
+                vec![m - 7, m - 6, m - 3, m - 2],
+                vec![m - 5, m - 4, m - 1, m]
+            ]
+        )
+    );
+    let columns = [[1., 0.], [0., 1.], [1., 1.]].map(|v| real_block(&[2, 1], "logical", &v));
+    assert_eq!(dense_blocks(&e, "cl"), ((1, 3), columns.to_vec()));
+    let single = vec![
+        (vec![1, 2], "single", vec![(1., 0.), (2., 3.)]),
+        (vec![1, 2], "single", vec![(3., 0.), (4., 0.)]),
+    ];
+    assert_eq!(dense_blocks(&e, "cz"), ((2, 1), single));
+    assert_eq!(text_of(&e, "kz"), "single");
+    let double = vec![
+        (vec![2, 1], "double", vec![(1., 2.), (4., 0.)]),
+        (vec![2, 1], "double", vec![(3., 0.), (5., -1.)]),
+    ];
+    assert_eq!(dense_blocks(&e, "cq"), ((1, 2), double));
+    // Empty and above-rank axes.
+    let empty = real_block(&[0, 1], "double", &[]);
+    assert_eq!(dense_blocks(&e, "ea"), ((1, 3), vec![empty; 3]));
+    assert_eq!(dense_blocks(&e, "eb"), ((0, 1), vec![]));
+    let scalars = [7., 8., 9.].map(|v| real_block(&[1, 1], "double", &[v]));
+    assert_eq!(dense_blocks(&e, "v"), ((1, 3), scalars.to_vec()));
+}
+
+#[test]
+fn num2cell_refuses_dense_nd_cell_grids_and_invalid_axes() {
+    let mut e = Engine::default();
+    run(&mut e, "a = reshape(1:6,2,3); b = reshape(1:8,2,2,2);");
+    // The outer grid of num2cell(b,1) is 1x2x2 (GNU Octave 10.3): it is
+    // refused with the N-D cell limit, never folded into a 2-D grid.
+    for (call, grid) in [("num2cell(b,1)", "1x2x2"), ("num2cell(b,2)", "2x1x2")] {
+        let message = e.execute(&format!("c = {call};")).unwrap_err();
+        assert!(
+            message.contains(&format!("form a {grid} cell grid"))
+                && message
+                    .contains("Cell arrays with more than two dimensions are not supported yet"),
+            "{call}: {message}"
+        );
+        assert!(e.array("c").is_none(), "{call}");
+    }
+    let message = e.execute("c = num2cell(b);").unwrap_err();
+    assert!(
+        message.contains("num2cell does not support N-D arrays yet"),
+        "{message}"
+    );
+    // The axis list is validated on its own, before any block is read.
+    for (dims, reason) in [
+        ("[1 1]", "dimensions must be distinct"),
+        ("[]", "vector of positive integers"),
+        ("0", "vector of positive integers"),
+        ("1.5", "vector of positive integers"),
+        ("[1 2;3 4]", "vector of positive integers"),
+        ("ones(1,1,2)", "vector of positive integers"),
+        ("[2 1]", "must be listed in ascending order"),
+    ] {
+        for source in ["a", "b"] {
+            let message = e
+                .execute(&format!("c = num2cell({source},{dims});"))
+                .unwrap_err();
+            assert!(message.contains(reason), "{source},{dims}: {message}");
+        }
+    }
+    assert!(e.array("c").is_none());
+}
+
 #[test]
 fn strrep_replaces_overlapping_matches() {
     assert_eq!(s("strrep('aaa', 'aa', 'b')"), "bb");
@@ -562,6 +951,57 @@ fn sprintf_complex_consumes_one_element_with_the_real_part() {
 fn strtrim_keeps_nul_but_deblank_removes_it() {
     assert_eq!(numbers("numel(strtrim(char([0 97 32])))"), vec![2.0]);
     assert_eq!(numbers("numel(deblank(char([97 0 32])))"), vec![1.0]);
+}
+
+/// MathWorks strtrim (Algorithms) on char, same rule as string strtrim:
+/// remove Unicode whitespace except char(133), char(160), char(8199), char(8239).
+/// char(8192) and char(12288) are removed. Reference codes are those units.
+#[test]
+fn review_1111_char_strtrim_keeps_significant_whitespace() {
+    assert_eq!(
+        numbers("double(strtrim(char([32 160 97 133 32])))"),
+        vec![160.0, 97.0, 133.0]
+    );
+    assert_eq!(
+        numbers("double(strtrim(char([8199 98 8239])))"),
+        vec![8199.0, 98.0, 8239.0]
+    );
+    assert_eq!(
+        numbers("double(strtrim(char([8192 99 12288])))"),
+        vec![99.0]
+    );
+    assert_eq!(
+        numbers("double(strip(char([32 160 97 160 32])))"),
+        vec![160.0, 97.0, 160.0]
+    );
+}
+
+/// MathWorks strcat removes trailing ASCII whitespace only: space, tab,
+/// vertical tab, newline, carriage return, and form feed. NUL stays.
+/// Reference for strcat(char([97 0]),'b') is the codes [97 0 98].
+/// A cell element is not trimmed.
+#[test]
+fn review_1111_strcat_keeps_nul_trims_documented_whitespace() {
+    assert_eq!(
+        numbers("double(strcat(char([97 0]),'b'))"),
+        vec![97.0, 0.0, 98.0]
+    );
+    assert_eq!(
+        numbers("double(strcat(char([97 0 32 9 10 11 12 13]),'b'))"),
+        vec![97.0, 0.0, 98.0]
+    );
+    assert_eq!(s("strcat('a \t','b')"), "ab");
+    assert_eq!(cell("strcat({char([97 0])},'b')"), vec!["a\0b"]);
+    // Cell elements keep their spaces; a character argument still loses trailing space.
+    assert_eq!(cell("strcat({'a '},'b ')"), vec!["a b"]);
+}
+
+/// MathWorks blanks(n) is a 1-by-n character row. n = 0 is 1-by-0, not 0-by-0.
+#[test]
+fn review_1111_blanks_zero_is_one_by_zero() {
+    assert_eq!(numbers("size(blanks(0))"), vec![1.0, 0.0]);
+    assert_eq!(numbers("size(blanks(3))"), vec![1.0, 3.0]);
+    assert_eq!(s("blanks(0)"), "");
 }
 
 /// Preserve row padding and shape when checking reference character matrices.

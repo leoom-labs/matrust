@@ -136,7 +136,7 @@ fn kaiser_script_defaults_rounding_filter_workflow_and_atomic_errors() {
         "keep=kaiser(3,Inf);",
         "keep=kaiser(3,1,'single');",
         "keep=kaiser(3,1,'periodic');",
-        "keep=kaiser(16777217);",
+        "keep=kaiser(50331649);",
     ] {
         assert!(engine.execute(script).is_err(), "{script}");
         assert_eq!(engine.variables["keep"].data(), [42.]);

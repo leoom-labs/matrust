@@ -1,0 +1,2 @@
+classdef SubFinal < Final
+end

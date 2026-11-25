@@ -29,6 +29,7 @@ fn inputs(count: usize) -> (Matrix, Matrix) {
             .transpose(),
     )
 }
+#[allow(clippy::large_enum_variant)] // benchmark-only holder
 enum Output {
     Series(Series),
     Display(Vec<[f64; 2]>),

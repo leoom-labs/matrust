@@ -10,6 +10,126 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+fn graphics_text_lines(
+    value: &Value,
+    cancel: &AtomicBool,
+) -> Result<(String, Option<crate::plot::text_markup::TextSource>)> {
+    let lines = match value {
+        Value::Text(s) => return Ok((s.clone(), None)),
+        Value::QuotedString(s) => {
+            return Ok((
+                s.clone(),
+                Some(crate::plot::text_markup::TextSource::Strings {
+                    rows: 1,
+                    cols: 1,
+                    values: vec![Some(s.clone())],
+                }),
+            ));
+        }
+        Value::Container(Array::Cell(c)) => {
+            if c.len() > 256 {
+                return Err("Text exceeds 256 lines".into());
+            }
+            let mut lines = Vec::new();
+            let mut bytes = 0usize;
+            for i in 0..c.len() {
+                let item = c.get_linear(i)?;
+                match item.as_ref() {
+                    Array::Character(a) if a.is_text_row() => {
+                        let line = a.to_utf8(cancel)?;
+                        bytes = bytes.saturating_add(line.len() + 1);
+                        if bytes > crate::plot::MAX_TEXT_BYTES + 1 {
+                            return Err("Text exceeds 4096 bytes".into());
+                        }
+                        lines.push(line);
+                    }
+                    _ => return Err("Text cells must contain character rows".into()),
+                }
+            }
+            lines
+        }
+        Value::Container(Array::Str(a))
+            if a.len() <= 256
+                && a.data().iter().flatten().map(|s| s.len()).sum::<usize>()
+                    + a.len().saturating_sub(1)
+                    <= crate::plot::MAX_TEXT_BYTES =>
+        {
+            a.data()
+                .iter()
+                .map(|s| s.as_deref().unwrap_or("").to_owned())
+                .collect()
+        }
+        Value::Container(Array::Character(a)) if a.rows() <= 256 => {
+            let mut lines = Vec::new();
+            for row in 0..a.rows() {
+                let units: Vec<_> = (0..a.cols())
+                    .map(|col| a.units()[col * a.rows() + row])
+                    .collect();
+                lines.push(String::from_utf16(&units).map_err(|_| "Invalid UTF-16 text")?);
+            }
+            lines
+        }
+        _ => {
+            return Err(
+                "Text must be character text, a string array or cell array of character rows"
+                    .into(),
+            );
+        }
+    };
+    let joined = lines.join("\n");
+    if joined.len() > crate::plot::MAX_TEXT_BYTES {
+        return Err("Text exceeds 4096 bytes".into());
+    }
+    use crate::plot::text_markup::TextSource;
+    let source = match value {
+        Value::Container(Array::Cell(_)) => TextSource::Cell(lines),
+        Value::Container(Array::Str(a)) => TextSource::Strings {
+            rows: a.rows(),
+            cols: a.cols(),
+            values: a
+                .data()
+                .iter()
+                .map(|s| s.as_ref().map(|v| v.to_string()))
+                .collect(),
+        },
+        Value::Container(Array::Character(a)) => TextSource::Character {
+            rows: a.rows(),
+            cols: a.cols(),
+            units: a.units().to_vec(),
+        },
+        _ => unreachable!(),
+    };
+    Ok((joined, Some(source)))
+}
+fn graphics_text_value(
+    source: &crate::plot::text_markup::TextSource,
+    cancel: &AtomicBool,
+) -> Result<Value> {
+    use crate::plot::text_markup::TextSource;
+    let array = match source {
+        TextSource::Cell(lines) => {
+            let mut cells = Vec::new();
+            for line in lines {
+                cells.push(Arc::new(
+                    crate::CharacterRow::from_text(line, cancel)?.into(),
+                ));
+            }
+            crate::CellArray::from_shared(cells.len(), 1, cells, cancel)?.into()
+        }
+        TextSource::Strings { rows, cols, values } => Array::Str(crate::StringArray::new(
+            *rows,
+            *cols,
+            values
+                .iter()
+                .map(|s| s.as_ref().map(|v| Arc::<str>::from(v.as_str())))
+                .collect(),
+        )?),
+        TextSource::Character { rows, cols, units } => {
+            crate::CharacterRow::from_column_major(*rows, *cols, units.clone(), cancel)?.into()
+        }
+    };
+    Ok(Value::Container(array))
+}
 /// Correctly rounded fused multiply-add. `f64::mul_add` calls the C runtime's `fma`, which on the
 /// Windows GNU build is wrong in the last bit for about 1 in 4 inputs (tool/fma_probe.rs, 2026-10-25);
 /// `libm::fma` gives the same bits on every platform.
@@ -22,25 +142,41 @@ impl Fma for f64 {
         libm::fma(self, b, c)
     }
 }
+pub mod app_designer_model;
+pub mod app_launchers;
+mod arguments;
 mod array_functions;
 mod arrays_more;
 #[cfg(target_arch = "wasm32")]
 mod browser;
+mod categorical_fns;
 mod cell_ops;
 mod character_values;
 mod chebyshev;
+mod classdef;
 mod clear_variables;
+pub mod comm_app_hooks;
+pub mod compare;
+pub mod compare_builtin;
 mod complex_math;
 mod complex_values;
 mod container_values;
+mod control_design;
 mod control_flow;
+mod control_lti;
+mod control_reduce;
+mod control_response;
 mod core_more;
 mod cplx_linalg;
 mod cplx_poly;
 mod cplx_qr;
 mod cplx_reduce;
 mod cplx_svd;
-mod dates;
+mod curve_fit;
+pub(crate) mod dates;
+pub(crate) mod datetime_fns;
+mod dialogs;
+pub mod econ_app_hooks;
 mod eig_more;
 mod elementary;
 mod env_files;
@@ -51,9 +187,34 @@ mod figure_files;
 mod file_commands;
 mod file_io;
 mod files_more;
+mod ui_components;
+pub use files_more::{DicomBrowserPresentation, present_dicom_browser};
+mod dicom;
+#[doc(hidden)]
+pub use dicom::collection::with_dicom_collection_count;
+pub mod fuzzy_app_hooks;
+pub mod implay;
+mod limits;
+pub mod mpc_app_hooks;
+pub mod neural_app_hooks;
+mod table_fns;
+pub use limits::Limits;
+mod audio;
+pub mod camcal_app_hooks;
+mod camera;
+mod comm;
+mod comm_wave;
+mod econ;
+mod econ_tests;
+pub mod econ_vol;
+mod filter_extras;
 mod filtic;
 mod format_command;
 mod fourier;
+mod fuzzy;
+mod graphics_root;
+mod iir;
+mod import_options;
 mod interp1;
 mod iter_solvers;
 mod lang_extra;
@@ -66,56 +227,134 @@ mod matrix_build;
 mod matrix_files;
 mod median;
 mod misc_more;
+mod mpc;
+mod nd;
+mod nd_reduce;
+mod nd_shape;
 mod near_zero;
+pub mod nnet;
 mod number_theory;
 mod objects;
 mod ode;
 mod ode_more;
+mod optim_con;
+mod optim_global;
+mod optim_nl;
+mod packages;
 mod poly_interp;
 mod polyval;
 mod powers_of_two;
+mod profiler;
 mod quadrature;
-mod random;
+pub mod random;
 mod rate_conversion;
 #[cfg(test)]
 mod real_singular_tests;
 mod reductions;
+pub mod regest_app_hooks;
+mod registration;
 mod repmat;
+mod scalar_loops;
 mod sci_more;
 mod script_paths;
 mod shape_arguments;
 mod shape_queries;
+mod signal_spectral;
+mod signal_timedomain;
+mod sparse_fns;
+mod sparse_order;
+mod sparse_precond;
+mod sparse_random;
+mod sparse_solve;
 mod special_fns;
+mod spline_toolbox;
 mod stopwatch;
+#[cfg(test)]
+mod tests;
 mod trig_more;
+mod video;
+#[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
+pub use audio::audio_output_sample;
+mod volume;
+pub mod volume_viewer_app_hooks;
 mod xcorr;
 pub use figure_files::FigureFileEvent;
 mod graphics;
 mod graphics_handles;
+mod graphics_ticks;
 mod handles;
 mod help_command;
+mod host_io;
+mod image_basic;
+mod image_color;
+pub use dialogs::{DialogReply, DialogRequest, FileFilter, MessageIcon};
+pub use host_io::{GraphicsFrame, HostIo};
+pub use ui_components::snapshot::{
+    UiEvent, UiNodeSnapshot, UiSnapshot, UiTableCell, UiWidgetSnapshot, UiWindowSnapshot,
+    capture_ui_snapshot, dispatch_ui_event,
+};
+pub use ui_components::{GridSpan, GridTrack, UiKind, UiLayout, dispatch_ui_event_or_warn};
+mod classifier_objects;
+mod digital_filter;
+mod dist_fit;
+mod dist_objects;
+mod filter_analysis;
+mod image_morph;
+mod image_segment;
 mod indexed_assignment;
 mod indexing;
 mod ismember;
+mod linear_models;
 mod logarithms;
 mod logical_values;
-mod plot_properties;
+mod nnet_plots;
+mod outliers;
+mod parallel;
+mod pde;
+pub mod pde_app_model;
+mod pde_geometry;
+mod pde_mesh;
+mod pde_mesher;
+#[doc(hidden)]
+pub use pde_mesher::{MeshOpts, TriMesh, pde_mesh_from_dl};
+pub mod pde_model;
+pub mod pde_modeler_app_hooks;
+mod pde_plot;
+mod pde_solve;
+pub(crate) mod plot_properties;
+mod plot_time_axes;
+mod plots_2d_more;
+mod plots_compose;
 mod set_operations;
 mod sort;
 mod sort_rows;
+mod stats_dist;
+mod stats_models;
+mod stats_plots;
+mod sysid;
+mod wavelet;
+
+mod stats_gaps;
 mod stats_more;
+mod stats_tests;
 mod stored_array;
+mod string_class;
 mod strings;
 mod strings2;
 mod structs;
 mod switch_case;
-mod text_format;
+pub(crate) mod text_format;
 mod typed_functions;
 mod typed_values;
 mod unique;
 mod user_functions;
 mod value_equality;
 mod workspace_assignment;
+// jsondecode/jsonencode, readcell/writecell, xlsread and spreadsheet readmatrix.
+mod readers;
+pub use mpc::estimator::MpcEstimator;
+pub use mpc::prediction::MpcPredictionModel;
+pub use objects::{mpc_prediction_model, mpc_prediction_ss};
 
 pub const HELP: &str = concat!(
     "Matrices: A = [1 2; 3 4]; b = [5; 6]; A*b; A\\b; A'; A.^2\n",
@@ -135,14 +374,14 @@ pub const HELP: &str = concat!(
     "Powers of two: nextpow2(X), pow2(X), pow2(F,E); real double 2-D only, one output. Binary pow2 admits equal shapes/either scalar and finite exponents truncated toward zero; other broadcasting/storage classes are unsupported.\n",
     "Near-zero functions: log1p/expm1(X); real double 2-D, one output. log1p rejects values below -1; complex and other storage classes are unsupported.\n",
     "Logarithms: log10/log2(X), floating real/complex 2-D; negative real values promote. [F,E]=log2(X) dissects real storage only; complex storage (even empty/zero imaginary) rejects.\n",
-    "Statistics: std/var(A[,0|1|[][,dim|'all']][,'omitnan'|'includenan']); real f64, one output. Vector weights/vecdim not implemented.\n",
-    "Median: median(A[,dim|'all'][,'omitnan'|'includenan']); real f64. Logical, weights and vecdim pending.\n",
+    "Statistics: std/var(A[,0|1|[][,dim|'all']][,'omitnan'|'includenan']); real f64, one output. Vector weights not implemented.\n",
+    "Median: median(A[,dim|'all'][,'omitnan'|'includenan']); real f64. Weights pending.\n",
     "Reductions: sum/mean/any/all(A[,dim]); [M,I]=min/max(A[,[],dim]) first index, NaN ignored, complex by abs then angle; min/max(A,B); [r,c,v]=find(A[,n[,'first'|'last']]). det, inv, norm, transpose, disp, plot, title, xlabel, ylabel\n",
     "Text: sprintf/fprintf(fmt,...), num2str, int2str, mat2str, strcat, strsplit, strjoin, strrep, strtrim, deblank, upper, lower, strcmp(i), strncmp(i), strfind, num2cell, iscellstr, blanks; cells and character rows only, no string arrays.\n",
     "Elementwise: mod/rem(x,y), hypot, atan2(y,x), fix, sign; equal shapes or a scalar operand. mod(x,0)=x, rem(x,0)=NaN.\n",
-    "Arrays: prod(A[,dim]), dot/cross(A,B[,dim]), kron(A,B), circshift(A,n[,dim]) (dim 1 by default), trace(A), logspace(a,b[,n]), [X,Y]=meshgrid(x[,y]), [X,Y]=ndgrid(x[,y]); 2-D only.\n",
+    "Arrays: prod(A[,dim]), dot/cross(A,B[,dim]), kron(A,B), circshift(A,n[,dim]) (first non-singleton dim by default), trace(A), logspace(a,b[,n]), [X,Y]=meshgrid(x[,y]), [X,Y]=ndgrid(x[,y]); 2-D only.\n",
     "Linear algebra: eig(A), [V,D]=eig(A) (V,D: real symmetric or complex Hermitian A), svd(A[,'econ'|0]), [U,S,V]=svd(A), rank(A[,tol]), p=polyfit(x,y,n) (QR least squares); other complex input not yet.\n",
-    "Random: rand/randn(n | m,n | [m n]), randi(imax | [lo hi], ...), rng(seed|'default'|'shuffle'); one MT19937 stream per session, rng(0) rand matches MATLAB.\n",
+    "Random: rand/randn(n | m,n | [m n]), randi(imax | [lo hi], ...), s=rng, rng(s|seed|gen|'default'|'shuffle'); 'twister' (default, rng(0) rand matches MATLAB), 'philox', 'combRecursive'.\n",
     "Timing: tic; toc; t=toc; id=tic; toc(id).\n",
     "Array emptiness: isempty(A); logical scalar true if any dimension is zero.\n",
     "Array shapes: isscalar/isvector/isrow/iscolumn/ismatrix(A) return logical scalars; ndims(A) returns 2 for admitted 2-D arrays.\n",
@@ -163,7 +402,7 @@ pub const HELP: &str = concat!(
     "Exportgraphics uses a 96 DPI MatRust physical canvas and 2-unit crop margin; Append/custom BackgroundColor values pending.\n",
     "Figure files: f=figure; gcf; savefig('plot.fig'); openfig('plot.fig'); .mrfig is the MatRust native extension (.mfig still works).\n",
     "legend (labels and trailing Location/value): eight compass locations, outside variants, bounded best, vertical bestoutside.\n",
-    "grid on/off, xlim, ylim, axis. Up to 16 figures and 64 series.\n",
+    "grid on/off, xlim, ylim, axis. Up to 16 figures with bounded plot storage.\n",
     "Plot properties: plot(x,y,'LineWidth',2,'Color','red'); trailing pairs affect new series.\n",
     "Layouts: tiledlayout(rows,cols), tiledlayout('flow'), nexttile, nexttile(index,[rows cols]), sgtitle.\n",
     "Shared title: sgtitle([figure_handle,] text, 'Interpreter', 'none'); output Text handles/properties other than Interpreter are unsupported.\n",
@@ -207,11 +446,12 @@ pub const HELP: &str = concat!(
     "Writes support real numeric 1-D/2-D indices, scalar expansion, growth and literal [] deletion.\n",
     "Logical arrays: true, false, logical, double; < <= > >= == ~= & | ~ && ||.\n",
     "Select/update with A(A>0); any, all, nnz, find, isnan, isinf, isfinite.\n",
-    "Loops reuse parsed code and stop cooperatively. Limit: 1000000 execution steps.\n",
-    "Output is bounded to 2000 entries / 2 MiB per run; use semicolons.\n",
+    "Loops reuse parsed code and stop cooperatively. Browser: 1,000,000 execution steps per run. Desktop/CLI: no step limit; Stop / Ctrl+C ends a run.\n",
+    "Browser output: 2,000 entries / 2 MiB per run and 2 MiB per displayed value. Desktop/CLI: no per-run output limit; 32 MiB per displayed value. Use semicolons.\n",
     "Functions: function [y,z]=name(x), local helpers and Current Folder .mr (or .m) files.\n",
     "Private function workspaces, nargin/nargout, return; at most 32 call levels.\n",
     "Complex values support i/j literals, +, -, .*, ./, matrix *, component functions, indexing and both transposes. Array operations allow equal shapes/scalars; complex solves, powers and full toolbox coverage remain pending. Dense complex-double MAT save/load supports -v6/-v7/-v7.3.\n",
+    "Tables: T=table(a,b), T.a, T(rows,vars), T{rows,vars}, T.Properties, sortrows(T,vars), [T1;T2], readtable/writetable (CSV); see help table.\n",
     "Type help <name> for a function, for example help plot."
 );
 
@@ -225,7 +465,253 @@ pub enum Value {
     Container(Array),
     Void,
 }
+fn round14_decimal_text(abs_sci: &str, n: i32) -> Option<String> {
+    let (mantissa, exp_str) = abs_sci.split_once('e')?;
+    let exp: i32 = exp_str.parse().ok()?;
+    let mut digits: Vec<u8> = mantissa.bytes().filter(|&b| b != b'.').collect();
+    if digits.is_empty() {
+        return None;
+    }
+    let keep = i64::from(exp) + i64::from(n) + 1;
+    if keep <= 0 {
+        if keep == 0 && digits[0] >= b'5' {
+            return Some(format!("1e{}", -i64::from(n)));
+        }
+        return Some("0".to_owned());
+    }
+    let keep = keep as usize;
+    if keep >= digits.len() {
+        return None;
+    }
+    let round_up = digits[keep] >= b'5';
+    digits.truncate(keep);
+    if round_up {
+        let mut carry = true;
+        for d in digits.iter_mut().rev() {
+            if *d < b'9' {
+                *d += 1;
+                carry = false;
+                break;
+            }
+            *d = b'0';
+        }
+        if carry {
+            digits.insert(0, b'1');
+        }
+    }
+    let s = String::from_utf8(digits).ok()?;
+    Some(format!("{s}e{}", -i64::from(n)))
+}
+
+// Shared decimal and significant rounding for real, typed and complex values.
+// Uses 15 significant decimal digits, then rounds half away from zero.
+fn round14_digits(x: f64, n: i32) -> f64 {
+    if !x.is_finite() || x == 0. {
+        return x;
+    }
+    if (-22..=22).contains(&n) {
+        let scale = 10_f64.powi(n.abs());
+        let y = if n >= 0 { x * scale } else { x / scale };
+        // Account for both scaling error and the 15-digit decimal representation.
+        // At larger magnitudes the decimal representation can discard the digit
+        // being rounded, so leave those values to the text path.
+        let magnitude = y.abs();
+        let margin = 1e-6 + magnitude * 1e-14;
+        if magnitude < 1e14 && (magnitude.fract() - 0.5).abs() > margin {
+            return if n >= 0 {
+                y.round() / scale
+            } else {
+                y.round() * scale
+            };
+        }
+    }
+    let Some(text) = round14_decimal_text(&format!("{:.14e}", x.abs()), n) else {
+        return x;
+    };
+    let result: f64 = text.parse().unwrap_or(x);
+    if result.is_finite() {
+        result.copysign(x)
+    } else {
+        x
+    }
+}
+
+// Perform scaling in the input precision, including for significant digits.
+fn round14_single(x: f32, n: i32, significant: bool) -> f32 {
+    if !x.is_finite() || x == 0. {
+        return x;
+    }
+    let digits = if significant {
+        n.saturating_sub((x as f64).abs().log10().floor() as i32)
+            .saturating_sub(1)
+    } else {
+        n
+    };
+    let Some(text) = round14_decimal_text(&format!("{:.6e}", x.abs()), digits) else {
+        return x;
+    };
+    let result: f32 = text.parse().unwrap_or(x);
+    if result.is_finite() {
+        result.copysign(x)
+    } else {
+        x
+    }
+}
+
+fn round14(engine: &Engine, args: &[Value]) -> Result<Value> {
+    use crate::typed_array::TypedArray;
+    if !(2..=3).contains(&args.len()) {
+        return Err("round expects two or three inputs".into());
+    }
+    if !matches!(
+        &args[1],
+        Value::Matrix(_) | Value::Logical(_) | Value::Container(Array::Typed(_))
+    ) {
+        return Err("round: N must be a finite integer scalar".into());
+    }
+    let n = args[1].clone().matrix(&engine.cancel)?;
+    if n.len() != 1 || !n.data()[0].is_finite() || n.data()[0].fract() != 0. {
+        return Err("round: N must be a finite integer scalar".into());
+    }
+    let n = n.data()[0].clamp(-1000., 1000.) as i32;
+    let significant = match args.get(2) {
+        None => false,
+        Some(Value::Text(s) | Value::QuotedString(s)) if s.eq_ignore_ascii_case("decimals") => {
+            false
+        }
+        Some(Value::Text(s) | Value::QuotedString(s)) if s.eq_ignore_ascii_case("significant") => {
+            true
+        }
+        Some(Value::Container(Array::Character(c))) => {
+            let s = c.to_utf8(&engine.cancel)?;
+            if s.eq_ignore_ascii_case("significant") {
+                true
+            } else if s.eq_ignore_ascii_case("decimals") {
+                false
+            } else {
+                return Err("round: invalid rounding mode".into());
+            }
+        }
+        _ => return Err("round: invalid rounding mode".into()),
+    };
+    if significant && n <= 0 {
+        return Err("round: significant digits must be positive".into());
+    }
+    let f = |x: f64| {
+        let digits = if significant && x.is_finite() && x != 0. {
+            n.saturating_sub(x.abs().log10().floor() as i32)
+                .saturating_sub(1)
+        } else {
+            n
+        };
+        round14_digits(x, digits)
+    };
+    let result = match &args[0] {
+        Value::Container(Array::Typed(a)) => {
+            if a.is_integer() && !significant && n >= 0 {
+                return Ok(args[0].clone());
+            }
+            if a.is_integer() {
+                let values = (0..a.len())
+                    .take_while(|i| i % 8192 != 0 || engine.check_cancel().is_ok())
+                    .map(|i| {
+                        let x = a.int(i);
+                        let digits = if significant && x != 0 {
+                            n - (x.unsigned_abs().ilog10() as i32) - 1
+                        } else {
+                            n
+                        };
+                        if digits >= 0 {
+                            x
+                        } else if digits < -19 {
+                            0
+                        } else {
+                            let scale = 10_i128.pow((-digits) as u32);
+                            let q = x / scale;
+                            let rem = x % scale;
+                            (q + if rem.abs() * 2 >= scale {
+                                x.signum()
+                            } else {
+                                0
+                            }) * scale
+                        }
+                    });
+                let output = TypedArray::from_ints(a.class(), a.rows(), a.cols(), values);
+                engine.check_cancel()?;
+                Value::Container(Array::Typed(output?))
+            } else {
+                let values = (0..a.len())
+                    .take_while(|i| i % 8192 != 0 || engine.check_cancel().is_ok())
+                    .map(|i| round14_single(a.real(i) as f32, n, significant) as f64);
+                let output = TypedArray::from_reals(a.class(), a.rows(), a.cols(), values);
+                engine.check_cancel()?;
+                Value::Container(Array::Typed(output?))
+            }
+        }
+        Value::Complex(z) => {
+            let mut data = Vec::with_capacity(z.len());
+            for chunk in z.data().chunks(8192) {
+                engine.check_cancel()?;
+                data.extend(
+                    chunk
+                        .iter()
+                        .map(|v| crate::Complex64::new(f(v.re), f(v.im))),
+                );
+            }
+            engine.narrowed(ComplexMatrix::from_column_vec(
+                z.rows(),
+                z.cols(),
+                data,
+                &engine.cancel,
+            )?)?
+        }
+        v => {
+            let m = v.clone().matrix(&engine.cancel)?;
+            let mut data = Vec::with_capacity(m.len());
+            for chunk in m.data().chunks(8192) {
+                engine.check_cancel()?;
+                data.extend(chunk.iter().map(|&x| f(x)));
+            }
+            Value::Matrix(Matrix::from_column_vec(m.rows(), m.cols(), data)?)
+        }
+    };
+    result.with_dims(&args[0].dims())
+}
+
 impl Value {
+    /// Logical MATLAB dimensions; folded storage remains shared.
+    pub fn dims(&self) -> std::borrow::Cow<'_, [usize]> {
+        match self {
+            Self::Matrix(a) => a.dims(),
+            Self::Logical(a) => a.dims(),
+            Self::Complex(a) => a.dims(),
+            Self::Container(a) => a.dims(),
+            Self::Text(s) => std::borrow::Cow::Owned(vec![1, s.encode_utf16().count()]),
+            Self::QuotedString(_) => std::borrow::Cow::Owned(vec![1, 1]),
+            Self::Void => std::borrow::Cow::Owned(vec![0, 0]),
+        }
+    }
+    pub fn ndims(&self) -> usize {
+        self.dims().len()
+    }
+    pub fn is_nd(&self) -> bool {
+        match self {
+            Self::Matrix(a) => a.is_nd(),
+            Self::Logical(a) => a.is_nd(),
+            Self::Complex(a) => a.is_nd(),
+            Self::Container(a) => a.is_nd(),
+            _ => false,
+        }
+    }
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        match self {
+            Self::Matrix(a) => Ok(Self::Matrix(a.with_dims(dims)?)),
+            Self::Logical(a) => Ok(Self::Logical(a.with_dims(dims)?)),
+            Self::Complex(a) => Ok(Self::Complex(a.with_dims(dims)?)),
+            Self::Container(a) => Ok(Self::Container(a.with_dims(dims)?)),
+            _ => Err("This value cannot be reshaped as an array".into()),
+        }
+    }
     // Existing evaluation accounting uses eight-byte units. Preserve real and
     // logical charging, and charge both components of complex values.
     fn allocation_units(&self) -> Option<usize> {
@@ -245,6 +731,7 @@ impl Value {
             Self::Complex(a) => Ok((a.rows(), a.cols())),
             Self::Container(a) => Ok((a.rows(), a.cols())),
             Self::Text(s) => crate::CharacterRow::text_shape(s, cancel),
+            Self::QuotedString(_) => Ok((1, 1)),
             _ => Err("Expected an array".into()),
         }
     }
@@ -261,6 +748,7 @@ impl Value {
             Self::Matrix(m) => Ok(m),
             Self::Logical(m) => m.to_numeric(cancel),
             Self::Container(Array::Typed(a)) => a.to_matrix(),
+            Self::Container(Array::Sparse(s)) => s.to_dense(cancel),
             Self::Complex(_) => {
                 Err("This operation requires real values; use real or imag explicitly".into())
             }
@@ -275,6 +763,7 @@ impl Value {
             Self::Complex(m) => Ok(m.into()),
             Self::Container(a) => Ok(a),
             Self::Text(s) => Ok(crate::CharacterRow::from_text(&s, cancel)?.into()),
+            Self::QuotedString(s) => Ok(Array::Str(crate::StringArray::scalar(s)?)),
             _ => Err("Expected an array".into()),
         }
     }
@@ -285,6 +774,7 @@ impl Value {
             Self::Matrix(m) => Ok(NumericView::Borrowed(ArrayRef::Numeric(m))),
             Self::Logical(m) => Ok(NumericView::Borrowed(ArrayRef::Logical(m))),
             Self::Complex(_) => Err("This operation does not support complex values".into()),
+            Self::Container(Array::Sparse(s)) => Ok(NumericView::Converted(s.to_dense(cancel)?)),
             value if value.is_character() => {
                 Ok(NumericView::Converted(value.character_codes(cancel)?))
             }
@@ -296,6 +786,10 @@ impl Value {
             Self::Logical(m) => Ok(m),
             Self::Matrix(m) => LogicalMatrix::from_numeric(&m, cancel),
             Self::Container(Array::Typed(a)) => typed_values::to_logical(&a),
+            Self::Container(Array::Sparse(s)) if s.is_logical() => s.to_dense_logical(cancel),
+            Self::Container(Array::Sparse(s)) => {
+                LogicalMatrix::from_numeric(&s.to_dense(cancel)?, cancel)
+            }
             value if value.is_character() => {
                 LogicalMatrix::from_numeric(&value.character_codes(cancel)?, cancel)
             }
@@ -310,12 +804,18 @@ impl From<Array> for Value {
             Array::Numeric(m) => Self::Matrix(m),
             Array::Logical(m) => Self::Logical(m),
             Array::Complex(m) => Self::Complex(m),
+            Array::Str(s) => string_class::value(s),
             a @ (Array::Character(_)
             | Array::Cell(_)
             | Array::Graphics(_)
             | Array::Struct(_)
             | Array::Typed(_)
-            | Array::Handle(_)) => Self::Container(a),
+            | Array::Handle(_)
+            | Array::Categorical(_)
+            | Array::Datetime(_)
+            | Array::Duration(_)
+            | Array::Table(_)
+            | Array::Sparse(_)) => Self::Container(a),
         }
     }
 }
@@ -323,6 +823,19 @@ impl From<Array> for Value {
 pub struct Execution {
     pub output: Vec<String>,
     pub clear_console: bool,
+    /// True only for a run whose host consumes completed lines immediately.
+    /// This is crate-private so non-console callers cannot accidentally opt in.
+    pub(crate) stream: bool,
+}
+impl Execution {
+    /// Construct a non-streaming result for a host-side operation.
+    pub fn with_output(output: Vec<String>, clear_console: bool) -> Self {
+        Self {
+            output,
+            clear_console,
+            stream: false,
+        }
+    }
 }
 #[derive(Clone)]
 pub struct FileDiagnostic {
@@ -338,6 +851,7 @@ pub struct Engine {
     container_variables: BTreeMap<String, Array>,
     pub figure: Option<Figure>,
     other_figures: BTreeMap<u32, Figure>,
+    pub(in crate::engine) linked_axes: Vec<crate::plot::AxisLink>,
     closed_figures: std::collections::BTreeSet<u32>,
     figure_file_events: BTreeMap<u32, FigureFileEvent>,
     pub current_figure: u32,
@@ -346,6 +860,8 @@ pub struct Engine {
     pub file_diagnostic: Option<FileDiagnostic>,
     pub failed_output: Execution,
     cancel: Arc<AtomicBool>,
+    /// Step, output and memory budgets of this host (`Limits::browser()` by default).
+    limits: Limits,
     evaluated_elements: usize,
     control_steps: usize,
     emitted_bytes: usize,
@@ -354,21 +870,59 @@ pub struct Engine {
     pending_line: String,
     loop_bytes: usize,
     functions: user_functions::FunctionState,
+    nested: user_functions::nested::Store,
     evaluation_depth: usize,
     statement_depth: usize,
     file_directory: Option<std::path::PathBuf>,
+    dicom_dictionary: dicom::custom_dict::Dictionary,
     document_path: Option<std::path::PathBuf>,
     /// The error in flight, for `catch` to recover its identifier and raw message.
     raised: Option<errors::RaisedError>,
+    probe_mode: bool,
+    probe_count: usize,
+    try_depth: usize,
+    probe_control_error: bool,
+    probe_source: Option<Arc<str>>,
     random: random::Generator,
     stopwatch: stopwatch::Stopwatch,
+    profiler: profiler::Profiler,
     fileio: file_io::FileTable,
+    /// msgbox and waitbar windows (dialogs.rs).
+    dialogs: dialogs::DialogState,
+    /// UI component tree (`uifigure`, `uibutton`, ... in ui_components/).
+    ui: ui_components::UiState,
     envx: env_files::Environment,
     lang_warnings: lang_utils::WarningState,
     lg3: lang_extra::Lg3State,
     objects: objects::ObjTable,
+    #[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
+    audio: audio::Session,
     /// `format short|long|compact|loose` and the console width for echo and `disp`.
     pub display: crate::display_format::DisplayFormat,
+    /// Answers `input` and bare `pause`; shared by clones of the engine.
+    host_io: host_io::SharedHost,
+    /// Status of an accepted `exit`/`quit`; shared by clones of the engine.
+    exit_request: host_io::ExitRequest,
+    /// Chart records of histogram, errorbar, polarplot and the other 2-D charts.
+    p2: plots_2d_more::P2State,
+    /// The serial parallel pool (parallel.rs).
+    par: parallel::ParState,
+    /// Animated-line limits (plots_compose.rs).
+    compose: plots_compose::ComposeState,
+    /// Rebuildable surf/mesh records (graphics_handles/surface_commands.rs).
+    surf: graphics_handles::SurfaceState,
+    /// Sparse-to-full limit and dispatch state (sparse_fns.rs).
+    sparse: sparse_fns::SparseState,
+    /// The global `dwtmode` extension mode (wavelet/).
+    wavelet: wavelet::WaveletState,
+    /// Root graphics object (`groot` / handle `0`) and session defaults.
+    root: graphics_root::RootState,
+    figure_defaults: BTreeMap<usize, graphics_root::GraphicsDefaults>,
+    axes_creation_defaults: BTreeMap<u64, graphics_root::AxesCreationDefaults>,
+    hidden_figures: std::collections::BTreeSet<usize>,
+    ode_plot: ode::OdePlotState,
+    /// Hidden target standing for a missing struct field (structs.rs); its `end` is 0.
+    field_end_target: Option<String>,
 }
 impl Default for Engine {
     fn default() -> Self {
@@ -379,6 +933,7 @@ impl Default for Engine {
             container_variables: BTreeMap::new(),
             figure: None,
             other_figures: BTreeMap::new(),
+            linked_axes: Vec::new(),
             closed_figures: Default::default(),
             figure_file_events: BTreeMap::new(),
             current_figure: 1,
@@ -387,6 +942,7 @@ impl Default for Engine {
             file_diagnostic: None,
             failed_output: Execution::default(),
             cancel: Arc::new(AtomicBool::new(false)),
+            limits: Limits::browser(),
             evaluated_elements: 0,
             control_steps: 0,
             emitted_bytes: 0,
@@ -394,21 +950,52 @@ impl Default for Engine {
             pending_line: String::new(),
             loop_bytes: 0,
             objects: Default::default(),
+            #[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
+            audio: Default::default(),
             functions: Default::default(),
+            nested: Default::default(),
             evaluation_depth: 0,
             statement_depth: 0,
             file_directory: std::env::current_dir().ok(),
+            dicom_dictionary: Default::default(),
             document_path: None,
             raised: None,
+            probe_mode: std::env::var_os("MATRUST_PROBE").is_some_and(|v| v == "1"),
+            probe_count: 0,
+            try_depth: 0,
+            probe_control_error: false,
+            probe_source: None,
             random: random::Generator::default(),
             stopwatch: stopwatch::Stopwatch::default(),
+            profiler: profiler::Profiler::default(),
             fileio: Default::default(),
+            dialogs: Default::default(),
+            ui: Default::default(),
             envx: Default::default(),
             lang_warnings: Default::default(),
             lg3: Default::default(),
             display: Default::default(),
+            host_io: None,
+            exit_request: Default::default(),
+            p2: Default::default(),
+            par: Default::default(),
+            compose: Default::default(),
+            surf: Default::default(),
+            sparse: Default::default(),
+            wavelet: Default::default(),
+            root: Default::default(),
+            figure_defaults: BTreeMap::new(),
+            axes_creation_defaults: BTreeMap::new(),
+            hidden_figures: std::collections::BTreeSet::new(),
+            ode_plot: Default::default(),
+            field_end_target: None,
         }
     }
+}
+/// Class of a struct-backed LTI model value (`tf`, `zpk`, `ss`, `pid` or
+/// `pidstd`), as `class` reports it; `None` for every other value.
+pub fn lti_class(array: &Array) -> Option<&'static str> {
+    control_lti::class(array)
 }
 impl Engine {
     /// Host context captured before execution; it is not document metadata.
@@ -421,23 +1008,49 @@ impl Engine {
     pub fn cancellation(&self) -> Arc<AtomicBool> {
         self.cancel.clone()
     }
+    pub(in crate::engine) fn clear_raised_error(&mut self) {
+        self.raised = None;
+    }
+    /// An engine with the run limits of a host (`Limits::local()` for desktop and CLI).
+    pub fn with_limits(limits: Limits) -> Self {
+        let mut engine = Self::default();
+        engine.limits_set(limits);
+        engine
+    }
+    pub fn limits_set(&mut self, limits: Limits) {
+        self.limits = limits;
+        self.display.max_bytes = limits.display_bytes;
+    }
+    pub fn limits_active(&self) -> Limits {
+        self.limits
+    }
+    /// Execute Command Window, -batch or --eval text: workspace names are
+    /// variables for command syntax (`x -1` subtracts when x exists).
     pub fn execute(&mut self, source: &str) -> Result<Execution> {
-        self.execute_source(source, None)
+        self.execute_source(source, None, false)
+    }
+    /// Execute a whole script's text (editor or browser Run): command syntax
+    /// is decided lexically, as for a script file run by `run`, so a
+    /// workspace variable named `close` does not stop `close all`.
+    pub fn execute_script(&mut self, source: &str) -> Result<Execution> {
+        self.execute_source(source, None, true)
     }
     /// Execute a UTF-8 byte selection using the containing document's local
     /// functions. Unselected statements are validated but never executed.
-    /// Diagnostics refer to the complete document.
+    /// Diagnostics refer to the complete document, which parses lexically;
+    /// the selection runs as Command Window text.
     pub fn execute_selection(
         &mut self,
         source: &str,
         selection: std::ops::Range<usize>,
     ) -> Result<Execution> {
-        self.execute_source(source, Some(selection))
+        self.execute_source(source, Some(selection), true)
     }
     fn execute_source(
         &mut self,
         source: &str,
         selection: Option<std::ops::Range<usize>>,
+        document: bool,
     ) -> Result<Execution> {
         self.control_steps = 0;
         self.evaluated_elements = 0;
@@ -449,11 +1062,16 @@ impl Engine {
         self.evaluation_depth = 0;
         self.statement_depth = 0;
         self.raised = None;
+        self.probe_count = 0;
+        self.try_depth = 0;
+        self.probe_control_error = false;
+        self.probe_source = self.probe_mode.then(|| Arc::from(source));
         self.closed_figures.clear();
         self.figure_file_events.clear();
         self.diagnostic = None;
         self.file_diagnostic = None;
         self.failed_output = Execution::default();
+        self.hostio_clear_exit();
         if source.len() <= 1_000_000
             && let Some(range) = &selection
             && source.get(range.clone()).is_none()
@@ -467,7 +1085,15 @@ impl Engine {
             self.diagnostic = Some(error);
             return Err(message);
         }
-        let statements = match syntax::parse_detailed(source) {
+        // Command Window and -batch text: workspace names are variables for
+        // command syntax (`x -1` subtracts when x exists). A document is a
+        // script: lexical, like `run('name')`.
+        let parsed = if document {
+            syntax::parse_detailed(source)
+        } else {
+            syntax::parse_in_workspace(source, &|n| self.contains_array(n))
+        };
+        let statements = match parsed {
             Ok(s) => s,
             Err(error) => {
                 let message = error.to_string();
@@ -475,11 +1101,14 @@ impl Engine {
                 return Err(message);
             }
         };
-        let mut execution = Execution::default();
+        let mut execution = Execution {
+            stream: self.hostio_streams_output(),
+            ..Execution::default()
+        };
         let mut byte = 0;
         let offset = selection.as_ref().map_or(0, |range| range.start);
         let result = if let Some(range) = selection {
-            match syntax::parse_detailed(&source[range]) {
+            match syntax::parse_in_workspace(&source[range], &|n| self.contains_array(n)) {
                 Ok(selected) => self.execute_selected_program(
                     source,
                     statements,
@@ -502,6 +1131,9 @@ impl Engine {
             .filter(|(program, _)| program.path.is_none())
             .map_or(offset + byte, |(_, byte)| *byte);
         self.functions.reset_run();
+        // An accepted exit/quit unwound the run through cancellation; the run
+        // itself ended normally and keeps its output.
+        let exiting = self.hostio_exit_unwind();
         self.obj_collect_at_statement(true);
         let flushed = if self.pending_line.is_empty() {
             Ok(())
@@ -510,6 +1142,7 @@ impl Engine {
         };
         match result.and(flushed) {
             Ok(_) => Ok(execution),
+            Err(_) if exiting => Ok(execution),
             Err(message) => {
                 let error = syntax::Diagnostic::new(source, byte, message);
                 let message = error.to_string();
@@ -528,21 +1161,90 @@ impl Engine {
         if let Some(target) = &statement.list_target {
             return self.cel_assign_outputs(target, &statement.expr, statement.quiet, execution);
         }
-        if self.obj_statement(statement, execution)? {
+        if econ_vol::statement(self, statement, execution)? {
             return Ok(());
         }
-        if (!statement.targets.is_empty() || statement.indexed_target.is_some())
-            && let Expr::Call(name, _) = &statement.expr
-            && matches!(name.as_str(), "tiledlayout" | "nexttile" | "sgtitle")
+        if filter_analysis::statement(self, statement, execution)? {
+            return Ok(());
+        }
+        if statement.targets.is_empty()
+            && statement.indexed_target.is_none()
+            && statement.path_target.is_none()
+            && let Expr::Call(name, args) = &statement.expr
+            && name == "summarize"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+            && econ::expression_method(self, name, args)?
+        {
+            // nargout = 0 prints the summary instead of displaying ans.
+            let values = string_class::arguments(self, name, args, execution)?;
+            if econ::accepts(self, name, &values) {
+                econ::call(self, name, &values, 0, execution)?;
+                return Ok(());
+            }
+        }
+        if statement.targets.is_empty()
+            && statement.indexed_target.is_none()
+            && statement.path_target.is_none()
+            && let Expr::Call(name, args) = &statement.expr
+            && matches!(name.as_str(), "sim" | "review")
             && !self.contains_array(name)
             && self.resolve_function(name)?.is_none()
         {
-            return Err("Graphics handles are unsupported; call this layout command without an output assignment".into());
+            let values = string_class::arguments(self, name, args, execution)?;
+            if values
+                .first()
+                .is_some_and(|v| objects::mpc_value(self, v).is_some())
+            {
+                mpc::outputs(self, name, &values, 0, execution)?;
+            } else {
+                let value = self.call(name, values, execution)?;
+                if !matches!(value, Value::Void) {
+                    self.assign_workspace_array(
+                        "ans",
+                        value.array(&self.cancel)?,
+                        statement.quiet,
+                        execution,
+                    )?;
+                }
+            }
+            return Ok(());
+        }
+        if statement.targets.is_empty()
+            && statement.indexed_target.is_none()
+            && statement.path_target.is_none()
+            && let Expr::Call(name, args) = &statement.expr
+            && name == "web"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, execution)?;
+            self.call(name, values, execution)?;
+            return Ok(());
+        }
+        if self.pkg_statement(statement, execution)? {
+            return Ok(());
+        }
+        if self.obj_statement(statement, execution)? {
+            return Ok(());
+        }
+        if self.cls_statement(statement, execution)? {
+            return Ok(());
         }
         if let Some((root, steps)) = &statement.path_target {
             return self.assign_path(root, steps, &statement.expr, statement.quiet, execution);
         }
         if let Some((name, args)) = &statement.indexed_target {
+            if matches!(self.container_variables.get(name), Some(Array::Table(_))) {
+                return self.tbl_assign_statement(
+                    name,
+                    args,
+                    statement.cell_content_target,
+                    &statement.expr,
+                    statement.quiet,
+                    execution,
+                );
+            }
             if matches!(self.container_variables.get(name), Some(Array::Struct(_)))
                 && !statement.cell_content_target
             {
@@ -551,7 +1253,17 @@ impl Engine {
             }
             if statement.cell_content_target
                 || (self.container_variables.contains_key(name)
-                    && !matches!(self.container_variables.get(name), Some(Array::Typed(_))))
+                    && !self.array(name).is_some_and(|a| a.is_nd())
+                    && !matches!(
+                        self.container_variables.get(name),
+                        Some(
+                            Array::Typed(_)
+                                | Array::Categorical(_)
+                                | Array::Datetime(_)
+                                | Array::Duration(_)
+                                | Array::Sparse(_)
+                        )
+                    ))
             {
                 return self.assign_container(
                     name,
@@ -597,14 +1309,28 @@ impl Engine {
                 }
                 return Ok(());
             }
+            if let Some((name, args)) = call
+                && name == "warning"
+                && !self.contains_array(name)
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                let values = match sparse_fns::call(self, name, values, execution)? {
+                    Ok(_) => return Ok(()),
+                    Err(values) => values,
+                };
+                if let Err(values) = self.typed_call(name, values, execution)? {
+                    self.langx_warning(&values, false, execution)?;
+                }
+                return Ok(());
+            }
         }
         if statement.targets.is_empty() && statement.indexed_target.is_none() {
             if let Expr::Call(name, args) = &statement.expr
                 && name == "eval"
                 && !self.contains_array(name)
             {
-                let values = self.function_arguments(args, None, execution)?;
-                self.langx_eval(&values, false, execution)?;
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::eval_text(self, |engine| engine.langx_eval(&values, false, execution))?;
                 return Ok(());
             }
             let call = match &statement.expr {
@@ -613,12 +1339,272 @@ impl Engine {
                 _ => None,
             };
             // Scripts and user functions resolved above keep precedence.
+            if let Some((name, args)) = call
+                && !self.contains_array(name)
+                && self.dlg_statement(name, args, statement.quiet, execution)?
+            {
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && name == "damp"
+                && !self.contains_array(name)
+            {
+                let values = string_class::arguments(self, "damp", args, execution)?;
+                let values = sysid::lti_args(self, values, execution)?;
+                self.ctl_data("damp", &values, 0, execution)?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && spline_toolbox::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                if let Some(value) = profiler::dispatch(self, name, |engine| {
+                    spline_toolbox::call(engine, name, &values, 0, execution)
+                })?
+                .pop()
+                {
+                    self.assign_workspace_array(
+                        "ans",
+                        value.array(&self.cancel)?,
+                        statement.quiet,
+                        execution,
+                    )?;
+                }
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && signal_spectral::plots(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    signal_spectral::call(engine, name, &values, 0)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && pde_model::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    pde_model::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && graphics_handles::gobj_statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                if name == "alphamap" {
+                    volume::show::alphamap_call(self, &values, 0)?;
+                } else {
+                    self.call(name, values, execution)?;
+                }
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && image_morph::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                // Images are N-D: no generic N-D argument guard.
+                let values = self.function_arguments(args, None, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    engine.image_morph_call(name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && name == "phasedelay"
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    filter_extras::call(engine, name, &values, 0)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && name == "findpeaks"
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    signal_timedomain::call(engine, name, &values, 0)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && (volume::iso::handles(name) || volume::slice_viewer::handles(name))
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    if volume::slice_viewer::handles(name) {
+                        volume::slice_viewer::call(engine, name, &values, 0, execution)
+                    } else {
+                        volume::iso::call(engine, name, &values, 0, execution)
+                    }
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && graphics_handles::surface_names(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    graphics_handles::surface_call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && name == "imshowpair"
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                // Images are N-D: no generic N-D argument guard.
+                let values = self.function_arguments(args, None, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    image_basic::registration_call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && matches!(name.as_str(), "plotmf" | "gensurf" | "plotfis" | "writefis")
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    fuzzy::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && comm_wave::is_plot(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = self.function_arguments(args, None, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    comm_wave::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && (matches!(name.as_str(), "gplot" | "histfit" | "boxplot")
+                    || nnet_plots::is_plot(name))
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    if nnet_plots::handles(name) {
+                        nnet_plots::call(engine, name, &values, 0, execution)
+                    } else {
+                        stats_plots::call(engine, name, &values, 0, execution)
+                    }
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && name == "voronoi"
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = self.function_arguments(args, None, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    engine.sc2_outputs(name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && dist_fit::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    dist_fit::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && wavelet::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    wavelet::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && plots_2d_more::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    plots_2d_more::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && plots_compose::statement(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                profiler::dispatch(self, name, |engine| {
+                    plots_compose::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && control_response::plots(name)
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                let values = sysid::lti_args(self, values, execution)?;
+                if name == "margin" && self.obj_call(name, &values, execution)?.is_some() {
+                    return Ok(());
+                }
+                profiler::dispatch(self, name, |engine| {
+                    control_response::call(engine, name, &values, 0, execution)
+                })?;
+                return Ok(());
+            }
             #[cfg(target_arch = "wasm32")]
             if let Some((name, _)) = call
                 && browser::file_command(name, None)
                 && !self.contains_array(name)
             {
                 return Err(browser::NO_FILES.into());
+            }
+            if let Some((name, args)) = call
+                && name == "rng"
+                && !args.is_empty()
+                && !self.contains_array(name)
+                && self.resolve_function(name)?.is_none()
+            {
+                let values = string_class::arguments(self, name, args, execution)?;
+                self.rng_call(&values)?;
+                return Ok(());
             }
             if let Some((name, args)) = call
                 && !self.contains_array(name)
@@ -629,6 +1615,12 @@ impl Engine {
             if let Some((name, args)) = call
                 && !self.contains_array(name)
                 && self.fl2_statement(name, args, statement.quiet, execution)?
+            {
+                return Ok(());
+            }
+            if let Some((name, args)) = call
+                && !self.contains_array(name)
+                && self.rdx_statement(name, args, statement.quiet, execution)?
             {
                 return Ok(());
             }
@@ -645,6 +1637,8 @@ impl Engine {
                         | "semilogy"
                         | "loglog"
                         | "scatter"
+                        | "plot3"
+                        | "scatter3"
                         | "bar"
                         | "stairs"
                         | "stem"
@@ -652,10 +1646,11 @@ impl Engine {
                         | "title"
                         | "xlabel"
                         | "ylabel"
+                        | "zlabel"
                 )
                 && !self.contains_array(name)
             {
-                let values = self.function_arguments(args, None, execution)?;
+                let values = string_class::arguments(self, name, args, execution)?;
                 self.call(name, values, execution)?;
                 return Ok(());
             }
@@ -663,13 +1658,13 @@ impl Engine {
                 && name == "clear"
                 && !self.contains_array(name)
             {
-                return self.clear_variables_command(args);
+                return self.clear_variables_command(args, execution);
             }
             if let Some((name, args)) = call
                 && name == "run"
                 && !self.contains_array(name)
             {
-                let values = self.function_arguments(args, None, execution)?;
+                let values = string_class::arguments(self, name, args, execution)?;
                 return self.run_command(values, execution);
             }
             if let Some((name, args)) = call
@@ -690,8 +1685,14 @@ impl Engine {
                 && !self.contains_array(name)
                 && self.resolve_function(name)?.is_none()
             {
-                let values = self.function_arguments(args, None, execution)?;
-                self.stopwatch_call(name, &values, execution, false)?;
+                let values = string_class::arguments(self, name, args, execution)?;
+                if self.profiler.enabled {
+                    profiler::builtin(self, name, |engine| {
+                        engine.stopwatch_call(name, &values, execution, false)
+                    })?;
+                } else {
+                    self.stopwatch_call(name, &values, execution, false)?;
+                }
                 return Ok(());
             }
             if let Some((name, args)) = call
@@ -704,7 +1705,7 @@ impl Engine {
                 && name == "writematrix"
                 && !self.contains_array(name)
             {
-                let values = self.function_arguments(args, None, execution)?;
+                let values = string_class::arguments(self, name, args, execution)?;
                 return self.write_matrix_command(self.text_arguments(values)?);
             }
             if let Some((name, args)) = call
@@ -714,7 +1715,7 @@ impl Engine {
                 )
                 && !self.contains_array(name)
             {
-                let values = self.function_arguments(args, None, execution)?;
+                let values = string_class::arguments(self, name, args, execution)?;
                 let values = self.text_arguments(values)?;
 
                 let values = if matches!(name.as_str(), "figure" | "exportgraphics") {
@@ -738,9 +1739,13 @@ impl Engine {
             && let Expr::Name(name) = &statement.expr
         {
             match name.as_str() {
-                "hold" | "grid" | "legend" | "clf" | "figure" | "close" | "tiledlayout"
+                "legend" => {
+                    self.call(name, Vec::new(), execution)?;
+                    return Ok(());
+                }
+                "hold" | "grid" | "clf" | "cla" | "figure" | "close" | "tiledlayout"
                 | "nexttile" => {
-                    self.graphics(name, Vec::new())?;
+                    self.graphics(name, Vec::new(), execution)?;
                     return Ok(());
                 }
                 "clc" => {
@@ -750,28 +1755,7 @@ impl Engine {
                     return Ok(());
                 }
                 "whos" => {
-                    let mut text = String::new();
-                    for (n, m) in self.workspace() {
-                        self.check_cancel()?;
-                        let line = format!(
-                            "{n:<18} {:>6} x {:<6} {:>10} bytes  {}\n",
-                            m.rows(),
-                            m.cols(),
-                            m.bytes(),
-                            if m.is_complex() {
-                                "double (complex)"
-                            } else {
-                                lang_more::lng_class(&m)
-                            }
-                        );
-                        if text.len() + line.len() > 2 * 1024 * 1024 {
-                            return Err("Workspace display exceeds 2 MiB".into());
-                        }
-                        text.push_str(&line);
-                    }
-                    if text.ends_with('\n') {
-                        text.pop();
-                    }
+                    let text = self.whos_workspace(None)?;
                     self.emit(execution, text)?;
                     return Ok(());
                 }
@@ -780,18 +1764,32 @@ impl Engine {
         }
         if !statement.targets.is_empty() {
             if let [Some(name)] = statement.targets.as_slice() {
+                // Real scalar arithmetic in loops: no temporaries, in-place store.
+                if statement.quiet && scalar_loops::assign(self, name, &statement.expr, execution)?
+                {
+                    return Ok(());
+                }
+                // Assignment keeps shared string storage, including large scalar
+                // payloads that would otherwise pass through QuotedString text.
+                if let Expr::Name(source) = &statement.expr
+                    && let Some(array @ Array::Str(_)) = self.array(source)
+                {
+                    self.charge(array.bytes().div_ceil(8))?;
+                    return self.assign_workspace_array(name, array, statement.quiet, execution);
+                }
                 let value = self
                     .eval_list(&statement.expr, None, execution)?
                     .into_iter()
                     .next()
                     .ok_or("Assignment expression produced no values")?;
                 let array = match value {
-                    value @ (Value::Matrix(_) | Value::Logical(_) | Value::Complex(_) | Value::Container(_)) => {
-                        value.array(&self.cancel)?
-                    }
+                    value @ (Value::Matrix(_)
+                    | Value::Logical(_)
+                    | Value::Complex(_)
+                    | Value::Container(_)) => value.array(&self.cancel)?,
                     value @ Value::Text(_) => value.array(&self.cancel)?,
                     Value::Void => return Err("This command does not return a value".into()),
-                    Value::QuotedString(_) => return Err("String array storage is not implemented; use char(...) explicitly for character storage".into()),
+                    value @ Value::QuotedString(_) => value.array(&self.cancel)?,
                 };
                 return self.assign_workspace_array(name, array, statement.quiet, execution);
             }
@@ -810,11 +1808,52 @@ impl Engine {
         {
             if !statement.quiet {
                 let text = match &array {
-                    Array::Struct(s) => crate::struct_display::named(name, s, &self.display),
+                    Array::Struct(s)
+                        if control_lti::class(&array).is_none()
+                            && sysid::class(&array).is_none() =>
+                    {
+                        crate::struct_display::named(name, s, &self.display)
+                    }
                     _ => self.display_text(name, &array)?,
                 };
                 self.emit(execution, text)?;
             }
+            return Ok(());
+        }
+        if let Expr::Call(name, args) = &statement.expr
+            && name == "summary"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, execution)?;
+            self.tbl_outputs(name, &values, &[], 0, execution)?;
+            return Ok(());
+        }
+        if let Expr::Call(name, args) = &statement.expr
+            && name == "rlocus"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, execution)?;
+            control_design::cds_call(self, name, &values, 0, execution)?;
+            return Ok(());
+        }
+        if let Expr::Call(name, args) = &statement.expr
+            && econ_tests::is_correlogram(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, execution)?;
+            econ_tests::call(self, name, &values, 0, execution)?;
+            return Ok(());
+        }
+        if let Expr::Call(name, args) = &statement.expr
+            && matches!(name.as_str(), "subplot" | "tiledlayout" | "nexttile")
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, execution)?;
+            self.call(name, values, execution)?;
             return Ok(());
         }
         self.statsx_no_output(&statement.expr)?;
@@ -884,10 +1923,13 @@ impl Engine {
                 let a = crate::CharacterRow::from_text(&s, &self.cancel)?;
                 self.assign_workspace_array("ans", a.into(), statement.quiet, execution)?;
             }
-            Value::QuotedString(s) => {
-                if !statement.quiet {
-                    self.emit(execution, s)?;
-                }
+            value @ Value::QuotedString(_) => {
+                self.assign_workspace_array(
+                    "ans",
+                    value.array(&self.cancel)?,
+                    statement.quiet,
+                    execution,
+                )?;
             }
             Value::Void => {}
         }
@@ -913,6 +1955,10 @@ impl Engine {
         }
         self.merge_workspace(updates)?;
         for (name, array) in printed {
+            if classdef::is_object(&array) {
+                self.cls_echo(&name, &array, execution)?;
+                continue;
+            }
             let text = self.display_text(&name, &array)?;
             self.emit(execution, text)?;
         }
@@ -929,6 +1975,11 @@ impl Engine {
             + self.logical_variables.len()
             + self.complex_variables.len()
             + self.container_variables.len()
+    }
+    /// Adds or replaces one workspace variable under the workspace's name,
+    /// count and byte limits (`merge_workspace`).
+    pub fn insert_array(&mut self, name: &str, array: Array) -> Result<()> {
+        self.merge_workspace(BTreeMap::from([(name.to_owned(), array)]))
     }
     pub fn remove_array(&mut self, name: &str) {
         self.variables.remove(name);
@@ -964,6 +2015,7 @@ impl Engine {
                     .iter()
                     .map(|(n, a)| (n.clone(), a.clone())),
             )
+            .filter(|(n, _)| !sparse_fns::is_hidden_name(n))
             .collect()
     }
     pub fn array(&self, name: &str) -> Option<Array> {
@@ -984,7 +2036,9 @@ impl Engine {
             .or_else(|| self.container_variables.get(name).cloned())
     }
     pub fn workspace_bytes(&self) -> usize {
-        self.obj_workspace_bytes() + self.obj_workspace_frame_bytes()
+        self.obj_workspace_bytes()
+            + self.obj_workspace_frame_bytes()
+            + user_functions::nested::caller_bytes(self)
     }
     /// Current frame only; the object table is shared by all frames.
     fn obj_workspace_frame_bytes(&self) -> usize {
@@ -1011,12 +2065,21 @@ impl Engine {
     fn publish_array(&mut self, name: String, array: Array) {
         self.container_variables.remove(&name);
         match array {
-            a @ (Array::Character(_)
+            a @ (Array::Str(_)
+            | Array::Character(_)
             | Array::Cell(_)
             | Array::Graphics(_)
             | Array::Struct(_)
             | Array::Handle(_)
-            | Array::Typed(_)) => {
+            | Array::Typed(_)
+            | Array::Categorical(_)
+            | Array::Datetime(_)
+            | Array::Duration(_)
+            | Array::Table(_)
+            | Array::Sparse(_)) => {
+                if matches!(a, Array::Sparse(_)) {
+                    self.sparse.seen = true;
+                }
                 self.variables.remove(&name);
                 self.logical_variables.remove(&name);
                 self.complex_variables.remove(&name);
@@ -1071,7 +2134,8 @@ impl Engine {
                     .try_fold(v, |n, a| n.checked_add(a.retained_bytes()))
             })
             .ok_or("Workspace byte accounting overflow")?;
-        if used > 256 * 1024 * 1024 {
+        if used > limits::memory_bytes(&self.limits) {
+            self.nested.sweep_unowned();
             let mut candidate = self.workspace();
             candidate.extend(updates);
             let mut stripping = crate::array::coordinate_retention::FactStripper::new(&self.cancel);
@@ -1080,17 +2144,22 @@ impl Engine {
             }
             used = candidate
                 .values()
-                .try_fold(self.obj_workspace_bytes(), |sum, a| {
-                    sum.checked_add(a.retained_bytes())
-                })
+                .try_fold(
+                    self.obj_workspace_bytes() + user_functions::nested::caller_bytes(self),
+                    |sum, a| sum.checked_add(a.retained_bytes()),
+                )
                 .ok_or("Workspace byte accounting overflow")?;
             updates = candidate;
         }
-        if used > 256 * 1024 * 1024 {
-            return Err("Workspace exceeds its 256 MiB logical storage limit; use clear".into());
+        if used > limits::memory_bytes(&self.limits) {
+            return Err(limits::workspace_error(&self.limits));
         }
         self.check_cancel()?;
         for (name, array) in updates {
+            // A loaded cell or struct may hold sparse values the multi-output hook must see.
+            if matches!(array, Array::Cell(_) | Array::Struct(_)) {
+                self.sparse.seen = true;
+            }
             self.publish_array(name, array);
         }
         Ok(())
@@ -1102,6 +2171,518 @@ impl Engine {
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
         let count = targets.len();
+        let bare_call;
+        let expression = if count > 1
+            && let Expr::Name(name) = expression
+        {
+            if self.contains_array(name) {
+                return Err("Too many output arguments.".into());
+            }
+            bare_call = Expr::Call(name.clone(), Vec::new());
+            &bare_call
+        } else {
+            expression
+        };
+        if let Some(values) = sparse_fns::outputs(self, expression, targets, out)? {
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if count > 1
+            && let Expr::Call(name, _) = expression
+            && matches!(name.as_str(), "profile" | "profsave")
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            return Err(format!("{name}: Too many output arguments."));
+        }
+        if let Expr::Call(name, args) = expression
+            && name == "sim"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            if values
+                .first()
+                .is_some_and(|v| objects::mpc_value(self, v).is_some())
+            {
+                let outputs = mpc::outputs(self, name, &values, count, out)?;
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            if count > 1
+                && values
+                    .first()
+                    .is_some_and(|v| objects::nnet_value(self, v).is_some())
+            {
+                return nnet::call(self, name, &values, count);
+            }
+            let outputs = if count <= 1 {
+                vec![self.call(name, values, out)?]
+            } else {
+                sysid::call(self, name, &values, count, out)?
+                    .ok_or("sim: unsupported first argument or output count")?
+            };
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && sysid::owns(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                sysid::call(engine, name, &values, count, out)
+            })?
+            .unwrap_or_default();
+            if values.len() < count {
+                return Err(format!("{name}: too many output arguments"));
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && pde::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let args = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                pde::call(engine, name, &args, count, out)
+            })?;
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && pde_geometry::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let args = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                pde_geometry::call(engine, name, &args, count, out)
+            })?;
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && pde_model::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let args = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                pde_model::call(engine, name, &args, count, out)
+            })?;
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && let Some(Expr::Name(var)) = args.first()
+            && name == "tf"
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+            && let Some(f) = self.filter_var(var)
+        {
+            if args.len() > 1 || count > 2 {
+                return Err("tf: use [b, a] = tf(d) on a digitalFilter".into());
+            }
+            let values = digital_filter::expand_args(&f, &[])?;
+            self.charge_function_outputs(&values)?;
+            return Ok(values.into_iter().take(count).collect());
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && linear_models::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                linear_models::call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Some(values) = self.pkg_outputs(expression, targets, out)? {
+            return Ok(values);
+        }
+        if let Some(values) = self.cls_outputs(expression, targets, out)? {
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && registration::multi_output(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                registration::call(engine, name, &values, count, out)
+            })?
+            .ok_or_else(|| format!("{name} does not support {count} outputs"))?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && camera::multi_output(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                camera::call(engine, name, &values, count, out)
+            })?
+            .ok_or_else(|| format!("{name} does not support {count} outputs"))?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        // `[a, b] = object.method(...)` on a camera object.
+        if let Expr::Index(base, args) = expression
+            && count > 1
+            && let Expr::Field(inner, member) = base.as_ref()
+            && camera::is_method(member)
+            && let Expr::Name(var) = inner.as_ref()
+            && let Some(object) = self.array(var)
+            && camera::camera_of(self, &Value::from(object.clone())).is_some()
+        {
+            let mut values = vec![Value::from(object)];
+            values.extend(self.function_arguments(args, None, out)?);
+            let values = camera::call(self, member, &values, count, out)?
+                .ok_or_else(|| format!("{member} does not support {count} outputs"))?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        // `[a, b] = object.method(...)` on a registration object.
+        if let Expr::Index(base, args) = expression
+            && count > 1
+            && let Expr::Field(inner, member) = base.as_ref()
+            && (registration::multi_output(member) || member == "contains")
+            && let Expr::Name(var) = inner.as_ref()
+            && let Some(object) = self.array(var)
+            && registration::geo_of(self, &Value::from(object.clone())).is_some()
+        {
+            let mut values = vec![Value::from(object)];
+            values.extend(self.function_arguments(args, None, out)?);
+            let values = registration::call(self, member, &values, count, out)?
+                .ok_or_else(|| format!("{member} does not support {count} outputs"))?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && curve_fit::multi_output(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                curve_fit::call(engine, name, &values, count, out)
+            })?
+            .ok_or_else(|| format!("{name} does not support {count} outputs"))?;
+            if values.len() < count {
+                return Err(format!("{name} does not support {count} outputs"));
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && control_design::cds_handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                control_design::cds_call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && control_reduce::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                control_reduce::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && (volume::iso::handles(name) || volume::slice_viewer::handles(name))
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                if volume::slice_viewer::handles(name) {
+                    volume::slice_viewer::call(engine, name, &values, count, out)
+                } else {
+                    volume::iso::call(engine, name, &values, count, out)
+                }
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && graphics_handles::surface_names(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            if name == "sphere" {
+                let outputs = profiler::dispatch(self, name, |engine| {
+                    graphics_handles::sphere_coordinates(engine, &values, count)
+                })?;
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            return profiler::dispatch(self, name, |engine| {
+                graphics_handles::surface_call(engine, name, &values, count, out)
+            })
+            .map(|v| vec![v]);
+        }
+        if let Expr::Call(name, args) = expression
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+            && econ::expression_method(self, name, args)?
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            if econ::accepts(self, name, &values) {
+                return econ::call(self, name, &values, count, out);
+            }
+        }
+        if let Expr::Call(name, args) = expression
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+            && (econ_vol::handles(name) || econ_vol::expression_method(self, name, args)?)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            if econ_vol::handles(name) || econ_vol::method(self, name, &values) {
+                return profiler::dispatch(self, name, |engine| {
+                    econ_vol::call(engine, name, &values, count, out)
+                });
+            }
+        }
+        if let Expr::Call(name, args) = expression
+            && econ_tests::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                econ_tests::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && comm::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                comm::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && fuzzy::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                fuzzy::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && comm_wave::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                comm_wave::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && (stats_plots::handles(name) || nnet_plots::handles(name))
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                if nnet_plots::handles(name) {
+                    nnet_plots::call(engine, name, &values, count, out)
+                } else {
+                    stats_plots::call(engine, name, &values, count, out)
+                }
+            })?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && dist_fit::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                dist_fit::call(engine, name, &values, count, out)
+            })?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && nnet::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return nnet::call(self, name, &values, count);
+        }
+        if let Expr::Call(name, args) = expression
+            && wavelet::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                wavelet::call(engine, name, &values, count, out)
+            })?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && wavelet::method_call(self, name, args)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                wavelet::call(engine, name, &values, count, out)
+            })?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && parallel::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = profiler::dispatch(self, name, |engine| {
+                parallel::call(engine, name, &values, count, out)
+            })?;
+            if values.len() < count {
+                return Err("Too many output arguments.".into());
+            }
+            return Ok(values);
+        }
+        if let Expr::Call(name, args) = expression
+            && plots_2d_more::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                plots_2d_more::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && plots_compose::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                plots_compose::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, _) | Expr::Name(name) = expression
+            && name == "view"
+            && count >= 2
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = match expression {
+                Expr::Call(_, args) => string_class::arguments(self, name, args, out)?,
+                _ => Vec::new(),
+            };
+            let mut view = self.call(name, values, out)?;
+            if !matches!(view, Value::Matrix(_)) {
+                // A setter such as view(3) returns nothing: report the new angles.
+                view = self.call(name, Vec::new(), out)?;
+            }
+            return graphics_handles::view_outputs(view, count);
+        }
+        if let Expr::Call(name, args) = expression
+            && name == "title"
+            && count >= 2
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            if count > 2 {
+                return Err("title: too many outputs".into());
+            }
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = graphics_handles::heading_call(self, name, &values, count)?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && control_response::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = sysid::lti_args(self, values, out)?;
+            if name == "margin"
+                && let Some(value) = self.obj_call(name, &values, out)?
+            {
+                if count > 1 {
+                    return Err("margin: classifier margin returns one output".into());
+                }
+                return Ok(vec![value]);
+            }
+            return profiler::dispatch(self, name, |engine| {
+                control_response::call(engine, name, &values, count, out)
+            });
+        }
+        if let Expr::Call(name, args) = expression
+            && control_lti::data_name(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let values = sysid::lti_args(self, values, out)?;
+            let outputs = self.ctl_data(name, &values, count, out)?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
         #[cfg(target_arch = "wasm32")]
         if let Expr::Call(name, _) = expression
             && browser::file_command(name, None)
@@ -1116,7 +2697,7 @@ impl Engine {
             && !self.contains_array(name)
             && self.resolve_function(name)?.is_none()
         {
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
             let value = self.browser_query(name, &values)?.expect("browser query");
             if count > 1 {
                 return Err("Too many output arguments.".into());
@@ -1127,7 +2708,19 @@ impl Engine {
             self.charge_function_outputs(&values)?;
             return Ok(values);
         }
+        if let Some(values) = self.hostio_outputs(expression, count, out)? {
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Some(values) = self.dlg_eval_outputs(expression, count, out)? {
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
         if let Some(values) = self.fl2_eval_outputs(expression, count, out)? {
+            self.charge_function_outputs(&values)?;
+            return Ok(values);
+        }
+        if let Some(values) = self.rdx_eval_outputs(expression, count, out)? {
             self.charge_function_outputs(&values)?;
             return Ok(values);
         }
@@ -1151,20 +2744,25 @@ impl Engine {
             self.charge_function_outputs(&values)?;
             return Ok(values);
         }
-        if let Expr::CellContents(name, args) = expression {
-            let a = self.array(name).ok_or("Unknown cell variable")?;
-            let values = self.cell_contents(&a, args, out)?;
-            if values.len() != targets.len() {
+        if (count > 1 && expression.may_expand()) || matches!(expression, Expr::CellContents(..)) {
+            let mut values = self.eval_list(expression, None, out)?;
+            if count <= 1 && values.len() != count {
                 return Err("Cell content output count must match targets".into());
             }
+            if values.len() < count {
+                return Err("Insufficient number of outputs from right hand side of equal sign to satisfy assignment.".into());
+            }
+            values.truncate(count);
             return Ok(values);
         }
         if let Expr::Call(name, args) = expression
             && !self.contains_array(name)
             && let Some(function) = self.resolve_function(name)?
         {
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
             self.lng_note_inputs(args, values.len());
+            self.functions.lng.pending_nv_start =
+                args.iter().position(|a| matches!(a, Expr::NameValue(_)));
             let values = self.invoke_function(function, values, count, Some(targets), out)?;
             self.charge_function_outputs(&values)?;
             return Ok(values);
@@ -1173,22 +2771,33 @@ impl Engine {
             && eig_more::handles(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.eigx_outputs(name, &values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.eigx_outputs(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         if let Some((name, args)) = match expression {
             Expr::Call(name, args) => Some((name, args.as_slice())),
-            Expr::Name(name) if name == "peaks" => Some((name, &[][..])),
+            Expr::Name(name) if name == "peaks" || name == "bucky" => Some((name, &[][..])),
             _ => None,
         } && matches!(
             name.as_str(),
-            "shiftdim" | "inpolygon" | "peaks" | "hsv2rgb" | "rgb2hsv"
+            "shiftdim" | "inpolygon" | "peaks" | "hsv2rgb" | "rgb2hsv" | "bucky"
         ) && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.msc_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            if name == "shiftdim"
+                && let Some(mut outputs) = nd_shape::shiftdim(self, &values)?
+            {
+                outputs.truncate(count);
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.msc_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1200,9 +2809,11 @@ impl Engine {
             if !(1..=maximum).contains(&count) {
                 return Err(format!("{name} does not support {count} outputs"));
             }
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
             let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
-            let mut outputs = self.set_operation_call(operation, &values, mask)?;
+            let mut outputs = profiler::dispatch(self, name, |engine| {
+                engine.set_operation_call(operation, &values, mask)
+            })?;
             self.cel_rows_warning(&values, 2, out)?;
             outputs.truncate(count);
             self.charge_function_outputs(&outputs)?;
@@ -1216,9 +2827,14 @@ impl Engine {
             if !(1..=2).contains(&count) {
                 return Err(format!("ismember does not support {count} outputs"));
             }
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
             let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
-            let mut outputs = self.ismember_call(&values, mask)?;
+            if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            let mut outputs =
+                profiler::dispatch(self, name, |engine| engine.ismember_call(&values, mask))?;
             self.cel_rows_warning(&values, 2, out)?;
             outputs.truncate(count);
             self.charge_function_outputs(&outputs)?;
@@ -1232,9 +2848,19 @@ impl Engine {
             if !(1..=3).contains(&count) {
                 return Err(format!("unique does not support {count} outputs"));
             }
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            if let Some(outputs) = self.dtm_outputs(name, &values, count, out)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
             let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
-            let mut outputs = self.cel_unique_outputs(&values, mask, out)?;
+            let mut outputs = profiler::dispatch(self, name, |engine| {
+                engine.cel_unique_outputs(&values, mask, out)
+            })?;
             outputs.truncate(count);
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
@@ -1255,8 +2881,21 @@ impl Engine {
             if !(1..=maximum).contains(&count) {
                 return Err(format!("{name} does not support {count} outputs"));
             }
-            // Character data keeps its stored codes and shape (no text projection).
-            let values = self.function_arguments(args, None, out)?;
+            // Evaluate once, then choose the N-D or the original 2-D kernel.
+            let values = string_class::arguments(self, name, args, out)?;
+            if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            if let Some(outputs) = self.dtm_outputs(name, &values, count, out)? {
+                return Ok(outputs);
+            }
+            if values.iter().any(Value::is_nd) || nd_reduce::needs_dispatch(name, &values) {
+                let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
+                if let Some(outputs) = nd::multi_outputs(self, name, &values, count, mask)? {
+                    return Ok(outputs);
+                }
+            }
             if name != "find"
                 && let Some(mut outputs) = self.typed_extreme(
                     name,
@@ -1270,7 +2909,9 @@ impl Engine {
             }
             let (values, class) = typed_functions::demote_arguments(values)?;
             let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
-            let mut outputs = self.reduction_call(name, &values, count, mask)?;
+            let mut outputs = profiler::dispatch(self, name, |engine| {
+                engine.reduction_call(name, &values, count, mask)
+            })?;
             outputs.truncate(count);
             if name != "find" {
                 typed_functions::restore_first(&mut outputs, class)?;
@@ -1278,11 +2919,28 @@ impl Engine {
             return Ok(outputs);
         }
         if let Expr::Call(name, args) = expression
+            && matches!(name.as_str(), "predict" | "kfoldPredict")
+            && count > 1
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let Some(model) = values.first() else {
+                return Err(format!("{name}: expected a model"));
+            };
+            if let Some(outputs) = self.obj_predict_outputs(name, model, &values[1..])? {
+                if count > outputs.len() {
+                    return Err(format!("{name}: too many outputs"));
+                }
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs.into_iter().take(count).collect());
+            }
+        }
+        if let Expr::Call(name, args) = expression
             && count > 1
             && linalg_more::lax_handles(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
             let outputs = self
                 .lax_outputs(name, &values, count, out)?
                 .unwrap_or_default();
@@ -1294,10 +2952,11 @@ impl Engine {
             && linear_algebra2::handles(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self
-                .linalg2_call_with_output(name, &values, count, out)?
-                .unwrap_or_default();
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.linalg2_call_with_output(name, &values, count, out)
+            })?
+            .unwrap_or_default();
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
@@ -1306,16 +2965,20 @@ impl Engine {
             && ode::is_solver(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            return self.ode_solve(name, values, count, out);
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                engine.ode_solve(name, values, count, out)
+            });
         }
         if let Expr::Call(name, args) = expression
             && count > 1
             && ode_more::has_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.od2_outputs(name, values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.od2_outputs(name, values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1324,8 +2987,20 @@ impl Engine {
             && quadrature::quadx_has_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.quadx_outputs(name, values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.quadx_outputs(name, values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Name(name) = expression
+            && name == "flow"
+            && count > 1
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let outputs = volume::data::call(self, name, &[], count)?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1334,8 +3009,10 @@ impl Engine {
             && sci_more::sc2_has_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.sc2_outputs(name, &values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.sc2_outputs(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1344,15 +3021,19 @@ impl Engine {
             && iter_solvers::slv_is_solver(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            return self.slv_outputs(name, &values, count, out);
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                engine.slv_outputs(name, &values, count, out)
+            });
         }
         if let Expr::Call(name, args) = expression
             && file_io::handles(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.fileio_outputs(name, &values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.fileio_outputs(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1361,8 +3042,10 @@ impl Engine {
             && arrays_more::arx_has_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.arx_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.arx_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1371,8 +3054,136 @@ impl Engine {
             && stats_more::has_outputs(name)
             && !self.contains_array(name)
         {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.statsx_outputs(name, &values, count)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && image_color::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
             let values = self.function_arguments(args, None, out)?;
-            let outputs = self.statsx_outputs(name, &values, count)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                image_color::call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && image_basic::registration_handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                image_basic::registration_call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && camera::detect::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                camera::detect::call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && image_segment::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                image_segment::call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && image_morph::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = self.function_arguments(args, None, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.image_morph_call(name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && stats_tests::handles(name)
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.stt_call(name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && stats_gaps::handles(name)
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.stats_gaps_call(name, &values, count)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && outliers::handles(name)
+            && !self.contains_array(name)
+            && self.resolve_function(name)?.is_none()
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                outliers::call(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && stats_dist::stats_dist_has_outputs(name)
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.stats_dist_outputs(name, &values, count)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && stats_models::NAMES.contains(&name.as_str())
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.stm_outputs(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1381,8 +3192,10 @@ impl Engine {
             && lang_utils::multiple_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.lang_utils_outputs(name, &values, count, out)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.lang_utils_outputs(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1391,8 +3204,10 @@ impl Engine {
             && strings2::multiple_outputs(name)
             && !self.contains_array(name)
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.strings2_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.strings2_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
@@ -1402,11 +3217,23 @@ impl Engine {
             && !self.contains_array(name)
             && count > 1
         {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.matbuild_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.matbuild_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
+        }
+        if let Expr::Call(name, args) = expression
+            && count > 1
+            && signal_spectral::handles(name)
+            && !self.contains_array(name)
+        {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                signal_spectral::call(engine, name, &values, count)
+            });
         }
         if count == 1 {
             return match self.eval(expression, None, out)? {
@@ -1416,9 +3243,7 @@ impl Engine {
                 | Value::Container(_)) => Ok(vec![value]),
                 value @ Value::Text(_) => Ok(vec![value]),
                 Value::Void => Err("This command does not return a value".into()),
-                Value::QuotedString(_) => {
-                    Err("String array storage is not implemented; use char(...) explicitly".into())
-                }
+                value @ Value::QuotedString(_) => Ok(vec![value]),
             };
         }
         let Expr::Call(name, args) = expression else {
@@ -1427,43 +3252,144 @@ impl Engine {
         if self.contains_array(name) {
             return Err("Array indexing returns one output".into());
         }
+        if signal_timedomain::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                signal_timedomain::call(engine, name, &values, count)
+            });
+        }
+        if iir::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                iir::call(engine, name, &values, count, out)
+            });
+        }
+        if filter_analysis::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                filter_analysis::call(engine, name, &values, count, out)
+            });
+        }
+        if filter_extras::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            return profiler::dispatch(self, name, |engine| {
+                filter_extras::call(engine, name, &values, count)
+            });
+        }
         if name == "gradient" {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.core_more_gradient(&values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.core_more_gradient(&values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         if elementary::has_multiple_outputs(name) {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.everyday_outputs_call(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.everyday_outputs_call(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
         }
         if trig_more::has_multiple_outputs(name) {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.trigx_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.trigx_outputs(name, &values, count)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if spline_toolbox::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                spline_toolbox::call(engine, name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         if let Some(outputs) = self.polyopt_outputs(name, args, count, out)? {
             return Ok(outputs);
         }
+        if mpc::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                mpc::outputs(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            self.check_cancel()?;
+            return Ok(outputs);
+        }
+        if optim_con::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                optim_con::ocn_outputs(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            self.check_cancel()?;
+            return Ok(outputs);
+        }
+        if optim_global::og_handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                optim_global::og_outputs(engine, name, &values, count, out)
+            })?;
+            self.charge_function_outputs(&outputs)?;
+            self.check_cancel()?;
+            return Ok(outputs);
+        }
+        if optim_nl::handles(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = if name == "optimoptions" {
+                if let Some(value) = optim_con::ocn_options_builder(self, &values, out)? {
+                    if count > 1 {
+                        return Err("optimoptions supports one output".into());
+                    }
+                    vec![value]
+                } else {
+                    profiler::dispatch(self, name, |engine| {
+                        optim_nl::onl_outputs(engine, name, &values, count, out)
+                    })?
+                }
+            } else {
+                profiler::dispatch(self, name, |engine| {
+                    optim_nl::onl_outputs(engine, name, &values, count, out)
+                })?
+            };
+            self.charge_function_outputs(&outputs)?;
+            self.check_cancel()?;
+            return Ok(outputs);
+        }
         if number_theory::handles(name) {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.numtheory_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.numtheory_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         if special_fns::handles(name) {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.special_fns_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.special_fns_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         if dates::multiple_outputs(name) {
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.datex_outputs(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            if let Some(outputs) = self.dtm_outputs(name, &values, count, out)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.datex_outputs(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
@@ -1471,9 +3397,13 @@ impl Engine {
             if count != 2 {
                 return Err(format!("log2 does not support {count} outputs"));
             }
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self
-                .logarithm_dissection_call(&values, [targets[0].is_some(), targets[1].is_some()])?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.logarithm_dissection_call(
+                    &values,
+                    [targets[0].is_some(), targets[1].is_some()],
+                )
+            })?;
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
@@ -1482,15 +3412,57 @@ impl Engine {
             if !(2..=3).contains(&count) {
                 return Err("cheby1 supports one/two b,a or three z,p,k outputs; state-space/CTF forms are not implemented".into());
             }
-            let values = self.function_arguments(args, None, out)?;
-            let outputs = self.chebyshev_call(name, &values, count)?;
+            let values = string_class::arguments(self, name, args, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.chebyshev_call(name, &values, count)
+            })?;
             self.charge_function_outputs(&outputs)?;
             self.check_cancel()?;
             return Ok(outputs);
         }
+        if table_fns::owns_outputs(name) {
+            let names: Vec<String> = args
+                .iter()
+                .map(|a| match a {
+                    Expr::Name(n) => n.clone(),
+                    _ => String::new(),
+                })
+                .collect();
+            let values = string_class::arguments(self, name, args, out)?;
+            if let Some(outputs) = self.tbl_outputs(name, &values, &names, count, out)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+        }
+        if datetime_fns::owns_outputs(name) {
+            let values = string_class::arguments(self, name, args, out)?;
+            if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+            if let Some(outputs) = self.dtm_outputs(name, &values, count, out)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+        }
         if !matches!(name.as_str(), "filter" | "size" | "sort" | "sortrows")
             || (matches!(name.as_str(), "filter" | "sort" | "sortrows") && count != 2)
         {
+            if econ::method(name) || econ_vol::METHODS.contains(&name.as_str()) {
+                let values = string_class::arguments(self, name, args, out)?;
+                if econ::accepts(self, name, &values) {
+                    return econ::call(self, name, &values, count, out);
+                }
+                if econ_vol::method(self, name, &values) {
+                    return profiler::dispatch(self, name, |engine| {
+                        econ_vol::call(engine, name, &values, count, out)
+                    });
+                }
+                return Err(self.raise(
+                    econ_vol::undefined_method(name),
+                    "MATLAB:UndefinedFunction".into(),
+                ));
+            }
             if !crate::help::is_supported(name) {
                 return Err(crate::help::unknown_function(name));
             }
@@ -1498,7 +3470,26 @@ impl Engine {
         }
         // The supported-output preflight above remains before any argument
         // effects; builtins then share the same bounded CSL expansion as calls.
-        let values = self.function_arguments(args, None, out)?;
+        let values = string_class::arguments(self, name, args, out)?;
+        if let Some(outputs) = self.tbl_outputs(name, &values, &[], count, out)? {
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Some(outputs) = categorical_fns::outputs(self, name, &values, count)? {
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if let Some(outputs) = self.dtm_outputs(name, &values, count, out)? {
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs);
+        }
+        if values.iter().any(Value::is_nd) {
+            let mask = std::array::from_fn(|i| targets.get(i).is_some_and(Option::is_some));
+            if let Some(outputs) = nd::multi_outputs(self, name, &values, count, mask)? {
+                self.charge_function_outputs(&outputs)?;
+                return Ok(outputs);
+            }
+        }
         let values = if name == "size" || values.first().is_some_and(Value::is_character) {
             values
         } else {
@@ -1512,9 +3503,13 @@ impl Engine {
         }
         if name == "sort" || name == "sortrows" {
             let (sorted, indices) = if name == "sort" {
-                self.sort_call(&values, targets[1].is_some())?
+                profiler::dispatch(self, name, |engine| {
+                    engine.sort_call(&values, targets[1].is_some())
+                })?
             } else {
-                self.sort_rows_call(&values, targets[1].is_some())?
+                profiler::dispatch(self, name, |engine| {
+                    engine.sort_rows_call(&values, targets[1].is_some())
+                })?
             };
             let outputs = vec![
                 sorted,
@@ -1525,12 +3520,16 @@ impl Engine {
             return Ok(outputs);
         }
         if cplx_poly::routes(name, &values) {
-            let outputs = self.cxp_call(name, &values, count, out)?;
+            let outputs = profiler::dispatch(self, name, |engine| {
+                engine.cxp_call(name, &values, count, out)
+            })?;
             self.charge_function_outputs(&outputs)?;
             return Ok(outputs);
         }
         let outputs = if name == "filter" {
-            let (y, zf) = self.filter_call(&values, targets[1].is_some())?;
+            let (y, zf) = profiler::dispatch(self, name, |engine| {
+                engine.filter_call(&values, targets[1].is_some())
+            })?;
             vec![
                 y,
                 match zf {
@@ -1542,16 +3541,21 @@ impl Engine {
             if values.len() != 1 {
                 return Err("Multiple-output size expects one argument".into());
             }
-            let shape = values[0].shape(&self.cancel)?;
-            (0..count)
-                .map(|i| {
-                    Matrix::scalar(match i {
-                        0 => shape.0 as f64,
-                        1 => shape.1 as f64,
-                        _ => 1.,
+            profiler::dispatch(self, name, |engine| {
+                let shape = match &values[0] {
+                    Value::Container(a) => control_lti::io_shape(a).unwrap_or((a.rows(), a.cols())),
+                    value => value.shape(&engine.cancel)?,
+                };
+                Ok((0..count)
+                    .map(|i| {
+                        Matrix::scalar(match i {
+                            0 => shape.0 as f64,
+                            1 => shape.1 as f64,
+                            _ => 1.,
+                        })
                     })
-                })
-                .collect()
+                    .collect())
+            })?
         };
         for matrix in &outputs {
             self.charge(matrix.len())?;
@@ -1561,8 +3565,10 @@ impl Engine {
     }
     fn charge(&mut self, elements: usize) -> Result<()> {
         self.evaluated_elements = self.evaluated_elements.saturating_add(elements);
-        if self.evaluated_elements > 32 * 1024 * 1024 {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
+        if let Some(units) = self.limits.evaluation_units
+            && self.evaluated_elements > units
+        {
+            return Err(limits::evaluation_error(units));
         }
         Ok(())
     }
@@ -1615,6 +3621,9 @@ impl Engine {
         if self.evaluation_depth >= 128 {
             return Err("Combined expression/function evaluation exceeds 128 levels".into());
         }
+        if let Some(result) = scalar_loops::evaluate(self, e)? {
+            return Ok(scalar_loops::value(result));
+        }
         self.evaluation_depth += 1;
         let result = (|| {
             let value = self.eval_inner(e, end, out)?;
@@ -1628,6 +3637,7 @@ impl Engine {
         result
     }
     fn eval_inner(&mut self, e: &Expr, end: Option<usize>, out: &mut Execution) -> Result<Value> {
+        const END_OUTSIDE_INDEX: &str = "end is only valid inside indexing";
         self.check_cancel()?;
         if let Some(value) = self.obj_eval(e, out)? {
             return Ok(value);
@@ -1642,8 +3652,9 @@ impl Engine {
             }
             Expr::String(s) => return Ok(Value::Text(s.clone())),
             Expr::DoubleQuoted(s) => return Ok(Value::QuotedString(s.clone())),
+            Expr::NameValue(s) => return Ok(Value::Text(s.clone())),
             Expr::Name(n) => match n.as_str() {
-                "end" => Matrix::scalar(end.ok_or("end is only valid inside indexing")? as f64),
+                "end" => Matrix::scalar(end.ok_or(END_OUTSIDE_INDEX)? as f64),
                 _ if self.container_variables.contains_key(n) => {
                     return Ok(self.container_variables[n].clone().into());
                 }
@@ -1654,11 +3665,6 @@ impl Engine {
                     return Ok(Value::Logical(self.logical_variables[n].clone()));
                 }
                 _ if self.variables.contains_key(n) => self.variables[n].clone(),
-                "nargin" | "nargout" if self.functions.arguments.is_some() => {
-                    self.check_function_input(n)?;
-                    let (inputs, outputs) = self.functions.arguments.unwrap();
-                    Matrix::scalar(if n == "nargin" { inputs } else { outputs } as f64)
-                }
                 _ => {
                     if let Some(function) = self.resolve_function(n)? {
                         return Ok(self
@@ -1666,6 +3672,16 @@ impl Engine {
                             .remove(0));
                     }
                     match n.as_str() {
+                        "nargin" | "nargout" if self.functions.arguments.is_some() => {
+                            let (inputs, outputs) = self.functions.arguments.unwrap();
+                            Matrix::scalar(if n == "nargin" { inputs } else { outputs } as f64)
+                        }
+                        "mpcActiveSetOptions" | "mpcmoveopt" | "mpcsimopt" => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        "missing" | "newline" | "audiorecorder" => {
+                            return self.call(n, Vec::new(), out);
+                        }
                         "true" | "false" => {
                             return Ok(Value::Logical(LogicalMatrix::scalar(n == "true")));
                         }
@@ -1678,19 +3694,58 @@ impl Engine {
                         _ if env_files::envx_handles(n) => {
                             return self.call(n, Vec::new(), out);
                         }
+                        _ if datetime_fns::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
                         _ if lang_extra::lg3_handles(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if graphics_handles::gobj_bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if ui_components::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if parallel::handles(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if fuzzy::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if econ_vol::handles(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if nnet::constructor(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if wavelet::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if registration::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if camera::bare(n) => {
+                            return self.call(n, Vec::new(), out);
+                        }
+                        _ if pde_model::bare(n) => {
                             return self.call(n, Vec::new(), out);
                         }
                         "pi" => Matrix::scalar(std::f64::consts::PI),
                         "eps" => Matrix::scalar(f64::EPSILON),
                         "Inf" | "inf" => Matrix::scalar(f64::INFINITY),
                         "NaN" | "nan" => Matrix::scalar(crate::MATLAB_NAN),
-                        "gcf" | "gca" | "figure" | "tic" | "toc" | "rand" | "randn"
-                        | "mfilename" | "flintmax" | "realmax" | "realmin" | "rosser"
-                        | "intmax" | "intmin" | "peaks" | "lasterr" | "lastwarn" | "who"
-                        | "rehash" | "bvpset" | "ddeset" => {
+                        "gcf" | "gca" | "groot" | "axes" | "figure" | "tiledlayout"
+                        | "nexttile" | "tic" | "toc" | "profile" | "profsave" | "rand"
+                        | "randn" | "rng" | "mfilename" | "flintmax" | "realmax" | "realmin"
+                        | "rosser" | "intmax" | "intmin" | "peaks" | "lasterr" | "lastwarn"
+                        | "warning" | "flow" | "who" | "rehash" | "edit" | "bvpset" | "ddeset"
+                        | "odeset" | "optimset" | "view" | "xlim" | "ylim" | "zlim" | "axis"
+                        | "animatedline" | "line" | "balredOptions" | "sphere" | "ishold"
+                        | "movegui" | "bucky" => {
                             return self.call(n, Vec::new(), out);
                         }
+                        // A bare exit/quit statement ends the run (host_io.rs).
+                        "exit" | "quit" => return self.call(n, Vec::new(), out),
                         _ => {
                             return Err(self.raise(
                                 crate::help::unknown_function(n),
@@ -1703,6 +3758,22 @@ impl Engine {
             Expr::All => return Err("Standalone ':' is only valid inside indexing".into()),
             Expr::Unary(negative, x) => {
                 let value = self.eval(x, end, out)?;
+                if datetime_fns::is_dt(&value) {
+                    return self.dtm_unary(*negative, value);
+                }
+                if let Value::Container(Array::Sparse(s)) = &value {
+                    return Ok(sparse_fns::unary(s, *negative));
+                }
+                if control_lti::is_lti(&value) {
+                    return if *negative {
+                        control_lti::negate(self, &value)
+                    } else {
+                        Ok(value)
+                    };
+                }
+                if value.is_nd() {
+                    return nd::unary_operator(value, *negative, false);
+                }
                 if let Value::Container(Array::Typed(a)) = &value {
                     return if *negative {
                         self.typed_negate(a)
@@ -1721,30 +3792,61 @@ impl Engine {
                 if *negative { m.map(|v| -v) } else { m }
             }
             Expr::Not(x) => {
-                let value = self.eval(x, end, out)?.logical(&self.cancel)?;
+                let input = self.eval(x, end, out)?;
+                let input = sparse_fns::densify(self, "not", input)?;
+                if input.is_nd() {
+                    return nd::unary_operator(input, false, true);
+                }
+                let value = input.logical(&self.cancel)?;
                 return Ok(Value::Logical(value.not(&self.cancel)?));
             }
-            Expr::Transpose(x) | Expr::NonConjugateTranspose(x) => match self.eval(x, end, out)? {
-                Value::Complex(v) => {
-                    return Ok(Value::Complex(if matches!(e, Expr::Transpose(_)) {
-                        v.adjoint(&self.cancel)?
-                    } else {
-                        v.transpose(&self.cancel)?
-                    }));
+            Expr::Transpose(x) | Expr::NonConjugateTranspose(x) => {
+                let value = self.eval(x, end, out)?;
+                if let Some(c) = categorical_fns::of(&value) {
+                    return categorical_fns::transpose(self, c);
                 }
-                Value::Logical(v) => return Ok(Value::Logical(v.transpose(&self.cancel)?)),
-                Value::Container(Array::Typed(v)) => {
-                    return Ok(Value::Container(v.transpose()?.into()));
+                if datetime_fns::is_dt(&value) {
+                    return self.dtm_transpose(&value);
                 }
-                Value::Container(a @ (Array::Cell(_) | Array::Struct(_))) => {
-                    return self.cel_transpose(&a);
+                if let Value::Container(Array::Sparse(s)) = &value {
+                    return sparse_fns::transpose(s);
                 }
-                v if v.is_character() => {
-                    let codes = v.matrix(&self.cancel)?.transpose();
-                    return Ok(Value::Container(self.characters_from_codes(&codes)?.into()));
+                if string_class::is_string(&value) {
+                    return self.str_transpose(&value);
                 }
-                v => v.matrix(&self.cancel)?.transpose(),
-            },
+                // A 1-by-1 struct transposes to itself, which would make D'\B
+                // solve with the untransposed matrix.
+                if linear_algebra2::is_decomposition(&value) {
+                    return Err(
+                        "decomposition: transposing a decomposition object is not supported yet"
+                            .into(),
+                    );
+                }
+                if value.is_nd() {
+                    return Err(nd::TRANSPOSE_ND.into());
+                }
+                match value {
+                    Value::Complex(v) => {
+                        return Ok(Value::Complex(if matches!(e, Expr::Transpose(_)) {
+                            v.adjoint(&self.cancel)?
+                        } else {
+                            v.transpose(&self.cancel)?
+                        }));
+                    }
+                    Value::Logical(v) => return Ok(Value::Logical(v.transpose(&self.cancel)?)),
+                    Value::Container(Array::Typed(v)) => {
+                        return Ok(Value::Container(v.transpose()?.into()));
+                    }
+                    Value::Container(a @ (Array::Cell(_) | Array::Struct(_))) => {
+                        return self.cel_transpose(&a);
+                    }
+                    v if v.is_character() => {
+                        let codes = v.matrix(&self.cancel)?.transpose();
+                        return Ok(Value::Container(self.characters_from_codes(&codes)?.into()));
+                    }
+                    v => v.matrix(&self.cancel)?.transpose(),
+                }
+            }
             Expr::Binary(op, a, b)
                 if matches!(
                     op,
@@ -1764,12 +3866,56 @@ impl Engine {
             }
             Expr::Binary(op, a, b) => {
                 let a = self.eval(a, end, out)?;
+                if categorical_fns::is_cat(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return categorical_fns::binary(self, op, &a, &b);
+                }
+                if datetime_fns::is_dt(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return self.dtm_binary(op, &a, &b);
+                }
+                if sparse_fns::is_sparse(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return sparse_fns::binary(self, op, a, b, out);
+                }
+                if string_class::is_string(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return self.str_binary(op, &a, &b);
+                }
+                if control_lti::is_lti(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return self.ctl_binary(op, &a, &b, out);
+                }
+                if a.is_nd() {
+                    let b = self.eval(b, end, out)?;
+                    if let Some(value) = nd::binary(self, op, &a, &b)? {
+                        return Ok(value);
+                    }
+                }
                 if typed_values::is_typed(&a) {
                     let b = self.eval(b, end, out)?;
+                    if categorical_fns::is_cat(&b) {
+                        return categorical_fns::binary(self, op, &a, &b);
+                    }
+                    if datetime_fns::is_dt(&b) {
+                        return self.dtm_binary(op, &a, &b);
+                    }
+                    if string_class::is_string(&b) {
+                        return self.str_binary(op, &a, &b);
+                    }
+                    if b.is_nd()
+                        && let Some(value) = nd::binary(self, op, &a, &b)?
+                    {
+                        return Ok(value);
+                    }
                     return self.typed_arithmetic(op, a, b);
                 }
-                // Unsupported containers and double-quoted literals still fail
-                // before right-hand side effects. Char uses the shared conversion.
+                if linear_algebra2::is_decomposition(&a) {
+                    let b = self.eval(b, end, out)?;
+                    return linear_algebra2::decomposition_binary(self, op, &a, &b, out);
+                }
+                // Remaining unsupported containers fail before right-hand side
+                // effects. Char uses the shared numeric conversion.
                 if matches!(a, Value::QuotedString(_))
                     || (matches!(a, Value::Container(_)) && !a.is_character())
                 {
@@ -1777,6 +3923,29 @@ impl Engine {
                 }
                 a.shape(&self.cancel)?;
                 let b = self.eval(b, end, out)?;
+                if categorical_fns::is_cat(&b) {
+                    return categorical_fns::binary(self, op, &a, &b);
+                }
+                if datetime_fns::is_dt(&b) {
+                    return self.dtm_binary(op, &a, &b);
+                }
+                if sparse_fns::is_sparse(&b) {
+                    return sparse_fns::binary(self, op, a, b, out);
+                }
+                if string_class::is_string(&b) {
+                    return self.str_binary(op, &a, &b);
+                }
+                if control_lti::is_lti(&b) {
+                    return self.ctl_binary(op, &a, &b, out);
+                }
+                if linear_algebra2::is_decomposition(&b) {
+                    return linear_algebra2::decomposition_binary(self, op, &a, &b, out);
+                }
+                if b.is_nd()
+                    && let Some(value) = nd::binary(self, op, &a, &b)?
+                {
+                    return Ok(value);
+                }
                 if typed_values::is_typed(&b) {
                     return self.typed_arithmetic(op, a, b);
                 }
@@ -1796,7 +3965,18 @@ impl Engine {
                 }
                 let a = a.matrix(&self.cancel)?;
                 let b = b.matrix(&self.cancel)?;
+                let expands =
+                    a.len() != 1 && b.len() != 1 && (a.rows(), a.cols()) != (b.rows(), b.cols());
                 match op {
+                    Token::Plus if expands => {
+                        elementary::real_elementwise(self, &a, &b, |a, b| a + b)?
+                    }
+                    Token::Minus if expands => {
+                        elementary::real_elementwise(self, &a, &b, |a, b| a - b)?
+                    }
+                    Token::DotStar if expands => {
+                        elementary::real_elementwise(self, &a, &b, |a, b| a * b)?
+                    }
                     Token::Plus => a.coordinate_add(&b)?,
                     Token::Minus => a.coordinate_subtract(&b)?,
                     Token::Star => a.mul(&b).map_err(|message| {
@@ -1807,8 +3987,11 @@ impl Engine {
                         }
                     })?,
                     Token::DotStar => a.coordinate_multiply(&b)?,
-                    Token::DotSlash => a.zip(&b, |a, b| a / b)?,
-                    Token::DotPower => a.zip(&b, f64::powf)?,
+                    Token::DotSlash => elementary::real_elementwise(self, &a, &b, |a, b| a / b)?,
+                    Token::DotBackslash => {
+                        elementary::real_elementwise(self, &b, &a, |b, a| b / a)?
+                    }
+                    Token::DotPower => elementary::real_elementwise(self, &a, &b, f64::powf)?,
                     Token::Backslash => self.real_divide(true, &a, &b, out)?,
                     Token::Slash => self.real_divide(false, &a, &b, out)?,
                     Token::Power => {
@@ -1849,6 +4032,9 @@ impl Engine {
             Expr::FunctionHandle(name) => return self.lg3_named_handle(name),
             Expr::Anonymous(function) => return self.anonymous_handle(function, true),
             Expr::CellContents(name, args) => {
+                if args.iter().any(|arg| matches!(arg, Expr::NameValue(_))) {
+                    return Err("Name=Value syntax is not supported for indexing".into());
+                }
                 let a = self.array(name).ok_or("Unknown cell variable")?;
                 return self.index_container(&a, args, true, out);
             }
@@ -1872,6 +4058,31 @@ impl Engine {
                     }
                     values.push(cells);
                 }
+                if values.iter().flatten().any(control_lti::is_lti) {
+                    return control_lti::literal(self, values, out);
+                }
+                if values
+                    .iter()
+                    .flatten()
+                    .any(|v| objects::fis_value(self, v).is_some())
+                {
+                    return fuzzy::properties::concatenate(self, values);
+                }
+                if values.iter().flatten().any(table_fns::is_table) {
+                    return self.tbl_concat(values, out);
+                }
+                if values.iter().flatten().any(categorical_fns::is_cat) {
+                    return categorical_fns::concatenate(self, values);
+                }
+                if values.iter().flatten().any(datetime_fns::is_dt) {
+                    return self.dtm_concat(values);
+                }
+                if values.iter().flatten().any(sparse_fns::is_sparse) {
+                    return sparse_fns::concatenate(self, values);
+                }
+                if values.iter().flatten().any(Value::is_nd) {
+                    return nd::literal(self, values);
+                }
                 return self.cel_concatenate_warn(values, out);
             }
             Expr::Call(name, args) => {
@@ -1893,19 +4104,49 @@ impl Engine {
                 if let Some(handle) = self.handle_variable(name) {
                     return self.call_handle_expression(&handle, args, out);
                 }
+                if args.iter().any(|arg| matches!(arg, Expr::NameValue(_)))
+                    && (self.container_variables.contains_key(name)
+                        || self.complex_variables.contains_key(name)
+                        || self.logical_variables.contains_key(name)
+                        || self.variables.contains_key(name))
+                {
+                    return Err("Name=Value syntax is not supported for indexing".into());
+                }
+                if let Some(Array::Sparse(s)) = self.container_variables.get(name) {
+                    let s = s.clone();
+                    return sparse_fns::index(self, &s, args, out);
+                }
                 if let Some(a) = self.container_variables.get(name).cloned() {
+                    // An inline object is called, not indexed, whatever its argument count.
                     if let Some(value) = self.lg3_object_index(&a, args, out)? {
                         return Ok(value);
+                    }
+                    if let Some(value) = sysid::index(self, &a, args, out)? {
+                        return Ok(value);
+                    }
+                    if (a.is_nd() || args.len() > 2)
+                        && !matches!(control_lti::class(&a), Some("tf" | "zpk" | "ss"))
+                    {
+                        return nd::index(self, Value::Container(a), args, out);
                     }
                     return self.index_container(&a, args, false, out);
                 }
                 if let Some(m) = self.complex_variables.get(name).cloned() {
+                    if m.is_nd() || args.len() > 2 {
+                        return nd::index(self, Value::Complex(m), args, out);
+                    }
                     return Ok(Value::Complex(self.index_array(&m, args, out, false)?));
                 }
                 if let Some(m) = self.logical_variables.get(name).cloned() {
+                    if m.is_nd() || args.len() > 2 {
+                        return nd::index(self, Value::Logical(m), args, out);
+                    }
                     return Ok(Value::Logical(self.index_array(&m, args, out, false)?));
                 }
                 if let Some(m) = self.variables.get(name).cloned() {
+                    if m.is_nd() || args.len() > 2 {
+                        return nd::index(self, Value::Matrix(m), args, out);
+                    }
                     self.index_array(&m, args, out, false)?
                 } else {
                     if name == "clear" && self.resolve_function(name)?.is_none() {
@@ -1915,11 +4156,33 @@ impl Engine {
                         );
                     }
                     let mut values = Vec::with_capacity(args.len());
+                    let mut nv_start = None;
                     for arg in args {
-                        let list = if arg.may_expand() {
-                            self.eval_list(arg, end, out)?
+                        if nv_start.is_none() && matches!(arg, Expr::NameValue(_)) {
+                            nv_start = Some(values.len());
+                        }
+                        let evaluated = if arg.may_expand() {
+                            self.eval_list(arg, end, out).map(Some)
                         } else {
-                            values.push(self.eval(arg, end, out)?);
+                            self.eval(arg, end, out).map(|value| {
+                                values.push(value);
+                                None
+                            })
+                        };
+                        let Some(list) = (match evaluated {
+                            Err(ref error)
+                                if error == END_OUTSIDE_INDEX
+                                    && !crate::help::is_matlab_name(name)
+                                    && !crate::help::is_supported(name)
+                                    && self.resolve_function(name)?.is_none() =>
+                            {
+                                return Err(self.raise(
+                                    crate::help::unknown_function(name),
+                                    "MATLAB:UndefinedFunction".into(),
+                                ));
+                            }
+                            result => result?,
+                        }) else {
                             continue;
                         };
                         if values.len().saturating_add(list.len())
@@ -1930,6 +4193,7 @@ impl Engine {
                         values.extend(list);
                     }
                     self.lng_note_inputs(args, values.len());
+                    self.functions.lng.pending_nv_start = nv_start;
                     match self.call(name, values, out)? {
                         Value::Matrix(m) => m,
                         other => return Ok(other),
@@ -1940,15 +4204,297 @@ impl Engine {
         Ok(Value::Matrix(matrix))
     }
     fn call(&mut self, name: &str, args: Vec<Value>, out: &mut Execution) -> Result<Value> {
+        self.graphics_call_with_line_defaults(name, args, out, false)
+    }
+
+    fn graphics_call_with_line_defaults(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        out: &mut Execution,
+        primitive_line: bool,
+    ) -> Result<Value> {
         // The call site's argument names belong to this call only: a user
         // function entered here keeps them, a builtin (cellfun, feval, ...)
         // must not pass them on to functions it calls itself.
         let names = std::mem::take(&mut self.functions.lng.pending_names);
+        let nv_start = self.functions.lng.pending_nv_start.take();
+        // A user object argument: its class's method (or object query) first.
+        let object_first = args.first().is_some_and(classdef::is_object_value);
+        if object_first {
+            // A method keeps the call site's names (inputname); the object
+            // queries answered here take none.
+            self.functions.lng.pending_names = names.clone();
+            self.functions.lng.pending_nv_start = nv_start;
+        }
+        if name == "isprop"
+            && let Some(o) = args.first().and_then(|v| objects::fis_value(self, v))
+            && self.resolve_function(name)?.is_none()
+        {
+            return fuzzy::properties::method(self, &o, name, &args[1..], out)?
+                .ok_or_else(|| "fuzzy: unsupported property query".into());
+        }
+        if name == "isprop"
+            && let Some(net) = args.first().and_then(|v| objects::nnet_value(self, v))
+            && self.resolve_function(name)?.is_none()
+        {
+            return nnet::object_method(self, &net, name, &args[1..])?
+                .ok_or_else(|| "network: unsupported property query".into());
+        }
+        if name == "isprop"
+            && args
+                .first()
+                .is_some_and(|v| objects::triangulation_value(self, v).is_some())
+            && self.resolve_function(name)?.is_none()
+        {
+            return self
+                .obj_call(name, &args, out)?
+                .ok_or_else(|| "delaunayTriangulation: unsupported property query".into());
+        }
+        // isprop on imref2d and the transformation objects: before the
+        // classdef query, which only knows classdef and graphics objects.
+        if name == "isprop"
+            && args
+                .first()
+                .is_some_and(|v| registration::geo_of(self, v).is_some())
+            && self.resolve_function(name)?.is_none()
+        {
+            let mut values = registration::call(self, name, &args, 1, out)?
+                .ok_or("isprop: unsupported property query")?;
+            return Ok(values.swap_remove(0));
+        }
+        if name == "isprop"
+            && args
+                .first()
+                .is_some_and(|v| camera::camera_of(self, v).is_some())
+            && self.resolve_function(name)?.is_none()
+        {
+            let mut values = camera::call(self, name, &args, 1, out)?
+                .ok_or("isprop: unsupported property query")?;
+            return Ok(values.swap_remove(0));
+        }
+        // An imported, local or private function comes before the method.
+        let handled = match object_first.then(|| self.cls_shadowed(name)) {
+            Some(Ok(true)) => Ok(None),
+            Some(Err(error)) => Err(error),
+            _ => self.cls_call(name, &args, 1, None, out),
+        };
+        if object_first {
+            self.functions.lng.pending_names.clear();
+            self.functions.lng.pending_nv_start = None;
+        }
+        if let Some(mut values) = handled? {
+            return Ok(values.swap_remove(0));
+        }
         if let Some(function) = self.resolve_function(name)? {
             self.functions.lng.pending_names = names;
+            self.functions.lng.pending_nv_start = nv_start;
             return Ok(self
                 .invoke_function(function, args, 1, None, out)?
                 .remove(0));
+        }
+        if self.profiler.enabled {
+            return profiler::builtin(self, name, |engine| {
+                engine.profiler_builtin_call(name, args, names, out, primitive_line)
+            });
+        }
+        self.profiler_builtin_call(name, args, names, out, primitive_line)
+    }
+    fn profiler_builtin_call(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        names: Vec<String>,
+        out: &mut Execution,
+        primitive_line: bool,
+    ) -> Result<Value> {
+        if let Some(launch) = app_launchers::Launch::for_name(name) {
+            return launch.open(name, args.len(), 1).map(|()| Value::Void);
+        }
+        // Check before type-specific repmat dispatchers interpret [] as a size.
+        if name == "repmat"
+            && let [_, Value::Matrix(factors)] = args.as_slice()
+            && factors.is_empty()
+        {
+            return Err(
+                "Replication factors must be a row vector of integers or integer scalars.".into(),
+            );
+        }
+        // imref2d and the 2-D transformation objects: before the string
+        // functions (contains) and the generic object queries (isa, ...).
+        if let Some(mut values) = registration::call(self, name, &args, 1, out)? {
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.swap_remove(0)
+            });
+        }
+        // cameraIntrinsics, cameraParameters and the calibration functions.
+        if let Some(mut values) = camera::call(self, name, &args, 1, out)? {
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.swap_remove(0)
+            });
+        }
+        if let Some(mut values) = sysid::call(self, name, &args, 1, out)? {
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.swap_remove(0)
+            });
+        }
+        if econ::accepts(self, name, &args) {
+            return Ok(econ::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if econ_tests::handles(name) {
+            return Ok(econ_tests::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if econ_vol::handles(name) || econ_vol::method(self, name, &args) {
+            return Ok(econ_vol::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if comm::handles(name) {
+            return Ok(comm::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if fuzzy::handles(name) {
+            return Ok(fuzzy::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if comm_wave::handles(name) {
+            return Ok(comm_wave::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if name == "sim"
+            && args
+                .first()
+                .is_some_and(|v| objects::mpc_value(self, v).is_some())
+        {
+            let outputs = mpc::outputs(self, name, &args, 1, out)?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs.into_iter().next().unwrap());
+        }
+        if nnet::handles(name)
+            || (name == "sim"
+                && args
+                    .first()
+                    .is_some_and(|v| objects::nnet_value(self, v).is_some()))
+        {
+            return Ok(nnet::call(self, name, &args, 1)?.remove(0));
+        }
+        if wavelet::method(name, &args) {
+            return Ok(wavelet::call(self, name, &args, 1, out)?.swap_remove(0));
+        }
+        if let Some(mut values) = curve_fit::call(self, name, &args, 1, out)? {
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.swap_remove(0)
+            });
+        }
+        if let Some(value) = ui_components::call(self, name, &args, out)? {
+            return Ok(value);
+        }
+        if let Some(value) = self.dlg_call(name, &args, out)? {
+            return Ok(value);
+        }
+        if let Some(mut values) = categorical_fns::outputs(self, name, &args, 1)? {
+            return Ok(values.remove(0));
+        }
+        if let Some(value) = self.tbl_call(name, &args, &names, out)? {
+            return Ok(value);
+        }
+        if let Some(value) = import_options::call(self, name, &args, out)? {
+            return Ok(value);
+        }
+        if matches!(name, "margin" | "edge")
+            && let Some(value) = self.obj_call(name, &args, out)?
+        {
+            return Ok(value);
+        }
+        if image_color::handles(name) {
+            return Ok(image_color::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if image_basic::registration_handles(name) {
+            return Ok(image_basic::registration_call(self, name, &args, 1, out)?.remove(0));
+        }
+        // Before the N-D and class guards: images are N-D and integer-typed.
+        if camera::detect::handles(name) {
+            return Ok(camera::detect::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if image_segment::handles(name) {
+            return Ok(image_segment::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if image_morph::handles(name) {
+            return Ok(self.image_morph_call(name, &args, 1, out)?.remove(0));
+        }
+        // Before the datetime dispatch: timetables and duration windows.
+        if outliers::handles(name) {
+            return Ok(outliers::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if let Some(value) = self.dtm_call(name, &args, out)? {
+            return Ok(value);
+        }
+        let args = match sparse_fns::call(self, name, args, out)? {
+            Ok(value) => return Ok(value),
+            Err(args) => args,
+        };
+        // dicominfo owns scalar filename/type validation, including string arrays.
+        if name != "dicominfo"
+            && !(name == "circshift" && args.first().is_some_and(string_class::is_string))
+        {
+            string_class::guard(name, &args)?;
+        }
+        if let Some(value) = self.str_call(name, &args, out)? {
+            return Ok(value);
+        }
+        // Image functions take H-by-W-by-C arrays: before the N-D guard.
+        if let Some(value) = self.image_basic_call(name, &args)? {
+            return Ok(value);
+        }
+        if volume::iso::handles(name) {
+            return Ok(volume::iso::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if volume::slice_viewer::handles(name) {
+            return Ok(volume::slice_viewer::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if nd::needs_dispatch(name, &args) {
+            nd::guard(name, &args)?;
+            if let Some(value) = nd::call(self, name, &args, out)? {
+                return Ok(value);
+            }
+        }
+        if signal_spectral::handles(name) {
+            return Ok(signal_spectral::call(self, name, &args, 1)?.remove(0));
+        }
+        if control_design::cds_handles(name) {
+            return Ok(control_design::cds_call(self, name, &args, 1, out)?.remove(0));
+        }
+        if control_reduce::handles(name) {
+            return Ok(control_reduce::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if signal_timedomain::handles(name) {
+            return Ok(signal_timedomain::call(self, name, &args, 1)?.remove(0));
+        }
+        if iir::handles(name) {
+            return Ok(iir::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if filter_analysis::handles(name) {
+            return Ok(filter_analysis::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if filter_extras::handles(name) {
+            return Ok(filter_extras::call(self, name, &args, 1)?.remove(0));
+        }
+        if control_response::handles(name) {
+            return Ok(control_response::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if graphics_handles::surface_names(name) {
+            return graphics_handles::surface_call(self, name, &args, 1, out);
+        }
+        if plots_2d_more::handles(name) {
+            return Ok(plots_2d_more::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if plots_compose::handles(name) {
+            let count = usize::from(!plots_compose::no_output(name));
+            let values = plots_compose::call(self, name, &args, count, out)?;
+            return Ok(values.into_iter().next().unwrap_or(Value::Void));
         }
         #[cfg(target_arch = "wasm32")]
         if browser::file_command(name, Some(&args)) {
@@ -1958,11 +4504,67 @@ impl Engine {
         if let Some(value) = self.browser_query(name, &args)? {
             return Ok(value);
         }
+        if let Some(value) = self.ctl_call(name, &args, out)? {
+            return Ok(value);
+        }
         if cplx_poly::routes(name, &args) {
             return Ok(self.cxp_call(name, &args, 1, out)?.remove(0));
         }
+        if nnet_plots::handles(name) {
+            return Ok(nnet_plots::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if stats_plots::handles(name) {
+            let mut values = stats_plots::call(self, name, &args, 1, out)?;
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.remove(0)
+            });
+        }
+        if dist_fit::handles(name) {
+            let mut values = dist_fit::call(self, name, &args, 1, out)?;
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.remove(0)
+            });
+        }
+        if wavelet::handles(name) {
+            let mut values = wavelet::call(self, name, &args, 1, out)?;
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.remove(0)
+            });
+        }
+        if parallel::handles(name) || parallel::method(self, name, &args) {
+            let mut values = parallel::call(self, name, &args, 1, out)?;
+            return Ok(if values.is_empty() {
+                Value::Void
+            } else {
+                values.remove(0)
+            });
+        }
+        if linear_models::handles(name) {
+            return Ok(linear_models::call(self, name, &args, 1, out)?.remove(0));
+        }
+        if name == "designfilt" {
+            let f = digital_filter::designfilt(self, &args)?;
+            return self.filter_new(f);
+        }
+        if let Some(value) = dist_objects::call(self, name, &args)? {
+            return Ok(value);
+        }
+        if name == "circshift" && args.first().is_some_and(string_class::is_string) {
+            return self
+                .cel_call(name, &args, out)?
+                .ok_or_else(|| "circshift: unsupported string input".into());
+        }
         if let Some(value) = self.obj_call(name, &args, out)? {
             return Ok(value);
+        }
+        if name == "round" && args.len() >= 2 {
+            return round14(self, &args);
         }
         if let Some(value) = self.cxr_call(name, &args, out)? {
             return Ok(value);
@@ -1988,9 +4590,31 @@ impl Engine {
         if let Some(value) = self.fl2_call(name, &args, out)? {
             return Ok(value);
         }
+        if let Some(value) = self.rdx_call(name, &args, out)? {
+            return Ok(value);
+        }
         self.functions.lng.call_names = names;
         if let Some(value) = self.lng_call(name, &args, out)? {
             return Ok(value);
+        }
+        if let Some(value) = self.hostio_call(name, &args, out)? {
+            return Ok(value);
+        }
+        if stats_tests::handles(name) {
+            return Ok(self.stt_call(name, &args, 1, out)?.remove(0));
+        }
+        // Before the generic integer/single conversion: the module applies
+        // its own class rule, the same for every output count.
+        if stats_gaps::handles(name) {
+            return Ok(self.stats_gaps_call(name, &args, 1)?.remove(0));
+        }
+        if stats_models::NAMES.contains(&name) {
+            return Ok(self.stm_outputs(name, &args, 1, out)?.remove(0));
+        }
+        if mpc::handles(name) {
+            let outputs = mpc::outputs(self, name, &args, 1, out)?;
+            self.charge_function_outputs(&outputs)?;
+            return Ok(outputs.into_iter().next().unwrap());
         }
         let eig_args = eig_more::handles(name).then(|| args.clone());
         let args = match self.typed_call(name, args, out)? {
@@ -2020,6 +4644,9 @@ impl Engine {
         if let Some(value) = self.statsx_call(name, &args)? {
             return Ok(value);
         }
+        if let Some(value) = self.stats_dist_call(name, &args)? {
+            return Ok(value);
+        }
         if let Some(value) = self.special_fns_call(name, &args)? {
             return Ok(value);
         }
@@ -2041,7 +4668,20 @@ impl Engine {
         if name == "filtic" {
             return self.filtic_call(&args);
         }
+        if spline_toolbox::handles(name) {
+            let mut values = spline_toolbox::call(self, name, &args, 1, out)?;
+            return Ok(values.swap_remove(0));
+        }
         if let Some(value) = self.polyopt_call(name, &args, out)? {
+            return Ok(value);
+        }
+        if let Some(value) = optim_con::ocn_call(self, name, &args, out)? {
+            return Ok(value);
+        }
+        if let Some(value) = optim_global::og_call(self, name, &args, out)? {
+            return Ok(value);
+        }
+        if let Some(value) = optim_nl::onl_call(self, name, &args, out)? {
             return Ok(value);
         }
         if name == "polyval" {
@@ -2097,6 +4737,15 @@ impl Engine {
         }
         if let Some(value) = self.ode_call(name, &args, out)? {
             return Ok(value);
+        }
+        if pde::handles(name) {
+            return pde::call(self, name, &args, 1, out).map(|mut v| v.remove(0));
+        }
+        if pde_geometry::handles(name) {
+            return pde_geometry::call(self, name, &args, 1, out).map(|mut v| v.remove(0));
+        }
+        if pde_model::handles(name) {
+            return pde_model::call(self, name, &args, 1, out).map(|mut v| v.remove(0));
         }
         if let Some(value) = self.od2_call(name, &args, out)? {
             return Ok(value);
@@ -2189,10 +4838,65 @@ impl Engine {
             return self.figure_file_command(name, args.into_owned());
         }
         if matches!(name, "nargin" | "nargout") {
-            if !args.is_empty() {
-                return Err(format!(
-                    "{name} currently supports only the zero-argument form inside a function"
+            if let [arg] = args.as_ref() {
+                let arity = |function: &user_functions::ResolvedFunction| {
+                    let (count, variable) = if name == "nargin" {
+                        (function.input_count(), function.variadic())
+                    } else {
+                        (function.output_count(), function.variadic_output())
+                    };
+                    Value::Matrix(Matrix::scalar(
+                        count as f64 * if variable { -1.0 } else { 1.0 },
+                    ))
+                };
+                let (target, scope) = match arg {
+                    Value::Container(Array::Handle(h)) => {
+                        if let Some(function) = user_functions::nested::bound(h) {
+                            return Ok(arity(function));
+                        }
+                        if let Some((anonymous, _)) = h.anonymous_parts() {
+                            let count = if name == "nargin" {
+                                let count = anonymous.params.len() as f64;
+                                if anonymous
+                                    .params
+                                    .last()
+                                    .is_some_and(|param| param == "varargin")
+                                {
+                                    -count
+                                } else {
+                                    count
+                                }
+                            } else {
+                                1.0
+                            };
+                            return Ok(Value::Matrix(Matrix::scalar(count)));
+                        }
+                        (h.name().unwrap_or_default().to_owned(), h.scope().cloned())
+                    }
+                    Value::Text(s) => (s.clone(), None),
+                    _ => return Err(format!("{name}: expected a function name or handle")),
+                };
+                let caller = scope
+                    .as_ref()
+                    .and_then(|s| s.downcast_ref::<user_functions::HandleScope>())
+                    .map(|s| self.ctx_enter_handle(s));
+                let resolved = self.resolve_function(&target);
+                if let Some(caller) = caller {
+                    self.ctx_leave_handle(caller);
+                }
+                if let Some(function) = resolved? {
+                    return Ok(arity(&function));
+                }
+                if crate::session::FUNCTIONS.contains(&target.as_str()) {
+                    return Err(format!("{name} is not known for builtin {target}"));
+                }
+                return Err(self.raise(
+                    format!("Function {target} does not exist."),
+                    "MATLAB:narginout:functionDoesnotExist".into(),
                 ));
+            }
+            if !args.is_empty() {
+                return Err("Too many input arguments.".into());
             }
             let (inputs, outputs) = self
                 .functions
@@ -2202,25 +4906,31 @@ impl Engine {
                 if name == "nargin" { inputs } else { outputs } as f64,
             )));
         }
+        if graphics_ticks::is_tick_or_colororder(name) {
+            return self.graphics_ticks_or_colororder(name, args.into_owned());
+        }
         if matches!(
             name,
             "hold"
                 | "grid"
-                | "legend"
                 | "xlim"
                 | "ylim"
+                | "zlim"
+                | "view"
                 | "xscale"
                 | "yscale"
                 | "axis"
                 | "clf"
+                | "cla"
                 | "subplot"
                 | "tiledlayout"
                 | "nexttile"
+                | "linkaxes"
                 | "sgtitle"
                 | "figure"
                 | "close"
         ) {
-            return self.graphics(name, args.into_owned());
+            return self.graphics(name, args.into_owned(), out);
         }
         let arg_count = args.len();
         let arity = |allowed: &[usize]| -> Result<()> {
@@ -2237,27 +4947,44 @@ impl Engine {
                 ))
             }
         };
-        if matches!(name, "title" | "xlabel" | "ylabel") {
-            arity(&[1, 3, 5])?;
+        if matches!(name, "xlabel" | "ylabel" | "zlabel") {
+            if args.is_empty() || args.len() > 11 || args.len().is_multiple_of(2) {
+                return Err(format!(
+                    "{name} expects a label and optional Name,Value pairs"
+                ));
+            }
             let mut color = None;
+            let mut interpreter = crate::plot::text_markup::Interpreter::Tex;
+            let mut style = crate::plot::LabelStyle::default();
             for pair in args[1..].as_chunks::<2>().0 {
                 match (&pair[0], &pair[1]) {
                     (Value::Text(key), Value::Text(value))
-                        if key.eq_ignore_ascii_case("Interpreter")
-                            && value.eq_ignore_ascii_case("none") => {}
+                        if key.eq_ignore_ascii_case("Interpreter") =>
+                    {
+                        interpreter = crate::plot::text_markup::Interpreter::parse(value)?;
+                    }
                     (Value::Text(key), value) if key.eq_ignore_ascii_case("Color") => {
                         color = Some(graphics_handles::axes_rgb(value, &self.cancel)?)
                     }
+                    (Value::Text(key), value) if key.eq_ignore_ascii_case("FontSize") => {
+                        let size = graphics_handles::dot_syntax::real_scalar(value, "FontSize")?;
+                        crate::plot::validate_font_size(size)?;
+                        style.font_size = Some(size);
+                    }
+                    (Value::Text(key), value) if key.eq_ignore_ascii_case("FontWeight") => {
+                        style.bold = Some(graphics_handles::dot_syntax::text_font_weight(value)?);
+                    }
+                    (Value::Text(key), value) if key.eq_ignore_ascii_case("FontAngle") => {
+                        style.italic = Some(graphics_handles::dot_syntax::text_font_angle(value)?);
+                    }
                     _ => {
                         return Err(
-                            "Axes text supports literal Interpreter none and RGB Color only".into(),
+                            "Axes text supports Interpreter, RGB Color, FontSize, FontWeight and FontAngle".into(),
                         );
                     }
                 }
             }
-            let Value::Text(s) = &args[0] else {
-                return Err("Label must be a quoted string".into());
-            };
+            let (s, lines) = graphics_text_lines(&raw_args[0], &self.cancel)?;
             if s.len() > 4096 {
                 return Err("Plot label exceeds 4096 bytes".into());
             }
@@ -2266,22 +4993,45 @@ impl Engine {
             if let Some(rgb) = color {
                 let colors = figure.axes.colors.get_or_insert_with(Default::default);
                 match name {
-                    "title" => colors.title = Some(rgb),
                     "xlabel" => colors.xlabel = Some(rgb),
+                    "zlabel" => return Err("zlabel Color is not supported yet".into()),
                     _ => colors.ylabel = Some(rgb),
                 }
             }
+            let index = match name {
+                "xlabel" => 1,
+                "ylabel" => 2,
+                _ => 3,
+            };
+            figure.axes.extras.label_interpreters[index] = interpreter;
+            figure.axes.extras.label_lines[index] = lines;
+            let target_style = &mut figure.axes.extras.label_styles[index - 1];
+            target_style.font_size = style.font_size.or(target_style.font_size);
+            target_style.bold = style.bold.or(target_style.bold);
+            target_style.italic = style.italic.or(target_style.italic);
             match name {
-                "title" => figure.title = s.clone(),
                 "xlabel" => figure.xlabel = s.clone(),
+                "zlabel" => figure.zlabel = s.clone(),
                 _ => figure.ylabel = s.clone(),
             };
             figure.validate()?;
             #[cfg(test)]
             graphics_handles::tests::before_property_publish(&self.cancel);
             self.check_cancel()?;
+            let identity = match index {
+                1 => &figure.axes.extras.xlabel_identity,
+                2 => &figure.axes.extras.ylabel_identity,
+                _ => &figure.axes.extras.zlabel_identity,
+            };
+            let handle = crate::GraphicsHandle::axes_object(
+                &figure.identity,
+                &figure.axes.identity,
+                identity,
+                crate::GraphicsKind::Text,
+            );
+            let result = crate::GraphicsArray::scalar(handle, &self.cancel)?;
             self.figure = Some(figure);
-            return Ok(Value::Void);
+            return Ok(Value::Container(result.into()));
         }
         if name == "disp" {
             arity(&[1])?;
@@ -2292,7 +5042,11 @@ impl Engine {
                 Value::Void => Some(String::new()),
                 value => {
                     let array = value.clone().array(&self.cancel)?;
-                    crate::display_format::disp(&array, &self.display)?
+                    if let Some(text) = volume::show::volume_display(self, &array) {
+                        Some(text)
+                    } else {
+                        crate::display_format::disp(&array, &self.display)?
+                    }
                 }
             };
             if let Some(text) = text {
@@ -2314,7 +5068,7 @@ impl Engine {
         }
         let args = if matches!(
             name,
-            "plot" | "semilogx" | "semilogy" | "loglog" | "scatter" | "bar"
+            "plot" | "semilogx" | "semilogy" | "loglog" | "scatter" | "bar" | "plot3" | "scatter3"
         ) {
             std::borrow::Cow::Owned(
                 args.into_owned()
@@ -2596,6 +5350,53 @@ impl Engine {
                     return Ok(Value::Void);
                 }
             }
+            "gausswin" | "tukeywin" | "chebwin" | "taylorwin" | "barthannwin" | "bohmanwin"
+            | "parzenwin" => {
+                let max_args = match name {
+                    "taylorwin" => 3,
+                    "gausswin" | "tukeywin" | "chebwin" => 2,
+                    _ => 1,
+                };
+                arity(&(1..=max_args).collect::<Vec<_>>())?;
+                let n = crate::dsp::window_length(scalar(0)?)?;
+                let param = |i: usize, default: f64| -> Result<f64> {
+                    match args.get(i) {
+                        None => Ok(default),
+                        Some(Value::Matrix(a)) if a.is_empty() => Ok(default),
+                        Some(_) => scalar(i),
+                    }
+                };
+                use crate::dsp::ParamWindow as W;
+                let kind = match name {
+                    "gausswin" => W::Gauss(param(1, 2.5)?),
+                    "tukeywin" => W::Tukey(param(1, 0.5)?),
+                    "chebwin" => {
+                        let r = param(1, 100.)?;
+                        if !(r.is_finite() && r > 0.) {
+                            return Err(
+                                "chebwin: R must be a positive finite sidelobe attenuation in dB"
+                                    .into(),
+                            );
+                        }
+                        W::Cheb(r)
+                    }
+                    "taylorwin" => {
+                        let nbar = param(1, 4.)?;
+                        let sll = param(2, -30.)?;
+                        if !(nbar.is_finite() && nbar >= 1. && nbar.fract() == 0.) {
+                            return Err("taylorwin: NBAR must be a positive integer".into());
+                        }
+                        if !(sll.is_finite() && sll < 0.) {
+                            return Err("taylorwin: SLL must be negative (dB)".into());
+                        }
+                        W::Taylor(nbar as usize, sll)
+                    }
+                    "barthannwin" => W::BartHann,
+                    "bohmanwin" => W::Bohman,
+                    _ => W::Parzen,
+                };
+                crate::dsp::param_window(kind, n, &self.cancel)?
+            }
             "kaiser" => {
                 arity(&[1, 2, 3])?;
                 let n = crate::dsp::window_length(scalar(0)?)?;
@@ -2628,10 +5429,18 @@ impl Engine {
                 crate::dsp::window(kind, n, periodic, &self.cancel)?
             }
             "eye" => {
-                arity(&[1, 2])?;
-                let r = dimension(0)?;
-                let c = if args.len() == 2 { dimension(1)? } else { r };
-                Matrix::identity(r, c)?
+                if args.is_empty() {
+                    Matrix::identity(1, 1)?
+                } else {
+                    if matches!(&args[..], [Value::Matrix(a)] if a.rows() == 1 && a.len() > 2) {
+                        return Err("N-dimensional arrays are not supported.".into());
+                    }
+                    let dims = shape_arguments::shape_dims(&args, None)?;
+                    if dims.len() > 2 {
+                        return Err("N-dimensional arrays are not supported.".into());
+                    }
+                    Matrix::identity(dims[0], dims[1])?
+                }
             }
             "linspace" => {
                 arity(&[2, 3])?;
@@ -2772,7 +5581,7 @@ impl Engine {
                 }
                 if !(1..=3).contains(&count) {
                     return Err(format!(
-                        "Use {name}(A[, 0|1|[] [, dim|'all']][, 'omitnan'|'includenan']); vector weights and vector dimensions are not implemented"
+                        "Use {name}(A[, 0|1|[] [, dim|'all']][, 'omitnan'|'includenan']); vector weights are not implemented"
                     ));
                 }
                 let input = m(0)?;
@@ -2792,9 +5601,17 @@ impl Engine {
                     StatisticsAxis::Default
                 } else {
                     match &args[2] {
-                        Value::Text(value) if value.eq_ignore_ascii_case("all") => StatisticsAxis::All,
-                        Value::Matrix(value) if value.len() == 1 => StatisticsAxis::Dimension(dimension(2)?),
-                        _ => return Err("Statistics dimension must be a positive integer or 'all'; vector dimensions are not implemented".into()),
+                        Value::Text(value) if value.eq_ignore_ascii_case("all") => {
+                            StatisticsAxis::All
+                        }
+                        Value::Matrix(value) if value.len() == 1 => {
+                            StatisticsAxis::Dimension(dimension(2)?)
+                        }
+                        _ => {
+                            return Err(
+                                "Statistics dimension must be a positive integer or 'all'".into()
+                            );
+                        }
                     }
                 };
                 input.dispersion(
@@ -2838,36 +5655,59 @@ impl Engine {
                 arity(&[1])?;
                 m(0)?.transpose()
             }
-            "plot" | "semilogx" | "semilogy" | "loglog" | "scatter" | "bar" | "stairs" | "stem" => {
+            "plot" | "semilogx" | "semilogy" | "loglog" | "scatter" | "bar" | "stairs" | "stem"
+            | "plot3" | "scatter3" => {
                 let kind = match name {
-                    "scatter" => crate::plot::PlotKind::Scatter,
+                    "scatter" | "scatter3" => crate::plot::PlotKind::Scatter,
                     "bar" => crate::plot::PlotKind::Bar,
                     "stairs" => crate::plot::PlotKind::Stairs,
                     "stem" => crate::plot::PlotKind::Stem,
                     _ => crate::plot::PlotKind::Line,
                 };
-                let (data_end, properties) = plot_properties::Properties::parse(&args, kind)?;
-                let coordinate_end = if kind == crate::plot::PlotKind::Scatter
-                    && data_end == 3
-                    && matches!(&args[2], Value::Matrix(_))
-                {
-                    2 // The validated positional size belongs to properties.
+                // plot3/scatter3 read X,Y,Z triplets through the same loop.
+                let three = matches!(name, "plot3" | "scatter3");
+                if three && args.len() < 3 {
+                    return Err(format!(
+                        "{name}: not enough input arguments; X, Y and Z are required"
+                    ));
+                }
+                if name == "scatter" && args.is_empty() {
+                    return Err("scatter: not enough input arguments; X and Y are required".into());
+                }
+                let (data_end, properties) = if kind == crate::plot::PlotKind::Scatter {
+                    let coord_count = if three {
+                        3
+                    } else if args.len() == 1
+                        || !args.get(1).is_some_and(plot_time_axes::is_plot_data_arg)
+                    {
+                        1
+                    } else {
+                        2
+                    };
+                    plot_properties::Properties::parse_scatter(&args, coord_count)?
+                } else if name == "bar" {
+                    plot_properties::Properties::parse_bar(&args)?
                 } else {
-                    data_end
+                    plot_properties::Properties::parse(&args, kind)?
                 };
+                let coordinate_end = data_end;
                 let data_args = &args[..coordinate_end];
                 if data_args.is_empty() {
                     return Err("Plot requires data".into());
                 }
                 let has_complex = data_args.iter().any(|v| matches!(v, Value::Complex(_)));
-                if has_complex && !matches!(name, "plot" | "semilogx" | "semilogy" | "loglog") {
+                let has_non_numeric = data_args.iter().any(plot_time_axes::is_non_numeric_data);
+                if has_complex
+                    && (has_non_numeric
+                        || !matches!(name, "plot" | "semilogx" | "semilogy" | "loglog"))
+                {
                     return Err(format!(
                         "{name} requires real coordinates; use real(Z) and imag(Z) explicitly"
                     ));
                 }
                 let data_count = data_args
                     .iter()
-                    .filter(|v| matches!(v, Value::Matrix(_) | Value::Complex(_)))
+                    .filter(|v| plot_time_axes::is_plot_data_arg(v))
                     .count();
                 let coordinates = |i: usize| -> Result<crate::plot::PlotData<'_>> {
                     match &data_args[i] {
@@ -2876,14 +5716,78 @@ impl Engine {
                         _ => Err("Plot requires numeric coordinate arrays".into()),
                     }
                 };
+                let mut ruler_kinds: [Option<crate::plot::RulerKind>; 3] = [
+                    plot_time_axes::existing_ruler_for_plot(self, 0).cloned(),
+                    plot_time_axes::existing_ruler_for_plot(self, 1).cloned(),
+                    plot_time_axes::existing_ruler_for_plot(self, 2).cloned(),
+                ];
                 let mut series = Vec::new();
                 let mut constructed_points = 0usize;
                 let mut index = 0;
                 while index < data_args.len() {
-                    let paired = matches!(
-                        data_args.get(index + 1),
-                        Some(Value::Matrix(_) | Value::Complex(_))
-                    );
+                    if three {
+                        if data_args.len() - index < 3
+                            || !data_args[index..index + 3]
+                                .iter()
+                                .all(plot_time_axes::is_plot_data_arg)
+                        {
+                            return Err(format!(
+                                "{name}: data must be given as X, Y, Z triplets of real numeric arrays"
+                            ));
+                        }
+                        let (xm, xk) = plot_time_axes::extract_axis_data(
+                            &data_args[index],
+                            ruler_kinds[0].as_ref(),
+                            "x",
+                            &self.cancel,
+                        )?;
+                        let (ym, yk) = plot_time_axes::extract_axis_data(
+                            &data_args[index + 1],
+                            ruler_kinds[1].as_ref(),
+                            "y",
+                            &self.cancel,
+                        )?;
+                        let (zm, zk) = plot_time_axes::extract_axis_data(
+                            &data_args[index + 2],
+                            ruler_kinds[2].as_ref(),
+                            "z",
+                            &self.cancel,
+                        )?;
+                        ruler_kinds = [Some(xk), Some(yk), Some(zk)];
+                        let mut batch = graphics_handles::series_from_triplet(
+                            name,
+                            [Ok(&xm), Ok(&ym), Ok(&zm)],
+                            kind,
+                        )?;
+                        self.apply_line_defaults(
+                            &mut batch,
+                            self.figure.as_ref().map(|f| &f.identity),
+                            primitive_line,
+                        )?;
+                        index += 3;
+                        if let Some(Value::Text(spec)) = data_args.get(index) {
+                            for s in &mut batch {
+                                s.line_spec(spec)?;
+                            }
+                            index += 1;
+                        }
+                        if series.len() + batch.len() > crate::plot::MAX_PLOT_SERIES
+                            || series
+                                .iter()
+                                .chain(&batch)
+                                .map(|s: &crate::plot::Series| s.points.len())
+                                .sum::<usize>()
+                                > crate::plot::MAX_POINTS
+                        {
+                            return Err("Plot exceeds figure limits".into());
+                        }
+                        properties.apply_new_batch(&mut batch, kind, &self.cancel)?;
+                        series.extend(batch);
+                        continue;
+                    }
+                    let paired = data_args
+                        .get(index + 1)
+                        .is_some_and(plot_time_axes::is_plot_data_arg);
                     if has_complex && data_count > 1 && !paired {
                         return Err(
                             "Complex plots need one data array or explicit X,Y pairs".into()
@@ -2891,6 +5795,24 @@ impl Engine {
                     }
                     let y_index = index + usize::from(paired);
                     let mut batch = if has_complex {
+                        if let Some(ex) = &ruler_kinds[0]
+                            && !ex.is_numeric()
+                        {
+                            return Err(format!(
+                                "Values plotted against x-axis must be {} values",
+                                ex.kind_word()
+                            ));
+                        }
+                        if let Some(ex) = &ruler_kinds[1]
+                            && !ex.is_numeric()
+                        {
+                            return Err(format!(
+                                "Values plotted against y-axis must be {} values",
+                                ex.kind_word()
+                            ));
+                        }
+                        ruler_kinds[0] = Some(crate::plot::RulerKind::Numeric);
+                        ruler_kinds[1] = Some(crate::plot::RulerKind::Numeric);
                         crate::plot::series_from_plot_data_with_budget(
                             if paired {
                                 Some(coordinates(index)?)
@@ -2899,22 +5821,63 @@ impl Engine {
                             },
                             coordinates(y_index)?,
                             &self.cancel,
-                            crate::plot::MAX_SERIES - series.len(),
+                            crate::plot::MAX_PLOT_SERIES - series.len(),
                             crate::plot::MAX_POINTS - constructed_points,
                         )?
                     } else {
-                        crate::plot::series_from_matrices(
-                            if paired { Some(m(index)?) } else { None },
-                            m(y_index)?,
-                            kind,
-                        )?
+                        let xm = if paired {
+                            let (xm, xk) = plot_time_axes::extract_axis_data(
+                                &data_args[index],
+                                ruler_kinds[0].as_ref(),
+                                "x",
+                                &self.cancel,
+                            )?;
+                            ruler_kinds[0] = Some(xk);
+                            Some(xm)
+                        } else {
+                            if let Some(ex) = &ruler_kinds[0]
+                                && !ex.is_numeric()
+                            {
+                                return Err(format!(
+                                    "Values plotted against x-axis must be {} values",
+                                    ex.kind_word()
+                                ));
+                            }
+                            ruler_kinds[0] = Some(crate::plot::RulerKind::Numeric);
+                            None
+                        };
+                        let (ym, yk) = plot_time_axes::extract_axis_data(
+                            &data_args[y_index],
+                            ruler_kinds[1].as_ref(),
+                            "y",
+                            &self.cancel,
+                        )?;
+                        ruler_kinds[1] = Some(yk);
+                        let (xm, ym) = if kind == crate::plot::PlotKind::Bar
+                            && matches!(
+                                ruler_kinds[0],
+                                Some(crate::plot::RulerKind::Categorical { .. })
+                            )
+                            && let Some(xm) = xm
+                        {
+                            let (sx, sy) = plot_time_axes::sort_bar_categorical(xm, ym)?;
+                            (Some(sx), sy)
+                        } else {
+                            (xm, ym)
+                        };
+                        crate::plot::series_from_matrices(xm.as_ref(), &ym, kind)?
                     };
+                    self.apply_line_defaults(
+                        &mut batch,
+                        self.figure.as_ref().map(|f| &f.identity),
+                        primitive_line,
+                    )?;
                     index += if paired { 2 } else { 1 };
                     if let Some(Value::Text(spec)) = data_args.get(index) {
                         if matches!(name, "scatter" | "bar")
                             && !(spec.len() == 1 && "rgbcmykw".contains(spec))
                         {
-                            return Err("scatter/bar support a single color letter; full line specs require plot".into());
+                            return Err(plot_properties::LINE_SPEC_UNSUPPORTED.into());
                         }
                         for s in &mut batch {
                             if name == "stem" && spec == "filled" {
@@ -2933,7 +5896,7 @@ impl Engine {
                         }
                         index += 1;
                     }
-                    if series.len() + batch.len() > crate::plot::MAX_SERIES
+                    if series.len() + batch.len() > crate::plot::MAX_PLOT_SERIES
                         || series
                             .iter()
                             .map(|s: &crate::plot::Series| s.points.len())
@@ -2981,39 +5944,106 @@ impl Engine {
                             } else {
                                 crate::plot::AxisScale::Linear
                             },
+                            // A replacing plot3/scatter3 starts in view(3);
+                            // a replacing 2-D plot resets to view(2).
+                            view: if three {
+                                crate::plot::view3d::VIEW_3D
+                            } else {
+                                crate::plot::view3d::VIEW_2D
+                            },
                             ..crate::plot::Axes::default()
                         },
                         layout: self.figure.as_ref().and_then(|f| f.layout.clone()),
-                        textboxes: self
+                        // Labels a chart placed on the replaced axes go with it.
+                        textboxes: plots_2d_more::p2_kept_textboxes(self),
+                        annotations: self
                             .figure
                             .as_ref()
-                            .map_or_else(Vec::new, |f| f.textboxes.clone()),
+                            .map_or_else(Vec::new, |f| f.annotations.clone()),
                         name: self
                             .figure
                             .as_ref()
                             .map_or_else(String::new, |f| f.name.clone()),
                         color: self.figure.as_ref().map_or([255; 3], |f| f.color),
                         invert_hardcopy: self.figure.as_ref().and_then(|f| f.invert_hardcopy),
+                        alphamap: self.figure.as_ref().and_then(|f| f.alphamap.clone()),
+                        slice_viewers: Vec::new(),
+                        orthoslice_viewers: Vec::new(),
                         appearance: self
                             .figure
                             .as_ref()
                             .map_or(Some(crate::plot::FigureAppearance::default()), |f| {
                                 f.appearance
                             }),
+                        position: self
+                            .figure
+                            .as_ref()
+                            .map_or(crate::plot::DEFAULT_FIGURE_POSITION, |f| f.position),
+                        units: self.figure.as_ref().map_or(Default::default(), |f| f.units),
+                        number_title: self.figure.as_ref().is_none_or(|f| f.number_title),
+                        visible: self.figure.as_ref().is_none_or(|f| f.visible),
+                        resize: self.figure.as_ref().is_none_or(|f| f.resize),
+                        window_state: self
+                            .figure
+                            .as_ref()
+                            .map_or(Default::default(), |f| f.window_state),
                     }
                 };
 
+                if let Some(old) = self.figure.as_ref().filter(|f| !f.hold) {
+                    // Replacement clears the active axes, not the other tiles' viewers.
+                    let id = &old.axes.identity;
+                    figure.slice_viewers.clone_from(&old.slice_viewers);
+                    figure
+                        .slice_viewers
+                        .retain(|s| !s.axes_identity.same_object(id));
+                    figure
+                        .orthoslice_viewers
+                        .clone_from(&old.orthoslice_viewers);
+                    figure
+                        .orthoslice_viewers
+                        .retain(|o| !o.axes_identities.iter().any(|a| a.same_object(id)));
+                }
+                graphics_handles::plot_carry_over(self.figure.as_ref(), &mut figure, &mut series)?;
+                let command_yscale = figure.axes.yscale;
+                let axes_defaults = self.graphics_plot_axes_defaults(&mut figure)?;
+                if self.figure.as_ref().is_none_or(|f| !f.hold) {
+                    if matches!(name, "semilogx" | "loglog") {
+                        figure.axes.xscale = crate::plot::AxisScale::Log;
+                    }
+                    if matches!(name, "semilogy" | "loglog") {
+                        figure.axes.yscale = command_yscale;
+                    }
+                    if three {
+                        figure.axes.view = crate::plot::view3d::VIEW_3D;
+                    }
+                }
                 let first = figure.axes.series.len();
                 figure.add(series)?;
+                for (axis, kind) in ruler_kinds.into_iter().enumerate() {
+                    if let Some(kind) = kind {
+                        figure.axes.extras.rulers[axis].kind = kind;
+                    }
+                }
+                graphics_handles::plot_apply_color_order(&mut figure, first);
+                plot_properties::refresh_scatter_clim(&mut figure.axes);
+                let axes_id = figure.axes.identity.clone();
+                figure.sync_linked_axes(&axes_id, true, true);
                 figure.validate()?;
                 let handles = self.graphics_series_result(&figure, first)?;
                 self.check_cancel()?;
+                self.graphics_finish_axes_defaults(&figure, axes_defaults);
                 self.figure = Some(figure);
+                graphics::sync_engine_linked_axes(self, &axes_id, true, true);
                 return Ok(handles);
             }
             _ => {
                 return Err(self.raise(
-                    crate::help::unknown_function(name),
+                    if econ_vol::METHODS.contains(&name) {
+                        econ_vol::undefined_method(name)
+                    } else {
+                        crate::help::unknown_function(name)
+                    },
                     "MATLAB:UndefinedFunction".into(),
                 ));
             }

@@ -100,7 +100,7 @@ fn dimension(value: &Value, name: &str) -> Result<usize> {
 }
 
 impl Engine {
-    pub(super) fn statsx_call(&self, name: &str, args: &[Value]) -> Result<Option<Value>> {
+    pub(super) fn statsx_call(&mut self, name: &str, args: &[Value]) -> Result<Option<Value>> {
         if !NAMES.contains(&name) {
             return Ok(None);
         }
@@ -120,7 +120,7 @@ impl Engine {
     }
 
     pub(super) fn statsx_outputs(
-        &self,
+        &mut self,
         name: &str,
         args: &[Value],
         count: usize,
@@ -753,7 +753,7 @@ impl Engine {
         Ok(Value::Logical(LogicalMatrix::scalar(sorted)))
     }
 
-    fn statsx_range(&self, args: &[Value]) -> Result<Value> {
+    fn statsx_range(&mut self, args: &[Value]) -> Result<Value> {
         if args.is_empty() || args.len() > 2 {
             return Err("Use range(X) or range(X, dim)".into());
         }

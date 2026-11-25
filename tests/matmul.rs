@@ -108,10 +108,12 @@ fn matrix_kernels_preserve_nonfinite_propagation_empty_shapes_and_bounds() {
             assert_eq!((result.rows(), result.cols()), (rows, cols));
             assert!(result.data().iter().all(|&x| x == 0.));
         }
+        // 65536*769 = 50,397,184 elements, just above the 48 Mi cap. The
+        // factors stay small; the product is refused before allocation.
         assert!(
             Matrix::filled(65536, 1, 1.)
                 .unwrap()
-                .mul(&Matrix::filled(1, 257, 1.).unwrap())
+                .mul(&Matrix::filled(1, 769, 1.).unwrap())
                 .is_err()
         );
         assert!(

@@ -282,9 +282,12 @@ fn rasterize(
         background[2],
         255,
     ));
-    let scale = (width as f32 / 960.0).min(height as f32 / 560.0);
-    let left = (width as f32 - 960.0 * scale) * 0.5;
-    let top = (height as f32 - 560.0 * scale) * 0.5;
+    let tree_size = tree.size();
+    let svg_w = tree_size.width().max(1.0);
+    let svg_h = tree_size.height().max(1.0);
+    let scale = (width as f32 / svg_w).min(height as f32 / svg_h);
+    let left = (width as f32 - svg_w * scale) * 0.5;
+    let top = (height as f32 - svg_h * scale) * 0.5;
     resvg::render(
         tree,
         resvg::tiny_skia::Transform::from_row(scale, 0., 0., scale, left, top),

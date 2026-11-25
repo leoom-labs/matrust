@@ -1,4 +1,4 @@
-//! Bounded literal clipboard and atomic edits of numeric and UTF-16 workspace descendants.
+//! Bounded clipboard and atomic edits of numeric, text and container workspace descendants.
 //! No script evaluation, UI dependency, background thread or thread pool.
 use crate::{
     Array, CellArray, CharacterRow, Complex64, ComplexMatrix, Engine, LogicalMatrix, Matrix,
@@ -10,10 +10,13 @@ use std::sync::atomic::AtomicBool;
 #[cfg(test)]
 mod cell_normalization_tests;
 pub mod cell_replace;
+mod containers;
 
 pub const MAX_PATH: usize = 16;
 pub const MAX_CELLS: usize = 65_536;
 pub const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
+/// Largest array an editor paste or insert may grow to (elements).
+pub const MAX_GROWN_CELLS: usize = 1 << 22;
 const CHUNK: usize = 4096;
 
 /// A process-local immutable expectation, not a serialized object address.
@@ -118,7 +121,7 @@ impl Rect {
     fn fits(self, value: &Array) -> Result<()> {
         Kind::of(value)?;
         if self.row + self.rows > value.rows() || self.col + self.cols > value.cols() {
-            return Err("Selection exceeds the existing array dimensions; editor paste does not grow arrays".into());
+            return Err("Selection exceeds the existing array dimensions".into());
         }
         Ok(())
     }
@@ -135,6 +138,9 @@ enum Kind {
     Logical,
     Complex,
     Character,
+    String,
+    Cell,
+    Table,
 }
 impl Kind {
     fn of(value: &Array) -> Result<Self> {
@@ -144,6 +150,9 @@ impl Kind {
             Array::Logical(_) => Ok(Self::Logical),
             Array::Complex(_) => Ok(Self::Complex),
             Array::Character(_) => Ok(Self::Character),
+            Array::Str(_) => Ok(Self::String),
+            Array::Cell(_) => Ok(Self::Cell),
+            Array::Table(t) if !t.is_timetable() => Ok(Self::Table),
             _ => Err("Only numeric or character leaves can be edited".into()),
         }
     }
@@ -170,6 +179,9 @@ impl Kind {
                     return Err("NaN cannot be converted to logical".into());
                 }
                 Scalar::Logical(value != 0.)
+            }
+            Self::String | Self::Cell | Self::Table => {
+                return Err("This grid requires text entries, not scalar values".into());
             }
         })
     }
@@ -337,8 +349,7 @@ fn parse_tsv(
     })
 }
 
-/// TSV dimensions define an insertion rectangle only for a one-cell selection.
-/// Larger selections require an exact rectangular shape, without broadcasting.
+/// Paste at the selection top-left, growing with class-specific defaults.
 pub fn paste_tsv(
     engine: &mut Engine,
     target: &Target,
@@ -390,9 +401,18 @@ fn apply(
     // Validate the whole immutable root before parsing or numeric allocation.
     let root = target.current(engine)?;
     let leaf = descend(&root, &target.path)?;
-    selection.fits(leaf)?;
+    if matches!(input, Input::Prepared(_)) {
+        selection.fits(leaf)?;
+    }
     let kind = Kind::of(leaf)?;
     checkpoint(&cancel, progress, Stage::ValidatedRoot)?;
+    if matches!(kind, Kind::String | Kind::Cell | Kind::Table) {
+        let (replacement, rectangle) = containers::edit(leaf, selection, input, &cancel, progress)?;
+        return Ok(Committed {
+            root: commit(engine, target, &root, replacement, &cancel, progress)?,
+            rectangle,
+        });
+    }
     let patch = match input {
         Input::Tsv(text) => parse_tsv(text, kind, &cancel, progress)?,
         Input::Literal(text) => {
@@ -426,11 +446,41 @@ fn apply(
             }
         }
     };
-    if selection.cells() != 1 && (selection.rows, selection.cols) != (patch.rows, patch.cols) {
-        return Err("Clipboard dimensions must match the selected rectangle".into());
-    }
+    // The block is written at the selection's top-left cell; the array grows
+    // like MATLAB indexed assignment (new elements are the class zero).
     let rectangle = Rect::new(selection.row, selection.col, patch.rows, patch.cols)?;
-    rectangle.fits(leaf)?;
+    let replacement = numeric_patch(leaf, rectangle, &patch, &cancel, progress)?;
+    let committed = commit(engine, target, &root, replacement, &cancel, progress)?;
+    Ok(Committed {
+        root: committed,
+        rectangle,
+    })
+}
+fn numeric_patch(
+    leaf: &Array,
+    rectangle: Rect,
+    patch: &Patch,
+    cancel: &AtomicBool,
+    progress: &mut impl FnMut(Stage) -> Result<()>,
+) -> Result<Array> {
+    let (old_rows, old_cols) = (leaf.rows(), leaf.cols());
+    let (new_rows, new_cols) = (
+        old_rows.max(rectangle.row + rectangle.rows),
+        old_cols.max(rectangle.col + rectangle.cols),
+    );
+    let grown;
+    let leaf = if (new_rows, new_cols) != (old_rows, old_cols) {
+        grown = remap(
+            leaf,
+            new_rows,
+            new_cols,
+            &|r, c| (r < old_rows && c < old_cols).then_some(c * old_rows + r),
+            cancel,
+        )?;
+        &grown
+    } else {
+        leaf
+    };
     let replacement = match leaf {
         Array::Typed(a) => {
             let source = if a.is_integer() {
@@ -460,7 +510,7 @@ fn apply(
                 |i| rectangle.row + i / patch.cols + (rectangle.col + i % patch.cols) * a.rows(),
                 &source,
                 false,
-                &cancel,
+                cancel,
             )?;
             result.into()
         }
@@ -471,8 +521,8 @@ fn apply(
                 a.data(),
                 a.rows(),
                 rectangle,
-                &patch,
-                &cancel,
+                patch,
+                cancel,
                 progress,
                 |v| {
                     if let Scalar::Real(x) = v {
@@ -491,8 +541,8 @@ fn apply(
                 a.data(),
                 a.rows(),
                 rectangle,
-                &patch,
-                &cancel,
+                patch,
+                cancel,
                 progress,
                 |v| {
                     if let Scalar::Logical(x) = v {
@@ -511,8 +561,8 @@ fn apply(
                 a.data(),
                 a.rows(),
                 rectangle,
-                &patch,
-                &cancel,
+                patch,
+                cancel,
                 progress,
                 |v| {
                     if let Scalar::Complex(x) = v {
@@ -522,7 +572,7 @@ fn apply(
                     }
                 },
             )?,
-            &cancel,
+            cancel,
         )?
         .into(),
         Array::Character(a) => CharacterRow::from_column_major(
@@ -532,8 +582,8 @@ fn apply(
                 a.units(),
                 a.rows(),
                 rectangle,
-                &patch,
-                &cancel,
+                patch,
+                cancel,
                 progress,
                 |v| {
                     let Scalar::Real(value) = v else {
@@ -542,16 +592,27 @@ fn apply(
                     value as u16
                 },
             )?,
-            &cancel,
+            cancel,
         )?
         .into(),
         _ => return Err("Only numeric or character leaves can be edited".into()),
     };
+    Ok(replacement)
+}
+/// Rebuild the ancestors of an edited leaf and publish the new root atomically.
+fn commit(
+    engine: &mut Engine,
+    target: &Target,
+    root: &Array,
+    replacement: Array,
+    cancel: &AtomicBool,
+    progress: &mut impl FnMut(Stage) -> Result<()>,
+) -> Result<Array> {
     let mut ancestors: Vec<(&CellArray, usize)> = Vec::new();
     ancestors
         .try_reserve_exact(target.path.len())
         .map_err(|_| "Cannot allocate bounded edit path")?;
-    let mut parent = &root;
+    let mut parent = root;
     for &index in &target.path {
         let Array::Cell(cell) = parent else {
             return Err("Cell path changed".into());
@@ -561,20 +622,219 @@ fn apply(
     }
     let mut updated: Array = replacement;
     for (cell, index) in ancestors.into_iter().rev() {
-        updated = cell.replaced(index, updated, &cancel)?.into();
-        checkpoint(&cancel, progress, Stage::Ancestor)?;
+        updated = cell.replaced(index, updated, cancel)?.into();
+        checkpoint(cancel, progress, Stage::Ancestor)?;
     }
-    checkpoint(&cancel, progress, Stage::BeforeCommit)?;
+    checkpoint(cancel, progress, Stage::BeforeCommit)?;
     target.current(engine)?;
     // Existing workspace count/byte preflight and final Stop check own publication.
     engine.merge_workspace(BTreeMap::from([(target.name.clone(), updated)]))?;
     // Admission may normalize optional metadata. Adopt the published binding.
-    let committed = engine
+    Ok(engine
         .array(&target.name)
-        .ok_or("Committed edit target is missing")?;
+        .ok_or("Committed edit target is missing")?)
+}
+
+/// Structural edit of the leaf: insert or delete whole rows or columns.
+/// Inserted elements are the class zero (0, false, char(0)).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Shape {
+    InsertRows { at: usize, count: usize },
+    InsertCols { at: usize, count: usize },
+    DeleteRows { at: usize, count: usize },
+    DeleteCols { at: usize, count: usize },
+}
+pub fn reshape(engine: &mut Engine, target: &Target, shape: Shape) -> Result<Committed> {
+    let cancel = engine.cancellation();
+    crate::dsp::check_cancel(&cancel)?;
+    let root = target.current(engine)?;
+    let leaf = descend(&root, &target.path)?;
+    Kind::of(leaf)?;
+    if matches!(leaf, Array::Table(_))
+        && matches!(shape, Shape::InsertCols { .. } | Shape::DeleteCols { .. })
+    {
+        return Err("Table columns cannot be inserted or deleted in the editor".into());
+    }
+    if leaf.is_nd() {
+        return Err("N-D arrays cannot be edited".into());
+    }
+    let (rows, cols) = (leaf.rows(), leaf.cols());
+    let bad = || "Row or column range is outside the array".to_string();
+    let replacement = match shape {
+        Shape::InsertRows { at, count } => {
+            if at > rows || count == 0 {
+                return Err(bad());
+            }
+            remap(
+                leaf,
+                rows.checked_add(count).ok_or_else(bad)?,
+                cols,
+                &|r, c| {
+                    if r < at {
+                        Some(c * rows + r)
+                    } else if r >= at + count {
+                        Some(c * rows + r - count)
+                    } else {
+                        None
+                    }
+                },
+                &cancel,
+            )?
+        }
+        Shape::InsertCols { at, count } => {
+            if at > cols || count == 0 {
+                return Err(bad());
+            }
+            remap(
+                leaf,
+                rows,
+                cols.checked_add(count).ok_or_else(bad)?,
+                &|r, c| {
+                    if c < at {
+                        Some(c * rows + r)
+                    } else if c >= at + count {
+                        Some((c - count) * rows + r)
+                    } else {
+                        None
+                    }
+                },
+                &cancel,
+            )?
+        }
+        Shape::DeleteRows { at, count } => {
+            if count == 0 || at.checked_add(count).is_none_or(|e| e > rows) {
+                return Err(bad());
+            }
+            remap(
+                leaf,
+                rows - count,
+                cols,
+                &|r, c| Some(c * rows + if r < at { r } else { r + count }),
+                &cancel,
+            )?
+        }
+        Shape::DeleteCols { at, count } => {
+            if count == 0 || at.checked_add(count).is_none_or(|e| e > cols) {
+                return Err(bad());
+            }
+            remap(
+                leaf,
+                rows,
+                cols - count,
+                &|r, c| Some((if c < at { c } else { c + count }) * rows + r),
+                &cancel,
+            )?
+        }
+    };
+    let committed = commit(engine, target, &root, replacement, &cancel, &mut |_| Ok(()))?;
     Ok(Committed {
         root: committed,
-        rectangle,
+        rectangle: Rect::new(0, 0, 1, 1)?,
+    })
+}
+/// Publish an earlier whole-variable value (undo or redo). The target must
+/// still be the current binding, so edits made elsewhere are never overwritten.
+pub fn restore(engine: &mut Engine, target: &Target, previous: &Array) -> Result<Committed> {
+    let cancel = engine.cancellation();
+    crate::dsp::check_cancel(&cancel)?;
+    target.current(engine)?;
+    descend(previous, &target.path).and_then(Kind::of)?;
+    crate::dsp::check_cancel(&cancel)?;
+    engine.merge_workspace(BTreeMap::from([(target.name.clone(), previous.clone())]))?;
+    Ok(Committed {
+        root: engine
+            .array(&target.name)
+            .ok_or("Restored variable is missing")?,
+        rectangle: Rect::new(0, 0, 1, 1)?,
+    })
+}
+/// New array of `rows` x `cols`; element (r, c) is old linear index `from(r, c)` or zero.
+fn remap(
+    leaf: &Array,
+    rows: usize,
+    cols: usize,
+    from: &dyn Fn(usize, usize) -> Option<usize>,
+    cancel: &AtomicBool,
+) -> Result<Array> {
+    let n = rows
+        .checked_mul(cols)
+        .ok_or("Array dimensions are too large")?;
+    if n > MAX_GROWN_CELLS && n > leaf.rows() * leaf.cols() {
+        return Err(format!(
+            "Editor edits cannot grow an array beyond {MAX_GROWN_CELLS} elements"
+        ));
+    }
+    fn build<T: Copy>(
+        src: &[T],
+        zero: T,
+        rows: usize,
+        cols: usize,
+        from: &dyn Fn(usize, usize) -> Option<usize>,
+        cancel: &AtomicBool,
+    ) -> Result<Vec<T>> {
+        let mut out = Vec::new();
+        out.try_reserve_exact(rows * cols)
+            .map_err(|_| "Cannot allocate edited payload")?;
+        for c in 0..cols {
+            crate::dsp::check_cancel(cancel)?;
+            out.extend((0..rows).map(|r| from(r, c).map_or(zero, |i| src[i])));
+        }
+        Ok(out)
+    }
+    Ok(match leaf {
+        Array::Numeric(a) => {
+            Matrix::from_column_vec(rows, cols, build(a.data(), 0., rows, cols, from, cancel)?)?
+                .into()
+        }
+        Array::Logical(a) => LogicalMatrix::from_canonical_vec(
+            rows,
+            cols,
+            build(a.data(), 0u8, rows, cols, from, cancel)?,
+        )?
+        .into(),
+        Array::Complex(a) => ComplexMatrix::from_column_vec(
+            rows,
+            cols,
+            build(
+                a.data(),
+                Complex64 { re: 0., im: 0. },
+                rows,
+                cols,
+                from,
+                cancel,
+            )?,
+            cancel,
+        )?
+        .into(),
+        Array::Character(a) => CharacterRow::from_column_major(
+            rows,
+            cols,
+            build(a.units(), 0u16, rows, cols, from, cancel)?,
+            cancel,
+        )?
+        .into(),
+        Array::Typed(a) => {
+            crate::dsp::check_cancel(cancel)?;
+            let index = |k: usize| from(k % rows, k / rows);
+            if a.is_integer() {
+                crate::TypedArray::from_ints(
+                    a.class(),
+                    rows,
+                    cols,
+                    (0..n).map(|k| index(k).map_or(0, |i| a.int(i))),
+                )?
+                .into()
+            } else {
+                crate::TypedArray::from_reals(
+                    a.class(),
+                    rows,
+                    cols,
+                    (0..n).map(|k| index(k).map_or(0., |i| a.real(i))),
+                )?
+                .into()
+            }
+        }
+        _ => containers::remap_container(leaf, rows, cols, from, cancel)?,
     })
 }
 fn copy_patch<T: Copy>(
@@ -620,6 +880,9 @@ pub fn scalar_literal(value: Scalar) -> String {
             "inf".into()
         } else if x == f64::NEG_INFINITY {
             "-inf".into()
+        } else if x == 0. || (1e-5..1e15).contains(&x.abs()) {
+            // Shortest round-trip decimal: 3 and 0.1, not 3e0 and 1e-1.
+            format!("{x}")
         } else {
             format!("{x:e}")
         }
@@ -647,6 +910,12 @@ pub fn scalar_literal(value: Scalar) -> String {
 /// A lossless single-cell editor literal. Character units never pass through
 /// Unicode scalar decoding, so isolated surrogates remain visible and editable.
 pub fn cell_literal(value: &Array, row: usize, col: usize) -> Result<String> {
+    if row >= value.rows() || col >= value.cols() {
+        return Err("Cell is outside the array".into());
+    }
+    if matches!(value, Array::Str(_) | Array::Cell(_) | Array::Table(_)) {
+        return containers::literal(value, row, col);
+    }
     if let Array::Character(text) = value {
         if row >= text.rows() || col >= text.cols() {
             return Err("Character cell is outside the array".into());
@@ -654,6 +923,36 @@ pub fn cell_literal(value: &Array, row: usize, col: usize) -> Result<String> {
         return Ok(format!("\\u{:04X}", text.units()[col * text.rows() + row]));
     }
     Ok(scalar_literal(value.scalar(row, col)?))
+}
+
+/// Whether F2 opens an inline editor. Other cell contents open a descendant view.
+pub fn cell_editable(value: &Array, row: usize, col: usize) -> bool {
+    if row >= value.rows() || col >= value.cols() {
+        return false;
+    }
+    match value {
+        Array::Cell(c) => c
+            .get_linear(col * c.rows() + row)
+            .is_ok_and(|v| containers::inline(v)),
+        Array::Table(t) => table_column_editable(t.column(col)),
+        _ => Kind::of(value).is_ok() && !value.is_nd(),
+    }
+}
+/// Only single-element-per-row supported table variables have an inline editor.
+pub fn table_column_editable(column: &Array) -> bool {
+    containers::column_editable(column)
+}
+
+/// Bounded text for a visible grid cell; clipboard and editing use `cell_literal`.
+pub fn cell_preview(value: &Array, row: usize, col: usize) -> Result<String> {
+    if row >= value.rows() || col >= value.cols() {
+        return Err("Cell is outside the array".into());
+    }
+    if matches!(value, Array::Str(_) | Array::Cell(_) | Array::Table(_)) {
+        containers::preview(value, row, col)
+    } else {
+        cell_literal(value, row, col)
+    }
 }
 
 /// Copy a genuine text row only. Non-row shapes, NUL and unpaired surrogates
@@ -724,11 +1023,19 @@ fn copy_checked(
             if col > 0 {
                 append("\t")?;
             }
-            append(&cell_literal(
-                leaf,
-                rectangle.row + row,
-                rectangle.col + col,
-            )?)?;
+            let text = cell_literal(leaf, rectangle.row + row, rectangle.col + col)?;
+            if matches!(leaf, Array::Str(_) | Array::Cell(_) | Array::Table(_)) {
+                let literal_missing = text == "<missing>"
+                    && !containers::missing_at(leaf, rectangle.row + row, rectangle.col + col);
+                // A quoted empty field keeps a trailing empty row: "a\n" alone
+                // parses as one row.
+                append(&containers::tsv_field(
+                    &text,
+                    literal_missing || text.is_empty(),
+                ))?;
+            } else {
+                append(&text)?;
+            }
         }
         if row + 1 < rectangle.rows {
             append("\n")?;

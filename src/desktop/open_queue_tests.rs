@@ -65,16 +65,21 @@ fn opening_queue_dropped_mixed_files_keep_order_errors_and_unsaved_work() {
         ],
     );
     assert_eq!(app.open_queue.len(), 7);
-    finish(&mut app);assert!(app.csv_import.is_some());
-    assert!(!app.variables.contains_key("measurements"));
-    click_label(&mut app,&ctx,"Import");
+    // A data file opens the Import Tool without waiting for a decision.
     finish_open_queue(&mut app, &ctx);
+    assert!(import_tool_tests::chosen(&app).is_some_and(|p| p.ends_with("measurements.csv")));
+    assert!(!app.variables.contains_key("measurements"));
     assert_eq!(app.documents.len(), 2);
     assert_eq!(app.documents[0].text, "unsaved=99;");
     assert!(app.documents[0].dirty);
     assert_eq!(app.documents[1].text, "should_not_run=42;");
     assert!(!app.variables.contains_key("should_not_run"));
+    let shown = app.layout.mode;
+    app.select_tool_tab(toolkits::Tool::App(apps::AppKind::ImportTool));
+    import_tool_tests::settle(&mut app, &ctx, egui::vec2(1440., 900.));
+    click_label(&mut app,&ctx,"Import");finish(&mut app);
     assert_eq!(app.variables["measurements"].scalar(1, 1).unwrap().into_real().unwrap(), 4.);
+    assert_eq!(app.layout.mode, shown);
     assert_eq!(app.figure_ids.len(), 2);
     assert_ne!(app.layout.mode, layout::PaneMode::Editor);
     assert_eq!(app.figure.as_ref().unwrap().title, "Last");

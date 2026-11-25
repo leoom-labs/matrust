@@ -301,7 +301,7 @@ fn unsupported_legend_rgb_and_print_values_reject_without_silent_projection() {
     engine.execute(SCENES[0]).unwrap();
     let source = engine.figure.unwrap();
     let appearance = source.resolve_appearance(BaseTheme::Light);
-    for case in 0..4 {
+    let decode = |legend_properties, figure_properties| {
         let mut next = 10.;
         let mut plan = LegendEncoding {
             handle: 3.,
@@ -332,29 +332,44 @@ fn unsupported_legend_rgb_and_print_values_reject_without_silent_projection() {
                 ),
             ),
         ];
-        match case {
-            0 => properties.push(("Color", mat::text("none"))),
-            1 => properties.push(("TextColor", num(&[2., 0., 0.]))),
-            2 => properties.push(("Box", mat::text("off"))),
-            _ => {}
-        }
+        properties.extend(legend_properties);
         let legend = node("scribe.legend", 3., properties, vec![], &[]);
-        let root = node(
-            "figure",
-            1.,
-            if case == 3 {
-                vec![("InvertHardcopy", mat::text("auto"))]
-            } else {
-                vec![]
-            },
-            vec![axes, legend],
-            &[],
-        );
+        let root = node("figure", 1., figure_properties, vec![axes, legend], &[]);
         let bytes = mat::file(mat::structure("hgS_070000", root)).unwrap();
-        let error = decode_matlab_figure(&bytes).unwrap_err();
-        assert!(
-            error.contains(["Color", "Color", "Box off", "InvertHardcopy"][case]),
-            "case{case}: {error}"
+        decode_matlab_figure(&bytes)
+    };
+    for (legend_properties, figure_properties, key) in [
+        (vec![("Color", mat::text("none"))], vec![], "Color"),
+        (vec![("TextColor", num(&[2., 0., 0.]))], vec![], "Color"),
+        (vec![("Box", mat::text("auto"))], vec![], "Box"),
+        (
+            vec![],
+            vec![("InvertHardcopy", mat::text("auto"))],
+            "InvertHardcopy",
+        ),
+    ] {
+        let error = decode(legend_properties, figure_properties).unwrap_err();
+        assert!(error.contains(key), "{key}: {error}");
+    }
+    let figure = decode(
+        vec![
+            ("Box", mat::text("off")),
+            ("Color", num(&[0.1, 0.2, 0.3])),
+            ("TextColor", num(&[0.9, 0.8, 0.7])),
+            ("EdgeColor", num(&[-0.0, 0.5, 0.6])),
+        ],
+        vec![],
+    )
+    .unwrap();
+    let reopened = decode_matlab_figure(&encode_matlab_figure(&figure).unwrap()).unwrap();
+    for figure in [figure, reopened] {
+        assert_eq!(figure.extras.legend_box, crate::plot::LegendBox::Off);
+        let colors = figure.legend_colors();
+        assert_eq!(colors.background, Some([0.1, 0.2, 0.3]));
+        assert_eq!(colors.text, Some([0.9, 0.8, 0.7]));
+        assert_eq!(
+            colors.border.unwrap().map(f64::to_bits),
+            [-0.0_f64, 0.5, 0.6].map(f64::to_bits)
         );
     }
     let dir = tempfile::tempdir().unwrap();

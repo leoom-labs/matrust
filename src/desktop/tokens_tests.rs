@@ -59,12 +59,14 @@ fn both_palettes_meet_text_contrast_floors() {
 #[test]
 fn palettes_are_the_approved_warm_light_and_dark() {
     use egui::Color32 as C;
-    assert_eq!(tokens::LIGHT.canvas, C::from_rgb(0xE9, 0xE6, 0xE1));
-    assert_eq!(tokens::LIGHT.accent, C::from_rgb(0xC2, 0x41, 0x0C));
+    // Plan fable section 7: surface 3 #E6E8EC; light accent #B23A0B; dark accent ink #F08A4B.
+    assert_eq!(tokens::LIGHT.canvas, C::from_rgb(0xE6, 0xE8, 0xEC));
+    assert_eq!(tokens::LIGHT.accent, C::from_rgb(0xB2, 0x3A, 0x0B));
+    assert_eq!(tokens::LIGHT.accent_fill, C::from_rgb(0xB2, 0x3A, 0x0B));
     assert_eq!(tokens::DARK.canvas, C::from_rgb(0x12, 0x14, 0x18));
-    assert_eq!(tokens::DARK.accent, C::from_rgb(0xEA, 0x6A, 0x2C));
+    assert_eq!(tokens::DARK.accent, C::from_rgb(0xF0, 0x8A, 0x4B));
+    assert_eq!(tokens::DARK.accent_fill, C::from_rgb(0xC2, 0x41, 0x0C));
     for p in [&tokens::LIGHT, &tokens::DARK] {
-        assert_eq!(p.accent_fill, C::from_rgb(0xC2, 0x41, 0x0C));
         assert_eq!(p.on_accent, C::WHITE);
         // No blue or purple accent: red dominates.
         assert!(p.accent.r() > p.accent.b() && p.accent.r() > p.accent.g());

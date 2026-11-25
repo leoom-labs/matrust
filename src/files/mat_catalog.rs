@@ -18,9 +18,13 @@ const MAX_VARIABLES: usize = 10000;
 mod complex;
 #[path = "mat_containers.rs"]
 mod containers;
+#[path = "mat_sparse.rs"]
+mod sparse;
 #[cfg(feature = "mat-v73")]
 #[path = "mat_v73.rs"]
 mod v73;
+#[cfg(feature = "mat-v73")]
+pub(super) use v73::{plugins_off as hdf5_plugins_off, storage as hdf5_storage};
 /// Without the HDF5-based mat-v73 feature (browser build) v7.3 files fail cleanly.
 #[cfg(not(feature = "mat-v73"))]
 mod v73 {
@@ -64,6 +68,7 @@ impl MatVariable {
         // Integer and single values keep their own element size.
         let class = crate::NumericClass::parse(&self.class);
         self.decoded_bytes.map(|n| match class {
+            _ if self.complex => n,
             _ if self.class == "logical" => n / 8,
             Some(class) => n / 8 * class.size() as u64,
             None => n,
@@ -217,33 +222,45 @@ fn header_named(
         _ => "unsupported",
     };
     let logical = flags & 0x200 != 0;
-    let container = class == 1 || class == 4;
+    let container = matches!(class, 1 | 2 | 4);
     if class == 4 {
         decoded_bytes = dimensions
             .iter()
             .try_fold(2u64, |n, &d| n.checked_mul(d as u64));
     }
-    if class == 1 {
+    if matches!(class, 1 | 2) {
         decoded_bytes = None;
     }
-    let count = dimensions[0].checked_mul(dimensions[1]);
-    let unavailable = if container && (complex || logical) {
+    if class == 5 {
+        // Refined from the column pointers by inspect_header.
+        decoded_bytes = sparse::decoded_bytes(0, dimensions.get(1).copied().unwrap_or(0), logical);
+    }
+    let count = dimensions.iter().try_fold(1usize, |n, &d| n.checked_mul(d));
+    let unavailable = if count.is_none() {
+        Some("MAT array dimensions overflow the addressable element count".into())
+    } else if matches!(class, 1 | 2) && (complex || logical) {
         Some("Character/cell arrays cannot have numeric logical/complex flags".into())
-    } else if container && dimensions.len() != 2 {
-        Some("Character/cell MAT loading requires exactly two dimensions".into())
+    } else if class == 4 && logical {
+        Some("Character arrays cannot have the numeric logical flag".into())
+    } else if matches!(class, 1 | 2) && dimensions.len() != 2 {
+        Some("Cell MAT loading requires exactly two dimensions".into())
     } else if container
-        && (dimensions[..2].iter().any(|&n| n > 65536) || count.is_none_or(|n| n > 65536))
+        && (dimensions.iter().any(|&n| n > 65536) || count.is_none_or(|n| n > 65536))
     {
         Some("Character/cell dimensions exceed 65536 units/slots".into())
-    } else if class == 1 && body_len > super::MAX_MAT_BYTES {
+    } else if matches!(class, 1 | 2) && body_len > super::MAX_MAT_BYTES {
         Some("Cell encoded extent exceeds 272 MiB".into())
-    } else if complex && (class != 6 || logical) {
-        Some("Only nonlogical dense complex-double arrays are supported".into())
-    } else if !container && !(6..=15).contains(&class) {
+    } else if class == 5 && dimensions.len() != 2 {
+        Some("Sparse MAT loading requires exactly two dimensions".into())
+    } else if class == 5 && complex {
+        Some("complex sparse arrays are not supported yet".into())
+    } else if class == 5 && crate::sparse::check_shape(dimensions[0], dimensions[1], 0).is_err() {
+        Some("Sparse dimensions exceed the supported size".into())
+    } else if complex && (!matches!(class, 6 | 7) || logical) {
+        Some("Only nonlogical dense complex single or double arrays are supported".into())
+    } else if !container && class != 5 && !(6..=15).contains(&class) {
         Some(format!("{class_name} arrays are not supported"))
-    } else if dimensions[2..].iter().any(|&n| n != 1) {
-        Some("Only two-dimensional arrays are supported".into())
-    } else if class != 1 && decoded_bytes.is_none_or(|n| n > 128 * 1024 * 1024) {
+    } else if !matches!(class, 1 | 2) && decoded_bytes.is_none_or(|n| n > 128 * 1024 * 1024) {
         Some("Array exceeds the 128 MiB decoded limit".into())
     } else {
         None
@@ -252,10 +269,10 @@ fn header_named(
         MatVariable {
             name,
             dimensions,
-            class: if logical {
-                "logical".into()
-            } else {
-                class_name.into()
+            class: match (class, logical) {
+                (5, true) => "logical sparse".into(),
+                (_, true) => "logical".into(),
+                _ => class_name.into(),
             },
             complex,
             decoded_bytes,
@@ -273,7 +290,22 @@ fn inspect_header(
     cancel: &AtomicBool,
 ) -> Result<MatVariable> {
     let (mut info, used) = header(reader, len, compressed)?;
-    if info.class == "cell" && info.unavailable.is_none() {
+    if matches!(info.class.as_str(), "sparse" | "logical sparse") && info.unavailable.is_none() {
+        match sparse::inspect(reader, &mut (len - used), &info, false, cancel) {
+            Ok(nnz) => {
+                info.decoded_bytes =
+                    sparse::decoded_bytes(nnz, info.dimensions[1], info.class == "logical sparse");
+                if info.decoded_bytes.is_none_or(|n| n > 128 * 1024 * 1024) {
+                    info.unavailable = Some("Array exceeds the 128 MiB decoded limit".into());
+                }
+            }
+            Err(reason) => {
+                info.unavailable = Some(format!("Unsupported or malformed sparse array: {reason}"))
+            }
+        }
+        check_cancel(cancel)?;
+    }
+    if matches!(info.class.as_str(), "cell" | "struct") && info.unavailable.is_none() {
         match containers::inspect(reader, len - used, &info, cancel) {
             Ok(bytes) => info.decoded_bytes = Some(bytes),
             Err(reason) => {
@@ -426,7 +458,8 @@ fn selected_file(
     let mut bytes = 0u64;
     for entry in &catalog.entries {
         if names.contains(&entry.info.name) {
-            if (entry.info.complex || matches!(entry.info.class.as_str(), "char" | "cell"))
+            if (entry.info.complex
+                || matches!(entry.info.class.as_str(), "char" | "cell" | "struct"))
                 && !preserve_logical
             {
                 return Err(format!(
@@ -576,13 +609,21 @@ fn read_matrix(
     let (mut info, used) = header(reader, len, expected.compressed)?;
     // Cell storage was established by bounded catalog traversal; revalidate its
     // complete charge during loading, before accepting the new private value.
-    if info.class == "cell" {
+    if matches!(
+        info.class.as_str(),
+        "cell" | "struct" | "sparse" | "logical sparse"
+    ) {
         info.decoded_bytes = expected.decoded_bytes;
     }
     if &info != expected {
         return Err("MAT metadata changed since inspection".into());
     }
-    if matches!(info.class.as_str(), "char" | "cell") {
+    if matches!(info.class.as_str(), "sparse" | "logical sparse") {
+        // Inspection found jc[n]: no more row indices than that are kept.
+        let nnz = sparse::nnz_of(&info);
+        return sparse::read_array(reader, &mut (len - used), &info, nnz, cancel);
+    }
+    if matches!(info.class.as_str(), "char" | "cell" | "struct") {
         if !preserve_logical {
             return Err("Character/cell arrays require the typed loader".into());
         }
@@ -634,7 +675,9 @@ fn read_payload_inner(
         }
         return complex::read_array(reader, len - used, info, cancel);
     }
-    let count = Matrix::checked_len(info.dimensions[0], info.dimensions[1])?;
+    let rows = info.dimensions[0];
+    let cols = crate::files::checked_dimension_product(&info.dimensions[1..])?;
+    let count = Matrix::checked_len(rows, cols)?;
     let t = tag(reader)?;
     let word = u32le(&t[..4]);
     let short = (word >> 16) as usize;
@@ -706,18 +749,13 @@ fn read_payload_inner(
             let mut pad = [0; 7];
             read(reader, &mut pad[..(8 - data_bytes % 8) % 8])?;
         }
-        return Ok(LogicalMatrix::from_canonical_vec(
-            info.dimensions[0],
-            info.dimensions[1],
-            values,
-        )?
-        .into());
+        return Ok(LogicalMatrix::from_canonical_vec(rows, cols, values)?
+            .with_dims(&info.dimensions)?
+            .into());
     }
     if preserve_logical && let Some(class) = crate::NumericClass::parse(&info.class) {
         // Integer and single classes keep their class; data stored in the
         // class's own type is copied exactly (64-bit values never pass f64).
-        let rows = info.dimensions[0];
-        let cols = info.dimensions[1];
         let mut raw = vec![0u8; data_bytes];
         if short > 0 {
             raw.copy_from_slice(&t[4..4 + short]);
@@ -730,11 +768,17 @@ fn read_payload_inner(
             read(reader, &mut pad[..(8 - data_bytes % 8) % 8])?;
         }
         if kind == super::mat_typed::mi_type(class) {
-            return Ok(crate::TypedArray::from_le_bytes(class, rows, cols, &raw)?.into());
+            return Ok(crate::TypedArray::from_le_bytes(class, rows, cols, &raw)?
+                .with_dims(&info.dimensions)?
+                .into());
         }
         let mut values = vec![0.; count];
         convert(kind, &raw, &mut values)?;
-        return Ok(crate::TypedArray::from_reals(class, rows, cols, values.into_iter())?.into());
+        return Ok(
+            crate::TypedArray::from_reals(class, rows, cols, values.into_iter())?
+                .with_dims(&info.dimensions)?
+                .into(),
+        );
     }
     let mut values = vec![0.; count];
     if short > 0 {
@@ -768,7 +812,9 @@ fn read_payload_inner(
     if info.class == "logical" && values.iter().any(|&v| v != 0. && v != 1.) {
         return Err("Invalid logical MAT values".into());
     }
-    Ok(Matrix::from_column_vec(info.dimensions[0], info.dimensions[1], values)?.into())
+    Ok(Matrix::from_column_vec(rows, cols, values)?
+        .with_dims(&info.dimensions)?
+        .into())
 }
 fn convert(kind: u32, input: &[u8], output: &mut [f64]) -> Result<()> {
     let width = match kind {

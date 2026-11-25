@@ -8,10 +8,6 @@ const REFERENCE: &str = include_str!("fixtures/fn/lang3-expected.txt");
 const CASES: usize = 188;
 
 const SCOPED: &str = "A handle to a local function records its file (functions reports it) but is still called by name, so it cannot run outside that file (function-handle core).";
-const NESTED: &str =
-    "Nested functions (a function block inside a function) are not parsed by this engine yet.";
-const EMPTY_STRUCT: &str =
-    "Empty struct-array display right-aligns field names (display code, listed in FOLLOWUPS).";
 const MAP: &str =
     "containers.Map is added by another branch; this engine cannot construct one yet.";
 
@@ -21,12 +17,7 @@ const KNOWN: &[(usize, &str)] = &[
         16,
         "Engine-wide concatenation error wording: 'Horizontal concatenation requires matching row counts'.",
     ),
-    (43, EMPTY_STRUCT),
-    (45, EMPTY_STRUCT),
     (54, MAP),
-    (101, SCOPED),
-    (104, NESTED),
-    (105, NESTED),
     (
         108,
         "Cell display shows function handles as [1x1 function_handle] instead of @name (display code).",
@@ -512,6 +503,407 @@ fn dbstack_reports_function_names_and_lines() {
     assert_eq!(text(&e, "t"), "> In lg3_evalc (line 2)\n");
 }
 
+/// A function runs a separate private script by file dispatch. Predicted rows
+/// at `s = dbstack` (line 1 of the script): the script, then the function at
+/// its call site (line 2). No base frame before or after.
+#[test]
+fn dbstack_script_called_from_function_names_the_caller() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let private = folder.path().join("private");
+    std::fs::create_dir(&private).unwrap();
+    std::fs::write(
+        folder.path().join("lg3_host.m"),
+        "function [caller, n1, n2, l1, l2, f1, f2] = lg3_host()\nlg3_leaf_script;\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        private.join("lg3_leaf_script.m"),
+        "s = dbstack;\ncaller = s(2).name;\nn1 = s(1).name;\nn2 = s(2).name;\nl1 = s(1).line;\nl2 = s(2).line;\nf1 = s(1).file;\nf2 = s(2).file;\n",
+    )
+    .unwrap();
+    let mut e = engine_in(folder.path());
+    e.execute("top = numel(dbstack); [caller, n1, n2, l1, l2, f1, f2] = lg3_host(); after = numel(dbstack);")
+        .unwrap();
+    assert_eq!(number(&e, "top"), [0.]);
+    assert_eq!(number(&e, "after"), [0.]);
+    assert_eq!(text(&e, "caller"), "lg3_host");
+    assert_eq!(
+        (text(&e, "n1"), text(&e, "n2")),
+        ("lg3_leaf_script".into(), "lg3_host".into())
+    );
+    assert_eq!((number(&e, "l1"), number(&e, "l2")), (vec![1.], vec![2.]));
+    assert_eq!(
+        (text(&e, "f1"), text(&e, "f2")),
+        ("lg3_leaf_script.m".into(), "lg3_host.m".into())
+    );
+}
+
+/// Outer named script, then the function, then the script it runs.
+#[test]
+fn dbstack_document_buffer_matches_disk() {
+    let folder = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    let path = folder.path().join("lg3_buffer.m");
+    let source = "% first\r\n% second\r\ns = dbstack;\r\n";
+    let mut e = engine_in(folder.path());
+    for disk in [source, "old = 1;"] {
+        std::fs::write(&path, disk).unwrap();
+        e.execute_document(source, &path).unwrap();
+        e.execute("n = s(1).name; f = s(1).file; l = s(1).line; count = numel(s);")
+            .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), disk.as_bytes());
+        assert_eq!(text(&e, "n"), "lg3_buffer");
+        assert_eq!(text(&e, "f"), "lg3_buffer.m");
+        assert_eq!(number(&e, "count"), [1.]);
+        assert_eq!(number(&e, "l"), [3.]);
+    }
+    std::fs::write(
+        folder.path().join("lg3_buffer_host.m"),
+        "function s = lg3_buffer_host()\nlg3_buffer_inner;\nend\n",
+    )
+    .unwrap();
+    std::fs::write(folder.path().join("lg3_buffer_inner.m"), "s = dbstack;\n").unwrap();
+    let nested = "% first\r\n% second\r\ns = lg3_buffer_host();\r\n";
+    e.execute_document(nested, &path).unwrap();
+    e.execute("n1=s(1).name; n2=s(2).name; n3=s(3).name; l1=s(1).line; l2=s(2).line; l3=s(3).line; f3=s(3).file;").unwrap();
+    assert_eq!(
+        (text(&e, "n1"), text(&e, "n2"), text(&e, "n3")),
+        (
+            "lg3_buffer_inner".into(),
+            "lg3_buffer_host".into(),
+            "lg3_buffer".into()
+        )
+    );
+    assert_eq!(
+        (number(&e, "l1"), number(&e, "l2"), number(&e, "l3")),
+        (vec![1.], vec![2.], vec![3.])
+    );
+    assert_eq!(text(&e, "f3"), "lg3_buffer.m");
+    assert_eq!(std::fs::read(&path).unwrap(), b"old = 1;");
+    assert!(
+        e.execute_document("% first\n% second\nerror('buffer failure');\n", &path)
+            .is_err()
+    );
+    e.execute("empty = numel(dbstack);").unwrap();
+    assert_eq!(number(&e, "empty"), [0.]);
+    e.execute_document(source, &path).unwrap();
+    e.execute("l = s(1).line;").unwrap();
+    assert_eq!(number(&e, "l"), [3.]);
+    assert_eq!(std::fs::read(&path).unwrap(), b"old = 1;");
+}
+
+/// Predicted at `s = dbstack` (script line 1): lg3_in line 1, lg3_run line 2,
+/// lg3_drive line 1. `caller` is the function, not the outer script.
+/// `dbstack(1)` drops the script. `-completenames` keeps the same names and
+/// caller lines with full paths. Printing uses those frames and stays on the
+/// evalc line (no eval frame). The second output stays 1.
+#[test]
+fn dbstack_outer_script_function_inner_script() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    std::fs::write(
+        dir.join("lg3_run.m"),
+        "function [caller, s, c, o, printed, k] = lg3_run()\nlg3_in;\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("lg3_in.m"),
+        "s = dbstack;\nc = dbstack('-completenames');\no = dbstack(1);\ncaller = s(2).name;\nprinted = evalc('dbstack');\n[st, k] = dbstack;\n",
+    )
+    .unwrap();
+    let drive = "\
+[caller, s, c, o, printed, k] = lg3_run();
+";
+    std::fs::write(dir.join("lg3_drive.m"), drive).unwrap();
+    let mut e = engine_in(&dir);
+    e.execute_document(drive, &dir.join("lg3_drive.m")).unwrap();
+    e.execute(
+        "n1=s(1).name; n2=s(2).name; n3=s(3).name; \
+         l1=s(1).line; l2=s(2).line; l3=s(3).line; \
+         f1=s(1).file; f2=s(2).file; f3=s(3).file; \
+         cn1=c(1).name; cn2=c(2).name; cn3=c(3).name; \
+         cl1=c(1).line; cl2=c(2).line; cl3=c(3).line; \
+         cf1=c(1).file; cf2=c(2).file; cf3=c(3).file; \
+         on1=o(1).name; on2=o(2).name; ol1=o(1).line; ol2=o(2).line; \
+         of1=o(1).file; of2=o(2).file; ns=numel(s); no=numel(o); base=numel(dbstack);",
+    )
+    .unwrap();
+    assert_eq!(number(&e, "base"), [0.]);
+    assert_eq!((number(&e, "ns"), number(&e, "no")), (vec![3.], vec![2.]));
+    assert_eq!(text(&e, "caller"), "lg3_run");
+    assert_eq!(number(&e, "k"), [1.]);
+    assert_eq!(
+        (text(&e, "n1"), text(&e, "n2"), text(&e, "n3")),
+        ("lg3_in".into(), "lg3_run".into(), "lg3_drive".into())
+    );
+    assert_eq!(
+        (number(&e, "l1"), number(&e, "l2"), number(&e, "l3")),
+        (vec![1.], vec![2.], vec![1.])
+    );
+    assert_eq!(
+        (text(&e, "f1"), text(&e, "f2"), text(&e, "f3")),
+        ("lg3_in.m".into(), "lg3_run.m".into(), "lg3_drive.m".into())
+    );
+    // completenames call is script line 2; caller lines stay on the call sites.
+    assert_eq!(
+        (text(&e, "cn1"), text(&e, "cn2"), text(&e, "cn3")),
+        ("lg3_in".into(), "lg3_run".into(), "lg3_drive".into())
+    );
+    assert_eq!(
+        (number(&e, "cl1"), number(&e, "cl2"), number(&e, "cl3")),
+        (vec![2.], vec![2.], vec![1.])
+    );
+    assert_eq!(
+        (text(&e, "cf1"), text(&e, "cf2"), text(&e, "cf3")),
+        (
+            dir.join("lg3_in.m").display().to_string(),
+            dir.join("lg3_run.m").display().to_string(),
+            dir.join("lg3_drive.m").display().to_string(),
+        )
+    );
+    assert_eq!(
+        (text(&e, "on1"), text(&e, "on2")),
+        ("lg3_run".into(), "lg3_drive".into())
+    );
+    assert_eq!((number(&e, "ol1"), number(&e, "ol2")), (vec![2.], vec![1.]));
+    assert_eq!(
+        (text(&e, "of1"), text(&e, "of2")),
+        ("lg3_run.m".into(), "lg3_drive.m".into())
+    );
+    // evalc('dbstack') is script line 5. No eval frame, no base caller.
+    assert_eq!(
+        text(&e, "printed"),
+        "> In lg3_in (line 5)\n  In lg3_run (line 2)\n  In lg3_drive (line 1)\n"
+    );
+}
+
+/// Named script calls a function that calls an inner function in the same file.
+/// File lines: mid calls leaf at line 2; leaf's `dbstack('-completenames')` is
+/// line 5, plain `dbstack` is line 6, and `evalc('dbstack')` is line 8.
+/// Predicted stack: lg3_leaf line 5, lg3_mid line 2, lg3_top line 1.
+#[test]
+fn dbstack_script_function_inner_function() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    std::fs::write(
+        dir.join("lg3_mid.m"),
+        "function [stack, plain, omit, printed, k] = lg3_mid()\n\
+         [stack, plain, omit, printed, k] = lg3_leaf();\n\
+         end\n\
+         function [stack, plain, omit, printed, k] = lg3_leaf()\n\
+         stack = dbstack('-completenames');\n\
+         plain = dbstack;\n\
+         omit = dbstack('-completenames', 1);\n\
+         printed = evalc('dbstack');\n\
+         [st, k] = dbstack;\n\
+         end\n",
+    )
+    .unwrap();
+    let top = "\
+[lg3_stack, lg3_plain, lg3_omit, lg3_print, lg3_k] = lg3_mid();
+";
+    std::fs::write(dir.join("lg3_top.m"), top).unwrap();
+    let mut e = engine_in(&dir);
+    e.execute_document(top, &dir.join("lg3_top.m")).unwrap();
+    e.execute(
+        "n1=lg3_stack(1).name; n2=lg3_stack(2).name; n3=lg3_stack(3).name; \
+         l1=lg3_stack(1).line; l2=lg3_stack(2).line; l3=lg3_stack(3).line; \
+         f1=lg3_stack(1).file; f2=lg3_stack(2).file; f3=lg3_stack(3).file; \
+         p1=lg3_plain(1).name; p3=lg3_plain(3).name; pl1=lg3_plain(1).line; pl2=lg3_plain(2).line; pl3=lg3_plain(3).line; \
+         pf1=lg3_plain(1).file; pf3=lg3_plain(3).file; \
+         o1=lg3_omit(1).name; o2=lg3_omit(2).name; ol1=lg3_omit(1).line; ol2=lg3_omit(2).line; \
+         of1=lg3_omit(1).file; of2=lg3_omit(2).file; \
+         ns=numel(lg3_stack); no=numel(lg3_omit); base=numel(dbstack);",
+    )
+    .unwrap();
+    let mid = dir.join("lg3_mid.m").display().to_string();
+    let top_path = dir.join("lg3_top.m").display().to_string();
+    assert_eq!(number(&e, "base"), [0.]);
+    assert_eq!(number(&e, "lg3_k"), [1.]);
+    assert_eq!((number(&e, "ns"), number(&e, "no")), (vec![3.], vec![2.]));
+    assert_eq!(
+        (text(&e, "n1"), text(&e, "n2"), text(&e, "n3")),
+        ("lg3_leaf".into(), "lg3_mid".into(), "lg3_top".into())
+    );
+    assert_eq!(
+        (number(&e, "l1"), number(&e, "l2"), number(&e, "l3")),
+        (vec![5.], vec![2.], vec![1.])
+    );
+    assert_eq!(
+        (text(&e, "f1"), text(&e, "f2"), text(&e, "f3")),
+        (mid.clone(), mid.clone(), top_path.clone())
+    );
+    assert_eq!(
+        (text(&e, "p1"), text(&e, "p3")),
+        ("lg3_leaf".into(), "lg3_top".into())
+    );
+    assert_eq!(
+        (number(&e, "pl1"), number(&e, "pl2"), number(&e, "pl3")),
+        (vec![6.], vec![2.], vec![1.])
+    );
+    assert_eq!(
+        (text(&e, "pf1"), text(&e, "pf3")),
+        ("lg3_mid.m".into(), "lg3_top.m".into())
+    );
+    assert_eq!(
+        (text(&e, "o1"), text(&e, "o2")),
+        ("lg3_mid".into(), "lg3_top".into())
+    );
+    assert_eq!((number(&e, "ol1"), number(&e, "ol2")), (vec![2.], vec![1.]));
+    assert_eq!((text(&e, "of1"), text(&e, "of2")), (mid, top_path));
+    assert_eq!(
+        text(&e, "lg3_print"),
+        "> In lg3_leaf (line 8)\n  In lg3_mid (line 2)\n  In lg3_top (line 1)\n"
+    );
+}
+
+/// Nested runs of one script are two frames. A later run of that file is one
+/// frame, and the base stack stays empty.
+#[test]
+fn dbstack_nested_script_is_not_the_same_file_twice() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    let nested = "\
+if exist('lg3_flag','var')
+nest = dbstack;
+else
+lg3_flag = 1;
+lg3_self;
+end
+";
+    std::fs::write(dir.join("lg3_self.m"), nested).unwrap();
+    std::fs::write(dir.join("lg3_once.m"), "seq = dbstack;\n").unwrap();
+    let mut e = engine_in(&dir);
+    e.execute_document(nested, &dir.join("lg3_self.m")).unwrap();
+    e.execute(
+        "n=numel(nest); a=nest(1).name; b=nest(2).name; la=nest(1).line; lb=nest(2).line; \
+         fa=nest(1).file; fb=nest(2).file; top=numel(dbstack);",
+    )
+    .unwrap();
+    assert_eq!(number(&e, "n"), [2.]);
+    assert_eq!(
+        (text(&e, "a"), text(&e, "b")),
+        ("lg3_self".into(), "lg3_self".into())
+    );
+    assert_eq!((number(&e, "la"), number(&e, "lb")), (vec![2.], vec![5.]));
+    assert_eq!(
+        (text(&e, "fa"), text(&e, "fb")),
+        ("lg3_self.m".into(), "lg3_self.m".into())
+    );
+    assert_eq!(number(&e, "top"), [0.]);
+    // The flag is set, so this run does not nest. One frame, at the dbstack line.
+    e.execute_document(nested, &dir.join("lg3_self.m")).unwrap();
+    e.execute("n2=numel(nest); l2=nest(1).line; name2=nest(1).name; top2=numel(dbstack);")
+        .unwrap();
+    assert_eq!(number(&e, "n2"), [1.]);
+    assert_eq!(number(&e, "l2"), [2.]);
+    assert_eq!(text(&e, "name2"), "lg3_self");
+    assert_eq!(number(&e, "top2"), [0.]);
+    e.execute("lg3_once; n3=numel(seq); l3=seq(1).line; f3=seq(1).file; lg3_once; n4=numel(seq); top3=numel(dbstack);")
+        .unwrap();
+    assert_eq!((number(&e, "n3"), number(&e, "n4")), (vec![1.], vec![1.]));
+    assert_eq!(number(&e, "l3"), [1.]);
+    assert_eq!(text(&e, "f3"), "lg3_once.m");
+    assert_eq!(number(&e, "top3"), [0.]);
+}
+
+/// CRLF is one line break. Predicted: script dbstack at line 1, call site line 2.
+#[test]
+fn dbstack_script_lines_keep_crlf() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    std::fs::write(
+        dir.join("lg3_cr_host.m"),
+        b"function [caller, l1, l2] = lg3_cr_host()\r\nlg3_cr_script;\r\nend\r\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("lg3_cr_script.m"),
+        b"s = dbstack;\r\ncaller = s(2).name;\r\nl1 = s(1).line;\r\nl2 = s(2).line;\r\n",
+    )
+    .unwrap();
+    let mut e = engine_in(&dir);
+    e.execute("[caller, l1, l2] = lg3_cr_host();").unwrap();
+    assert_eq!(text(&e, "caller"), "lg3_cr_host");
+    assert_eq!((number(&e, "l1"), number(&e, "l2")), (vec![1.], vec![2.]));
+}
+
+/// A script error drops its frame and restores the caller's byte. The next
+/// statement in the caller reports its own line. An uncaught error leaves
+/// the base stack empty.
+#[test]
+fn dbstack_script_frame_ends_on_error() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    std::fs::write(dir.join("lg3_bad.m"), "error('lg3 boom');\n").unwrap();
+    std::fs::write(
+        dir.join("lg3_try.m"),
+        "function [name, line, n] = lg3_try()\ntry\nlg3_bad;\ncatch\nend\ns = dbstack;\nname = s.name;\nline = s.line;\nn = numel(s);\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("lg3_throws.m"),
+        "function lg3_throws()\nlg3_bad;\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("lg3_after.m"),
+        "function line = lg3_after()\ns = dbstack;\nline = s.line;\nend\n",
+    )
+    .unwrap();
+    let mut e = engine_in(&dir);
+    e.execute("[name, line, n] = lg3_try();").unwrap();
+    assert_eq!(text(&e, "name"), "lg3_try");
+    assert_eq!(number(&e, "line"), [6.]);
+    assert_eq!(number(&e, "n"), [1.]);
+    let err = e.execute("lg3_throws").unwrap_err();
+    assert!(err.contains("lg3_bad") && err.contains("lg3 boom"), "{err}");
+    e.execute("left = numel(dbstack); again = lg3_after();")
+        .unwrap();
+    assert_eq!(number(&e, "left"), [0.]);
+    assert_eq!(number(&e, "again"), [2.]);
+}
+
+/// Anonymous frames stay hidden. Interactive `dbstack`, `eval('dbstack')`,
+/// and a returned script leave an empty stack. Bad arguments still error.
+#[test]
+fn dbstack_anonymous_and_interactive_stay_empty() {
+    let folder = tempfile::tempdir_in(test_root()).unwrap();
+    let dir = folder.path().canonicalize().unwrap();
+    std::fs::write(
+        dir.join("lg3_anon.m"),
+        "function [name, line, n] = lg3_anon()\nh = @() dbstack;\ns = h();\nname = s.name;\nline = s.line;\nn = numel(s);\nend\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("lg3_ev.m"),
+        "function [name, line, n] = lg3_ev()\ns = eval('dbstack');\nname = s.name;\nline = s.line;\nn = numel(s);\nend\n",
+    )
+    .unwrap();
+    let mut e = engine_in(&dir);
+    e.execute("s = dbstack; direct = numel(s);").unwrap();
+    assert_eq!(number(&e, "direct"), [0.]);
+    e.execute("f = @() dbstack; s = f(); anon = numel(s); ev = eval('dbstack'); evn = numel(ev);")
+        .unwrap();
+    assert_eq!(number(&e, "anon"), [0.]);
+    assert_eq!(number(&e, "evn"), [0.]);
+    e.execute("[name, line, n] = lg3_anon();").unwrap();
+    assert_eq!(text(&e, "name"), "lg3_anon");
+    assert_eq!(number(&e, "line"), [3.]);
+    assert_eq!(number(&e, "n"), [1.]);
+    e.execute("[name, line, n] = lg3_ev(); empty = numel(dbstack);")
+        .unwrap();
+    assert_eq!(text(&e, "name"), "lg3_ev");
+    assert_eq!(number(&e, "line"), [2.]);
+    assert_eq!(number(&e, "n"), [1.]);
+    assert_eq!(number(&e, "empty"), [0.]);
+    let bad = e.execute("dbstack('zz')").unwrap_err();
+    assert!(bad.contains("only legal arguments to dbstack"), "{bad}");
+    let neg = e.execute("dbstack(-1)").unwrap_err();
+    assert!(neg.contains("only legal arguments to dbstack"), "{neg}");
+    let many = e.execute("[a, b, c] = dbstack").unwrap_err();
+    assert!(many.contains("Too many output arguments."), "{many}");
+}
+
 fn engine_in(folder: &std::path::Path) -> Engine {
     let mut e = Engine::default();
     e.set_file_directory(folder).unwrap();
@@ -855,4 +1247,404 @@ fn bsxfun_benchmark() {
             }
         });
     }
+}
+
+#[test]
+fn fix14_warning_state_save_query_restore() {
+    let mut e = Engine::default();
+    // Script pattern: save state, silence, emit (suppressed), restore, emit (printed).
+    e.execute("lastwarn('initial', 'init:id');").unwrap();
+    let out = e
+        .execute("s = warning('off', 'a:b'); [m0, id0] = lastwarn;")
+        .unwrap();
+    assert!(out.output.is_empty());
+    assert_eq!(text(&e, "m0"), "initial");
+    assert_eq!(text(&e, "id0"), "init:id");
+
+    let s = e.array("s").unwrap();
+    let matrust::Array::Struct(sa) = s else {
+        panic!("expected struct");
+    };
+    assert_eq!(sa.len(), 1);
+    let get_field = |st: &matrust::StructArray, idx: usize, name: &str| -> String {
+        let fi = st.field_index(name).unwrap();
+        match st.get(fi, idx).unwrap().as_ref() {
+            matrust::Array::Character(c) => c
+                .to_utf8(&std::sync::atomic::AtomicBool::new(false))
+                .unwrap(),
+            other => panic!("unexpected field type: {other:?}"),
+        }
+    };
+    assert_eq!(get_field(&sa, 0, "identifier"), "a:b");
+    assert_eq!(get_field(&sa, 0, "state"), "on");
+
+    // Suppressed warning prints nothing, still updates lastwarn.
+    let out = e
+        .execute("warning('a:b', 'x'); [m1, id1] = lastwarn;")
+        .unwrap();
+    assert!(out.output.is_empty());
+    assert_eq!(text(&e, "m1"), "x");
+    assert_eq!(text(&e, "id1"), "a:b");
+
+    // Query specific id while off.
+    e.execute("q = warning('query', 'a:b');").unwrap();
+    let matrust::Array::Struct(qa) = e.array("q").unwrap() else {
+        panic!("expected query struct");
+    };
+    assert_eq!(get_field(&qa, 0, "identifier"), "a:b");
+    assert_eq!(get_field(&qa, 0, "state"), "off");
+
+    // Query without output prints state.
+    let q_out = e.execute("warning('query', 'a:b')").unwrap();
+    assert_eq!(q_out.output.join("\n"), "Warning 'a:b' is 'off'.");
+
+    // w = warning returns all states including 'all'.
+    e.execute("w = warning;").unwrap();
+    let matrust::Array::Struct(wa) = e.array("w").unwrap() else {
+        panic!("expected struct array");
+    };
+    assert_eq!(wa.len(), 2);
+    assert_eq!(get_field(&wa, 0, "identifier"), "all");
+    assert_eq!(get_field(&wa, 0, "state"), "on");
+    assert_eq!(get_field(&wa, 1, "identifier"), "a:b");
+    assert_eq!(get_field(&wa, 1, "state"), "off");
+
+    // Restore struct s: warning('a:b', 'x') prints again, and lastwarn unchanged by warning(s).
+    e.execute("lastwarn('keep', 'keep:id'); warning(s); [m2, id2] = lastwarn;")
+        .unwrap();
+    assert_eq!(text(&e, "m2"), "keep");
+    assert_eq!(text(&e, "id2"), "keep:id");
+    let out = e.execute("warning('a:b', 'x');").unwrap();
+    assert_eq!(out.output, vec!["Warning: x"]);
+
+    // warning('off', 'all') / warning('on', 'all') save & restore.
+    let out = e
+        .execute("s_all = warning('off', 'all'); warning('b:c', 'hidden');")
+        .unwrap();
+    assert!(out.output.is_empty());
+    e.execute("warning(s_all);").unwrap();
+    let out = e.execute("warning('b:c', 'shown');").unwrap();
+    assert_eq!(out.output, vec!["Warning: shown"]);
+
+    // warning('on', id) returns previous state.
+    e.execute("s_off = warning('off', 'c:d'); s_off2 = warning('off', 'c:d'); s_on = warning('on', 'c:d');").unwrap();
+    let matrust::Array::Struct(s1) = e.array("s_off").unwrap() else {
+        panic!("expected struct");
+    };
+    let matrust::Array::Struct(s2) = e.array("s_off2").unwrap() else {
+        panic!("expected struct");
+    };
+    let matrust::Array::Struct(s3) = e.array("s_on").unwrap() else {
+        panic!("expected struct");
+    };
+    assert_eq!(get_field(&s1, 0, "state"), "on");
+    assert_eq!(get_field(&s2, 0, "state"), "off");
+    assert_eq!(get_field(&s3, 0, "state"), "off");
+}
+
+#[test]
+fn fix14_warning_formats_typed_arguments_and_continues() {
+    for (arg, expected) in [
+        ("int16(3)", "Warning: value=3"),
+        ("single(4)", "Warning: value=4"),
+    ] {
+        let mut e = Engine::default();
+        let out = e
+            .execute(&format!("warning('value=%d', {arg}); after = 42;"))
+            .unwrap();
+        assert_eq!(out.output, vec![expected]);
+        assert_eq!(number(&e, "after"), vec![42.]);
+    }
+}
+
+#[test]
+fn fix14_warning_statement_runs_folder_script_first() {
+    let folder = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+    std::fs::write(folder.path().join("warning.m"), "ran_warning_script = 1;").unwrap();
+    let mut e = engine_in(folder.path());
+    for source in ["warning", "clear ran_warning_script; warning()"] {
+        let out = e.execute(source).unwrap();
+        assert!(out.output.is_empty());
+        assert_eq!(number(&e, "ran_warning_script"), vec![1.]);
+    }
+}
+
+#[test]
+fn fix14_help_warning_and_whos_describe_supported_forms() {
+    let mut e = Engine::default();
+    let warning = e.execute("help warning").unwrap().output.join(" ");
+    assert!(warning.contains("warning('query', id)"), "{warning}");
+    assert!(warning.contains("warning(s)"), "{warning}");
+    assert!(
+        !warning.contains("querying the state (warning('query', ...), s = warning)"),
+        "{warning}"
+    );
+
+    let whos = e.execute("help whos").unwrap().output.join(" ");
+    assert!(whos.contains("wildcard patterns"), "{whos}");
+    assert!(
+        !whos.contains("No workspace name filters, wildcard filters"),
+        "{whos}"
+    );
+}
+
+#[test]
+fn fix14_warning_scalar_string_actions() {
+    let mut e = Engine::default();
+    let out = e
+        .execute(r#"id = "a:b"; s = warning("off", "a:b"); q = warning("query", id);"#)
+        .unwrap();
+    assert!(out.output.is_empty());
+    e.execute(
+        "assert(strcmp(s.identifier, 'a:b')); assert(strcmp(s.state, 'on')); \
+         assert(strcmp(q.identifier, 'a:b')); assert(strcmp(q.state, 'off'));",
+    )
+    .unwrap();
+    let out = e.execute(r#"warning("query", "a:b")"#).unwrap();
+    assert_eq!(out.output, vec!["Warning 'a:b' is 'off'."]);
+}
+
+#[test]
+fn fix14_warning_restore_inherited_state() {
+    let mut e = Engine::default();
+    let out = e
+        .execute(
+            "w0 = warning; s = warning('off', 'a:b'); warning(s); \
+             assert(isequal(warning, w0)); warning('off', 'all'); warning('a:b', 'x');",
+        )
+        .unwrap();
+    assert!(out.output.is_empty());
+
+    e.execute(
+        "s = warning('on', 'a:b'); warning(s); q = warning('query', 'a:b'); \
+         assert(strcmp(q.state, 'off')); assert(numel(warning) == 1); \
+         warning('on', 'a:b'); w1 = warning; s = warning('off', 'a:b'); warning(s); \
+         assert(isequal(warning, w1));",
+    )
+    .unwrap();
+
+    let out = e
+        .execute(
+            "warning(w0); for k = 1:1100, id = sprintf('test:id%d', k); \
+             s = warning('off', id); warning(s); end; assert(isequal(warning, w0));",
+        )
+        .unwrap();
+    assert!(out.output.is_empty());
+}
+
+#[test]
+fn fix14_whos_arguments_and_wildcards() {
+    let mut e = Engine::default();
+    e.execute("alpha = [1 2; 3 4]; beta = 'hi'; apple = 1+2i;")
+        .unwrap();
+
+    let bare = e.execute("whos").unwrap().output.join("\n");
+    assert!(bare.contains("alpha"));
+    assert!(bare.contains("beta"));
+    assert!(bare.contains("apple"));
+
+    let cmd = e.execute("whos alpha beta").unwrap().output.join("\n");
+    assert!(cmd.contains("alpha"));
+    assert!(cmd.contains("beta"));
+    assert!(!cmd.contains("apple"));
+
+    let func = e
+        .execute("whos('alpha', 'beta')")
+        .unwrap()
+        .output
+        .join("\n");
+    assert_eq!(func, cmd);
+    let strings = e
+        .execute(r#"whos("alpha", "beta")"#)
+        .unwrap()
+        .output
+        .join("\n");
+    assert_eq!(strings, cmd);
+
+    let wild = e.execute("whos a*").unwrap().output.join("\n");
+    assert!(wild.contains("alpha"));
+    assert!(wild.contains("apple"));
+    assert!(!wild.contains("beta"));
+
+    let wild_fn = e.execute("whos('a*')").unwrap().output.join("\n");
+    assert_eq!(wild_fn, wild);
+
+    let none = e.execute("whos nonexistent_var").unwrap();
+    assert!(none.output.is_empty());
+
+    // -file keeps working.
+    let dir = std::env::temp_dir();
+    let path = dir.join(format!("matrust_fix14_whos_{}.mat", std::process::id()));
+    let path_str = path.to_string_lossy().replace('\'', "''");
+    e.execute(&format!("save('{path_str}', 'alpha', 'beta')"))
+        .unwrap();
+    let file_out = e
+        .execute(&format!("whos('-file', '{path_str}', 'alpha')"))
+        .unwrap()
+        .output
+        .join("\n");
+    let all_file = e
+        .execute(&format!("whos('-file', '{path_str}')"))
+        .unwrap()
+        .output;
+    let string_file = e.execute(&format!(
+        r#"filename = string('{path_str}'); whos("-file", filename)"#
+    ));
+    let _ = std::fs::remove_file(&path);
+    assert!(file_out.contains("alpha"));
+    assert!(!file_out.contains("beta"));
+    assert_eq!(string_file.unwrap().output, all_file);
+}
+
+#[test]
+fn fix14_vecnorm_typed_nd_and_result_class() {
+    let mut e = Engine::default();
+    e.execute(
+        "a = reshape(single(1:8), 2, 2, 2); \
+         v3 = vecnorm(a, 1, 3); assert(isequal(v3, single([6 10; 8 12]))); \
+         v2 = vecnorm(a, single(1), int16(2)); assert(isequal(size(v2), [2 1 2])); \
+         assert(isequal(v2, reshape(single([4 6 12 14]), 2, 1, 2))); \
+         v_int = vecnorm(reshape(int16(1:8), 2, 2, 2), 1, 3); \
+         assert(strcmp(class(v_int), 'double')); assert(isequal(v_int, [6 10; 8 12])); \
+         v = vecnorm(single([3 4])); assert(strcmp(class(v), 'single')); \
+         assert(isequal(v, single(5))); \
+         assert(isequal(vecnorm(single([-3 4]), 2, 3), single([3 4])));",
+    )
+    .unwrap();
+}
+
+#[test]
+fn fix14_vecnorm_result_memory_limit() {
+    let mut e = Engine::with_limits(matrust::engine::Limits {
+        evaluation_units: None,
+        ..Default::default()
+    });
+    let err = e
+        .execute("v = vecnorm(zeros(10000, 0, 10000), 2, 2);")
+        .unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("Statement exceeds the 256 MiB memory limit"),
+        "{err}"
+    );
+    assert!(e.array("v").is_none());
+    e.execute("v = vecnorm(zeros(2, 0, 3), 2, 2); assert(isequal(v, zeros(2, 1, 3)));")
+        .unwrap();
+}
+
+#[test]
+fn fix14_vecnorm_cases() {
+    let mut e = Engine::default();
+    e.execute(
+        "a = [3 4; 6 8]; \
+         v_row = vecnorm(a, 2, 2); \
+         v_def = vecnorm(a); \
+         v_rvec = vecnorm([3 -4]); \
+         v_cvec = vecnorm([3; -4]); \
+         b = [1 -2 3; -4 5 -6]; \
+         v_1_1 = vecnorm(b, 1, 1); \
+         v_1_2 = vecnorm(b, 1, 2); \
+         v_inf_1 = vecnorm(b, Inf, 1); \
+         v_inf_2 = vecnorm(b, Inf, 2); \
+         v_3_1 = vecnorm([1 2; 3 4], 3, 1); \
+         v_cplx = vecnorm([3+4i, 0; 0, 5-12i]); \
+         v_cplx2 = vecnorm([3+4i, 6+8i], 2, 2); \
+         v_3d = vecnorm(reshape(1:8, 2, 2, 2), 2, 3); \
+         v_emp_p = vecnorm([3 4], [], 2); \
+         v_over = vecnorm([3 -4], 2, 3);",
+    )
+    .unwrap();
+
+    let mat = |eng: &Engine, name: &str| -> (Vec<usize>, Vec<f64>) {
+        match eng.array(name).unwrap() {
+            matrust::Array::Numeric(m) => (m.dims().into_owned(), m.data().to_vec()),
+            other => panic!("{name}: expected numeric, got {other:?}"),
+        }
+    };
+    let close = |actual: &[f64], expected: &[f64]| {
+        assert_eq!(actual.len(), expected.len());
+        for (a, b) in actual.iter().zip(expected) {
+            assert!((a - b).abs() <= 1e-12 * b.abs().max(1.0), "{a} vs {b}");
+        }
+    };
+
+    assert_eq!(mat(&e, "v_row"), (vec![2, 1], vec![5.0, 10.0]));
+    let (d, v) = mat(&e, "v_def");
+    assert_eq!(d, vec![1, 2]);
+    close(&v, &[45.0_f64.sqrt(), 80.0_f64.sqrt()]);
+    assert_eq!(mat(&e, "v_rvec"), (vec![1, 1], vec![5.0]));
+    assert_eq!(mat(&e, "v_cvec"), (vec![1, 1], vec![5.0]));
+    assert_eq!(mat(&e, "v_1_1"), (vec![1, 3], vec![5.0, 7.0, 9.0]));
+    assert_eq!(mat(&e, "v_1_2"), (vec![2, 1], vec![6.0, 15.0]));
+    assert_eq!(mat(&e, "v_inf_1"), (vec![1, 3], vec![4.0, 5.0, 6.0]));
+    assert_eq!(mat(&e, "v_inf_2"), (vec![2, 1], vec![3.0, 6.0]));
+    let (d3, v3) = mat(&e, "v_3_1");
+    assert_eq!(d3, vec![1, 2]);
+    close(&v3, &[28.0_f64.cbrt(), 72.0_f64.cbrt()]);
+    assert_eq!(mat(&e, "v_cplx"), (vec![1, 2], vec![5.0, 13.0]));
+    let (dc2, vc2) = mat(&e, "v_cplx2");
+    assert_eq!(dc2, vec![1, 1]);
+    close(&vc2, &[125.0_f64.sqrt()]);
+    let (d3d, v3d) = mat(&e, "v_3d");
+    assert_eq!(d3d, vec![2, 2]);
+    close(
+        &v3d,
+        &[
+            1.0_f64.hypot(5.0),
+            2.0_f64.hypot(6.0),
+            3.0_f64.hypot(7.0),
+            4.0_f64.hypot(8.0),
+        ],
+    );
+    assert_eq!(mat(&e, "v_emp_p"), (vec![1, 1], vec![5.0]));
+    assert_eq!(mat(&e, "v_over"), (vec![1, 2], vec![3.0, 4.0]));
+
+    for bad in [
+        "vecnorm([1 2], 0)",
+        "vecnorm([1 2], -1)",
+        "vecnorm([1 2], 2, 0)",
+        "vecnorm([1 2], 2, 1.5)",
+    ] {
+        assert!(e.execute(bad).is_err(), "expected error for {bad}");
+    }
+}
+
+#[test]
+fn fix14e_warning_sparse_reordered_roundtrip_handle_and_vecnorm() {
+    // Item 2: warning('value=%d', sparse(3))
+    let mut e = Engine::default();
+    let out = e.execute("warning('value=%d', sparse(3));").unwrap();
+    assert_eq!(out.output, vec!["Warning: value=3"]);
+
+    // Item 12: warning(s) with reordered snapshot applies 'all' first, then per-ID
+    let mut e = Engine::default();
+    let out = e
+        .execute("warning('off','x:y'); s=warning; warning(s([2 1])); warning('x:y','unexpected');")
+        .unwrap();
+    assert!(out.output.is_empty());
+
+    // Item 13: snapshot round-trip when id matches inherited 'all' state
+    let mut e = Engine::default();
+    e.execute("warning('on','a:b'); s=warning; warning(s); assert(isequal(s,warning));")
+        .unwrap();
+
+    // Item 14: zero-output request survives function handle call
+    let mut e = Engine::default();
+    let out = e.execute("f=@warning; f('query','a:b');").unwrap();
+    assert_eq!(out.output, vec!["Warning 'a:b' is 'on'."]);
+
+    // Items 15 & 16: vecnorm complex Inf+NaNi -> NaN, and small p with realmin does not overflow
+    let mut e = Engine::default();
+    e.execute("v1 = vecnorm(complex(Inf, NaN)); v2 = vecnorm([realmin realmin], 1/1024);")
+        .unwrap();
+    let v1 = match e.array("v1").unwrap() {
+        matrust::Array::Numeric(m) => m.data()[0],
+        other => panic!("v1: expected numeric, got {other:?}"),
+    };
+    assert!(v1.is_nan(), "expected NaN, got {v1}");
+    let v2 = match e.array("v2").unwrap() {
+        matrust::Array::Numeric(m) => m.data()[0],
+        other => panic!("v2: expected numeric, got {other:?}"),
+    };
+    assert!((v2 - 4.0).abs() <= 1e-11, "expected ~4, got {v2}");
 }

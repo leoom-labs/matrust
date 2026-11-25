@@ -29,8 +29,8 @@ fn workspace_dock_actual_menu_changes_geometry_and_retains_active_figure_and_ali
         assert!(workspace_dock_rect(&ctx,"console").width()>narrow+140.);
         assert!(egui::containers::panel::PanelState::load(&ctx,egui::Id::new("workspace_variables")).is_none());
         let output=frame_at(&mut app,&ctx,size,vec![]);
-        let files=output.shapes.iter().find_map(|s|text_position(&s.shape,"Files").filter(|p|column.contains(*p))).unwrap();
-        let workspace=output.shapes.iter().find_map(|s|text_position(&s.shape,"Workspace").filter(|p|column.contains(*p))).unwrap();
+        let files=output.shapes.iter().find_map(|s|text_position(&s.shape,"FILES").filter(|p|column.contains(*p))).unwrap();
+        let workspace=output.shapes.iter().find_map(|s|text_position(&s.shape,"WORKSPACE").filter(|p|column.contains(*p))).unwrap();
         assert!(files.y<lower.top());assert!(lower.contains(workspace));
         choose_workspace_position(&mut app,&ctx,size,"Right");
         assert!(!app.workspace_on_left());assert_eq!(app.layout,original);assert_eq!(app.generic_save_target(),document_save::Pane::Figure);
@@ -118,7 +118,7 @@ fn left_workspace_splitter_extremes_survive_real_session_reopen() {
             restored.restore_session(saved);restored.start_session_recovery(path);finish(&mut restored);
             for _ in 0..4 {frame_at(&mut restored,&newctx,size,vec![]);}
             assert_eq!(restored.layout,app.layout);
-            assert!((workspace_dock_rect(&newctx,"workspace_variables_left").height()-height).abs()<2.,"Actual endpoint height must survive reopening");
+            assert!((workspace_dock_rect(&newctx,"workspace_variables_left").height()-height).abs()<2.,"Actual endpoint height must survive reopening: before={height}, after={}, fraction={saved_fraction}, size={size:?}, grow={grow}", workspace_dock_rect(&newctx,"workspace_variables_left").height());
             assert!(data.same_snapshot(&app.variables["kept"]));assert_eq!(restored.variables["kept"].as_numeric().unwrap().data(),&[1.,3.,2.,4.]);
         }
     }
@@ -210,9 +210,10 @@ fn real_reset_menu_selects_fresh_left_preserves_theme_and_checkpoints_it() {
         for _ in 0..4 {scale_frame(&mut app,&ctx,size,vec![]);}
         let expected=session::DesktopLayout {theme:Some(session::DesktopTheme::Dark),center:Some(session::CenterLayout {command:true,editor_revealed:true}),..session::DesktopLayout::fresh_desktop()};
         assert_eq!(app.layout,expected);assert_eq!(ctx.zoom_factor(),1.);assert!(app.recovery_dirty);
-        let column=workspace_dock_rect(&ctx,"workspace");let lower=workspace_dock_rect(&ctx,"workspace_variables_left");
-        assert!(column.contains_rect(lower)&&lower.top()>column.top()+100.&&lower.height()>100.);
-        assert!(egui::containers::panel::PanelState::load(&ctx,egui::Id::new("workspace_variables")).is_none());
+        let sheet=workspace_dock::inspector::uses_sheet(&app,&ctx);
+        if sheet { click_label_at(&mut app,&ctx,size,"Workspace"); redesign_frames(&mut app,&ctx,size); }
+        let column=workspace_dock_rect(&ctx,"workspace");let inspector=workspace_dock_rect(&ctx,if sheet {"workspace_sheet_values"} else {"workspace_variables"});
+        assert!(inspector.left()>column.right() && inspector.height()>100.);
         assert_eq!(app.documents[app.active].id,doc);assert!(data.same_snapshot(&app.variables["A"]));
         assert!(figure.same_snapshot(app.figure.as_ref().unwrap()));
         app.recovery_due=Instant::now();frame_at(&mut app,&ctx,size,vec![]);assert!(!app.recovery_dirty);
@@ -221,8 +222,9 @@ fn real_reset_menu_selects_fresh_left_preserves_theme_and_checkpoints_it() {
         let newctx=egui::Context::default();let mut restored=legacy_sample_desktop(newctx.clone(),true);
         restored.restore_session(saved);restored.start_session_recovery(path);finish(&mut restored);
         for _ in 0..4 {frame_at(&mut restored,&newctx,size,vec![]);}
-        assert_eq!(restored.layout,expected);assert!(restored.workspace_on_left());
-        assert!(workspace_dock_rect(&newctx,"workspace").contains_rect(workspace_dock_rect(&newctx,"workspace_variables_left")));
+        assert_eq!(restored.layout,expected);assert!(!restored.workspace_on_left());
+        if sheet { click_label_at(&mut restored,&newctx,size,"Workspace"); redesign_frames(&mut restored,&newctx,size); }
+        assert!(workspace_dock_rect(&newctx,if sheet {"workspace_sheet_values"} else {"workspace_variables"}).left()>workspace_dock_rect(&newctx,"workspace").right());
         assert!(restored.variables["A"].same_snapshot(&restored.variables["AA"]));
         assert_eq!(restored.figure.as_ref().unwrap().svg(),figure.svg());
     }

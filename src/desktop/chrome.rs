@@ -202,6 +202,20 @@ impl Workspace {
     }
 
     fn function_help(&mut self, ctx: &egui::Context) {
+        // The name at the editor cursor gets its help at once, as F1 would in MATLAB.
+        if let Some(name) = self.documents.get(self.active).and_then(|doc| {
+            let at = self.editor.selection(ctx, doc).start;
+            identifier_at(&doc.text, at)
+        }) {
+            let command = format!("help {name}");
+            self.console.push(format!(">> {command}"));
+            self.history.push(command.clone());
+            self.recovery_dirty = true;
+            self.run(command);
+            self.queue_pane_focus(ctx, navigation::FocusPane::Command);
+            return;
+        }
+        self.status = "Type a function name after help and press Enter".into();
         self.command = "help ".into();
         let id = egui::Id::new("command_input");
         let mut state = egui::text_edit::TextEditState::load(ctx, id).unwrap_or_default();
@@ -226,6 +240,7 @@ impl Workspace {
             ui.label("Numerical workspace for a subset of the MATLAB language.");
             ui.label("Free software under the GNU GPL, version 3 or later. No warranty.");
             ui.label("Fonts: Inter and JetBrains Mono (SIL Open Font License 1.1).");
+            ui.label("Icons: Phosphor Regular (MIT).");
             ui.add_space(8.);
             if ui.button("Third-party notices").clicked() {
                 self.chrome.notices = !self.chrome.notices;
@@ -306,4 +321,22 @@ impl Workspace {
             ui.weak(NO_FIGURE_HINT);
         });
     }
+}
+
+/// The MATLAB identifier touching char offset `at` (cursor inside or right after it).
+pub(super) fn identifier_at(text: &str, at: usize) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let at = at.min(chars.len());
+    let mut start = at;
+    while start > 0 && word(chars[start - 1]) {
+        start -= 1;
+    }
+    let mut end = at;
+    while end < chars.len() && word(chars[end]) {
+        end += 1;
+    }
+    let name: String = chars[start..end].iter().collect();
+    name.starts_with(|c: char| c.is_ascii_alphabetic())
+        .then_some(name)
 }

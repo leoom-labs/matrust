@@ -109,7 +109,6 @@ fn malformed_function_programs_reject_before_mutating_the_workspace() {
         "x=1;function [y,y]=f;y=1;end",
         "x=1;function y=f(a,);y=a;end",
         "x=1;if true;function f;end;end",
-        "function f;function g;end;end",
         "function f;end;x=1;",
         "function f;end;function g",
         // Reference behavior: varargin is accepted; it must be the last input.
@@ -119,6 +118,10 @@ fn malformed_function_programs_reject_before_mutating_the_workspace() {
         assert!(e.execute(source).is_err(), "{source}");
         assert!(e.workspace().is_empty(), "{source}");
     }
+    let mut e = Engine::default();
+    e.execute("function y=f; y=g(); function v=g; v=17; end; end")
+        .unwrap();
+    assert_eq!(scalar(&e, "ans"), 17.);
     let many = (0..129)
         .map(|n| format!("function f{n};end;"))
         .collect::<String>();
@@ -170,7 +173,7 @@ fn function_files_resolve_local_helpers_reload_between_runs_and_remain_private()
 #[test]
 fn function_failures_report_inner_local_locations_and_external_file_context() {
     let mut e = Engine::default();
-    let source = "% α\nkept=7;R=outer(1);\nfunction y=outer(x)\ny=inner(x);\nend\nfunction y=inner(x)\n  missing;\nend";
+    let source = "% α\nkept=7;R=outer(1);\nfunction y=outer(x)\ny=inner(x);\nend\nfunction y=inner(x)\n  syms;\nend";
     let error = e.execute(source).unwrap_err();
     assert!(
         error.contains("In inner") && error.contains("In outer"),
@@ -182,7 +185,7 @@ fn function_failures_report_inner_local_locations_and_external_file_context() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(
         folder.path().join("broken.m"),
-        "function y=broken(x)\ny=missing;\nend",
+        "function y=broken(x)\ny=syms;\nend",
     )
     .unwrap();
     e.set_function_directory(folder.path()).unwrap();
@@ -195,7 +198,7 @@ fn function_failures_report_inner_local_locations_and_external_file_context() {
     let file = e.file_diagnostic.as_ref().unwrap();
     assert_eq!(file.diagnostic.line, 2);
     assert!(file.path.ends_with("broken.m"));
-    assert!(file.source.contains("y=missing;"));
+    assert!(file.source.contains("y=syms;"));
     e.execute("R=1;").unwrap();
     assert!(e.file_diagnostic.is_none());
 }
@@ -206,7 +209,7 @@ fn external_diagnostics_keep_innermost_source_and_parse_locations() {
     let outer = folder.path().join("outer.m");
     let inner = folder.path().join("inner.m");
     std::fs::write(outer, "function y=outer(x)\ny=inner(x);\nend").unwrap();
-    let source = "function y=inner(x)\n% Unicode: αβ\n  y=missing;\nend";
+    let source = "function y=inner(x)\n% Unicode: αβ\n  y=syms;\nend";
     std::fs::write(&inner, source).unwrap();
     let mut e = Engine::default();
     e.set_function_directory(folder.path()).unwrap();
@@ -222,7 +225,7 @@ fn external_diagnostics_keep_innermost_source_and_parse_locations() {
     assert!(file.path.ends_with("inner.m"));
     assert_eq!(&*file.source, invalid);
     assert_eq!(file.diagnostic.line, 2);
-    assert!(e.execute("R=missing;").is_err());
+    assert!(e.execute("R=syms;").is_err());
     assert!(e.file_diagnostic.is_none());
 }
 

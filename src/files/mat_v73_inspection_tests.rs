@@ -68,7 +68,7 @@ mod legacy {
         active.push(address);
         for reference in children(file, dataset, &info, cancel)? {
             check_cancel(cancel)?;
-            let child = target(file, &reference)?;
+            let child = h(target(file, &reference)?.as_dataset())?;
             inspect_node(file, &child, depth + 1, active, budget, visits, cancel)?;
         }
         active.pop();

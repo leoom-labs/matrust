@@ -54,6 +54,8 @@ fn folder_navigation_buttons_and_keys_preserve_documents_and_workspace() {
     assert!(app.folder.ends_with("b"));
     folder_navigation_key(&mut app, &ctx, egui::Modifiers::ALT, egui::Key::ArrowLeft);
     assert!(app.folder.ends_with("a"));
+    // Forward waits in the Files header's More menu at this width.
+    click_label(&mut app, &ctx, "Folder actions");
     click_label(&mut app, &ctx, "Forward");
     finish_folder(&mut app);
     assert!(app.folder.ends_with("b"));
@@ -90,7 +92,8 @@ fn folder_navigation_address_focus_relative_paths_parent_and_refresh() {
     assert!(app.folder.ends_with("child"));
     let before = app.folder_navigation.destination(false);
     std::fs::write(app.folder.join("new.m"), "a=1;\n").unwrap();
-    folder_navigation_key(&mut app, &ctx, egui::Modifiers::NONE, egui::Key::F5);
+    app.refresh_folder();
+    finish_folder(&mut app);
     assert!(app.entries.iter().any(|entry| entry.name == "new.m"));
     assert_eq!(app.folder_navigation.destination(false), before);
     app.recovery_dirty = false;

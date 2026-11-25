@@ -78,9 +78,9 @@ fn case_value_matches(id: usize, index: usize, got: f64, expected: f64) -> bool 
         1 | 4 | 8 | 9 | 15 | 107 => (1e-6, 1e-4),
         5 => (2e-5, 1e-3),
         6 => (1e-9, 2e-8),
-        17 if index == 2 => return got == expected,
-        17 if index == 1 => (5e-12, 0.),
-        17 => (1e-4, 0.),
+        16 | 17 if index == 2 => return got == expected,
+        16 | 17 if index == 1 => (5e-12, 0.),
+        16 | 17 => (1e-4, 0.),
         94 | 95 | 97 | 98 | 105 => (3e-15, 0.),
         // NDF step/order/Newton choices are not fixed by the published method.
         // Keep initial values, event states, and event indices independently tight.
@@ -90,11 +90,11 @@ fn case_value_matches(id: usize, index: usize, got: f64, expected: f64) -> bool 
         26 => (1e-8, 6e-3),
         27 | 29 => (1e-8, 1e-2),
         33 => (2e-7, 0.),
-        40 if index == 2 => return got == expected,
-        40 if index == 1 => (1e-12, 0.),
+        39 | 40 if index == 2 => return got == expected,
+        39 | 40 if index == 1 => (1e-12, 0.),
         41 if index >= 4 => return got == expected,
         41 if index >= 2 => (1e-12, 0.),
-        40 | 41 => (1e-7, 5e-3),
+        39..=41 => (1e-7, 5e-3),
         136 => (2e-14, 0.),
         141 => (1e-7, 0.),
         171 if index == 0 => (2e-16, 0.),
@@ -157,6 +157,10 @@ const HARNESS: &[(usize, &str)] = &[
         "Clean-room Adams continuous extension: old exact values; new absolute 1e-6 plus relative 1e-4 tolerance.",
     ),
     (
+        16,
+        "Clean-room Adams event polynomial (deal 3-output): old exact values; new absolute 1e-4 for time, 5e-12 for state, exact event index and final-time/event-time equality.",
+    ),
+    (
         17,
         "Clean-room Adams event polynomial: old exact values; new absolute 1e-4 for time, 5e-12 for state, exact event index and final-time/event-time equality.",
     ),
@@ -211,6 +215,10 @@ const HARNESS: &[(usize, &str)] = &[
     (
         38,
         "Clean-room NDF Stats text: old exact counts; new bounded counters with exact labels and exact requested output shape [3 1].",
+    ),
+    (
+        39,
+        "Clean-room NDF event interpolant (deal 3-output): old exact values; new time error <= 1e-7 + 5e-3*abs(expected), state error <= 1e-12, index exact, terminal time equals event time.",
     ),
     (
         40,
@@ -757,10 +765,10 @@ fn run(case: &Case) -> Result<bool, String> {
             ));
         }
     }
-    if case.id == 17 && got[0] != got[3] {
+    if matches!(case.id, 16 | 17) && got[0] != got[3] {
         return Err("terminal event time must equal the last output time".into());
     }
-    if case.id == 40 && got[0] != got[3] {
+    if matches!(case.id, 39 | 40) && got[0] != got[3] {
         return Err("NDF terminal time differs from the event time".into());
     }
     Ok(false)
@@ -1277,7 +1285,7 @@ fn dde23_lands_on_a_jump_in_the_final_stretch() {
 }
 
 #[test]
-fn empty_event_outputs_have_matlab_empty_shape() {
+fn empty_event_outputs_keep_the_tuple_orientation() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(folder.path().join("od2_noevent.m"),
         "function [v,isterminal,direction] = od2_noevent(t,y)\nv=1; isterminal=0; direction=0;\nend\n"
@@ -1291,7 +1299,7 @@ fn empty_event_outputs_have_matlab_empty_shape() {
                 "[t,y,te,ye,ie] = {solver}(@(t,y) -y,[0 1],[1;2],odeset('Events',@od2_noevent)); v=[size(te) size(ye) size(ie)];"
             ),
         );
-        assert_eq!(v, vec![0.; 6], "{solver}");
+        assert_eq!(v, [0., 1., 0., 2., 0., 1.], "{solver}");
     }
 }
 
@@ -1368,7 +1376,7 @@ fn rev3_03_bvpinit_checks_product_before_replicating_guess() {
 fn rev3_04_deval_checks_output_size_before_interpolating() {
     let mut e = Engine::default();
     console(&mut e, "s=ode45(@(t,y) 0*y,[0 1],ones(200,1));").unwrap();
-    let (result, bytes) = allocated_by(|| console(&mut e, "[y,yp]=deval(s,linspace(0,1,100000));"));
+    let (result, bytes) = allocated_by(|| console(&mut e, "[y,yp]=deval(s,linspace(0,1,251659));"));
     assert!(result.unwrap_err().contains("element limit"));
     assert!(bytes < 32 * 1024 * 1024, "allocated {bytes}");
 }
@@ -1639,7 +1647,7 @@ fn rev3_16_dde_history_allocations_grow_linearly() {
 }
 
 #[test]
-fn rev4_01_initial_terminal_event_records_without_stopping() {
+fn rev4_01_initial_terminal_event_is_ignored_by_odes_and_recorded_by_ddes() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(
         folder.path().join("initial_event.m"),
@@ -1657,14 +1665,19 @@ fn rev4_01_initial_terminal_event_records_without_stopping() {
                 .to_string(),
             _ => format!("s={solver}(@(t,y) 1,[0 1],0,odeset('Events',@initial_event));"),
         };
-        let v = values(&mut e, &(source + "v=[s.x(end) s.y(end) s.xe(1) s.ie(1)];"));
+        let v = values(
+            &mut e,
+            &(source + "v=[s.x(end) s.y(end) numel(s.xe) s.xe s.ie];"),
+        );
         assert!(
-            (v[0] - 1.).abs() < 1e-12
-                && (v[1] - 1.).abs() < 1e-8
-                && v[2].abs() < 1e-10
-                && v[3] == 1.,
+            (v[0] - 1.).abs() < 1e-12 && (v[1] - 1.).abs() < 1e-8,
             "{solver}: {v:?}"
         );
+        if solver.starts_with("dde") {
+            assert_eq!(&v[2..], &[1., 0., 1.], "{solver}: {v:?}");
+        } else {
+            assert_eq!(&v[2..], &[0.], "{solver}: {v:?}");
+        }
         // A later terminal crossing must still stop, even in the first step.
         let source = if solver.starts_with("dde") {
             format!("s={solver}(@(t,y,Z) 1,1,-0.5,[0 1],ddeset('Events',@initial_event));")
@@ -1700,7 +1713,7 @@ fn cleanroom_fix1_nan_iterates_stop_at_the_last_finite_time() {
 }
 
 #[test]
-fn cleanroom_fix1_terminal_event_restarts_record_exact_initial_zeros_and_finish() {
+fn cleanroom_fix1_terminal_event_restarts_ignore_initial_zeros_and_finish() {
     let folder = tempfile::tempdir().unwrap();
     std::fs::write(
         folder.path().join("evc.m"),
@@ -1726,11 +1739,7 @@ fn cleanroom_fix1_terminal_event_restarts_record_exact_initial_zeros_and_finish(
             assert!(v[1] < 1e-12, "{solver} k={k}: inaccurate root {v:?}");
             assert_eq!(v[2], 0., "{solver} k={k}: {v:?}");
             assert_eq!(v[3], 1., "{solver} k={k}: restart did not finish {v:?}");
-            assert_eq!(
-                v[4],
-                if v[1] == 0. { 1. } else { 0. },
-                "{solver} k={k}: initial event count {v:?}"
-            );
+            assert_eq!(v[4], 0., "{solver} k={k}: initial event count {v:?}");
             assert_eq!(v[5], 0., "{solver} k={k}: initial event time {v:?}");
         }
     }

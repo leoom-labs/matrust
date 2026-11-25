@@ -46,30 +46,24 @@ impl Sum {
     }
 }
 
-#[derive(Clone, Copy)]
-struct Lane<'a> {
-    data: &'a [f64],
-    start: usize,
-    stride: usize,
+fn visit_lane(
+    at: &impl Fn(usize) -> f64,
     len: usize,
-}
-impl Lane<'_> {
-    fn get(self, index: usize) -> f64 {
-        self.data[self.start + index * self.stride]
-    }
-    fn visit(self, cancel: &AtomicBool, mut f: impl FnMut(f64)) -> Result<()> {
-        for first in (0..self.len).step_by(CHECK_EVERY) {
-            check(cancel)?;
-            for i in first..(first + CHECK_EVERY).min(self.len) {
-                f(self.get(i));
-            }
+    cancel: &AtomicBool,
+    mut f: impl FnMut(f64),
+) -> Result<()> {
+    for first in (0..len).step_by(CHECK_EVERY) {
+        check(cancel)?;
+        for i in first..(first + CHECK_EVERY).min(len) {
+            f(at(i));
         }
-        check(cancel)
     }
+    check(cancel)
 }
 
-fn reduce(
-    lane: Lane<'_>,
+pub(crate) fn dispersion_lane(
+    at: impl Fn(usize) -> f64,
+    len: usize,
     population: bool,
     omit_nan: bool,
     kind: Dispersion,
@@ -79,7 +73,7 @@ fn reduce(
     let mut maximum = 0.0f64;
     let mut anchor = 0.;
     let mut invalid = false;
-    lane.visit(cancel, |x| {
+    visit_lane(&at, len, cancel, |x| {
         if x.is_nan() && omit_nan {
             return;
         }
@@ -103,7 +97,7 @@ fn reduce(
     let scale = libm::scalbn(1., exponent);
     let anchor = anchor / scale;
     let mut shifted = Sum::default();
-    lane.visit(cancel, |x| {
+    visit_lane(&at, len, cancel, |x| {
         if !x.is_nan() {
             shifted.add(x / scale - anchor);
         }
@@ -111,7 +105,7 @@ fn reduce(
     let center = shifted.value / count as f64;
     let mut squares = Sum::default();
     let mut residual = Sum::default();
-    lane.visit(cancel, |x| {
+    visit_lane(&at, len, cancel, |x| {
         if !x.is_nan() {
             let deviation = (x / scale - anchor) - center;
             squares.add(deviation * deviation);
@@ -178,13 +172,9 @@ impl Matrix {
         }
         let calculate = |(index, out): (usize, &mut f64)| -> Result<()> {
             let start = if stride == 1 { index * length } else { index };
-            *out = reduce(
-                Lane {
-                    data: self.data(),
-                    start,
-                    stride,
-                    len: length,
-                },
+            *out = dispersion_lane(
+                |i| self.data()[start + i * stride],
+                length,
                 population,
                 omit_nan,
                 kind,

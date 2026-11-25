@@ -161,7 +161,14 @@ fn explicit_script_reload_errors_stop_and_retry_preserve_local_state() {
     for failure in 0..4 {
         let ctx = egui::Context::default();
         let dir = tempfile::tempdir().unwrap();
-        let (mut app, paths) = script_reload_app(&ctx, dir.path());
+        let (mut app, mut paths) = script_reload_app(&ctx, dir.path());
+        if failure == 1 {
+            // Invalid UTF-8 triggers a decoding error in .mr files.
+            let path = paths[0].with_extension("mr");
+            std::fs::rename(&paths[0], &path).unwrap();
+            app.documents[0].path = Some(path.clone());
+            paths[0] = path;
+        }
         let before = serde_json::to_string(&app.documents[0]).unwrap();
         match failure {
             0 => std::fs::remove_file(&paths[0]).unwrap(),

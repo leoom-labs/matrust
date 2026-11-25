@@ -357,13 +357,19 @@ fn real_singular_typed_paths_keep_their_existing_policy() {
         "x=single(zeros(2))\\single([1;2]);",
         "x=mldivide(single(zeros(2)),single([1;2]));",
         "x=mrdivide(single([1 2]),single(zeros(2)));",
-        "x=mldivide(int32(zeros(2)),int32([1;2]));",
     ] {
         assert!(
             engine.execute(code).unwrap_err().contains("singular"),
             "{code}"
         );
     }
+    // The function form matches the operator (review D10): integer linear algebra is refused, not singular.
+    assert!(
+        engine
+            .execute("x=mldivide(int32(zeros(2)),int32([1;2]));")
+            .unwrap_err()
+            .contains("integer data types")
+    );
     assert!(
         engine
             .execute("x=inv(single(eye(3)));")

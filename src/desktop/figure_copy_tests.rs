@@ -3,7 +3,11 @@ fn figure_copy_toolbar_and_dialog_preserve_view_data_and_document_state() {
     fn click_copy(app: &mut Workspace, ctx: &egui::Context, label: &str) -> egui::ColorImage {
         // A dialog's first frame only measures its content (egui sizing pass).
         frame(app, ctx, vec![]);
-        let output = frame(app, ctx, vec![]);
+        let mut output = frame(app, ctx, vec![]);
+        if !output.shapes.iter().any(|s| text_position(&s.shape, label).is_some()) {
+            click_label(app, ctx, "More");
+            output = frame(app, ctx, vec![]);
+        }
         let pos = output.shapes.iter().find_map(|s| text_position(&s.shape, label)).unwrap();
         let mut outputs = Vec::new();
         for pressed in [true, false] {
@@ -43,7 +47,7 @@ fn figure_copy_toolbar_and_dialog_preserve_view_data_and_document_state() {
     assert_eq!(app.figure_documents[&app.current_figure].dirty, document.dirty);
     assert_eq!(app.figure_documents[&app.current_figure].path, document.path);
     // Toolstrip copy uses the remembered dimensions and current figure.
-    app.layout.toolstrip = matrust::session::ToolstripTab::Plots;
+    app.set_mode(modes::Mode::Figures);
     let copied = click_copy(&mut app, &ctx, "Copy figure");
     assert_eq!(copied.size, [400, 300]);
     assert!(copied.pixels.iter().all(|p| p.a() == 255));

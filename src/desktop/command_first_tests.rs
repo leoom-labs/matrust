@@ -23,7 +23,7 @@ fn command_first_fresh_real_fields_fit_both_themes_and_retain_one_command_input(
                 let original = app.documents[0].id;
                 assert!(app.documents[0].path.is_none() && app.documents[0].text.is_empty());
                 assert!(!app.documents[0].dirty && app.central_command());
-                assert!(app.workspace_on_left());
+                assert!(!app.workspace_on_left());
                 for _ in 0..3 { frame_at(&mut app,&ctx,size,vec![]); }
                 let output = frame_at(&mut app,&ctx,size,vec![]);
                 assert_eq!(command_first_prompt_count(&output),1);
@@ -163,7 +163,8 @@ fn command_first_restore_reset_and_explicit_empty_editor_keep_session_work() {
     restored.layout.theme=Some(session::DesktopTheme::Dark);
     let text=restored.documents[restored.active].text.clone();
     restored.reset_layout(&ctx);
-    assert!(restored.central_command());assert!(restored.workspace_on_left());
+    assert!(restored.central_command());
+    assert!(!restored.workspace_on_left());
     assert!(restored.layout.center.unwrap().editor_revealed);
     assert_eq!(restored.layout.theme,Some(session::DesktopTheme::Dark));
     assert_eq!(restored.documents[restored.active].text,text);assert!(restored.documents[restored.active].dirty);
@@ -517,4 +518,20 @@ fn multiline_shift_arrows_on_edge_lines_do_not_recall_history() {
     multiline_select(&ctx,3,3);
     command_first_key(&mut app,&ctx,size,egui::Key::ArrowDown,egui::Modifiers::SHIFT);
     assert_eq!(app.command,"a\nb");
+}
+#[test]
+fn command_input_gets_focus_back_after_a_run_that_kept_it_disabled() {
+    let (ctx,mut app,size)=multiline_fixture();
+    let input=egui::Id::new("command_input");
+    multiline_type(&mut app,&ctx,size,"pause(0.3)");
+    command_first_key(&mut app,&ctx,size,egui::Key::Enter,egui::Modifiers::NONE);
+    frame_at(&mut app,&ctx,size,vec![]);
+    assert!(app.busy);
+    assert!(!ctx.memory(|m|m.has_focus(input)),"a disabled field cannot keep focus");
+    finish(&mut app);
+    frame_at(&mut app,&ctx,size,vec![]);
+    frame_at(&mut app,&ctx,size,vec![]);
+    assert!(ctx.memory(|m|m.has_focus(input)));
+    multiline_type(&mut app,&ctx,size,"disp(9)");
+    assert_eq!(app.command,"disp(9)");
 }

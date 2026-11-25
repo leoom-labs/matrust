@@ -18,7 +18,8 @@ fn setup() -> (Workspace, egui::Context, tempfile::TempDir) {
     app.run("keep=1:12;alias=keep;figure(1);plot([1 2 4]);title('Tile one');figure(2);semilogx([1 10 100],[3 7 2]);title('Tile two');figure(3);subplot(1,2,1);plot([2 4]);subplot(1,2,2);plot([3 1]);figure(4);plot([9 2 6]);title('Tile four');figure(1);".into());
     finish(&mut app);
     app.show_plot_pane();
-    app.layout.mode = crate::layout::PaneMode::Figure;
+    // Tiles live in Figures mode (the redesign's figure work area).
+    app.set_mode(super::super::modes::Mode::Figures);
     (app, ctx, dir)
 }
 fn frame(
@@ -82,14 +83,22 @@ fn label(
     rightmost: bool,
 ) -> egui::Pos2 {
     let mut found = Vec::new();
-    for clipped in frame(app, ctx, size, vec![], false).shapes {
+    let shapes = frame(app, ctx, size, vec![], false).shapes;
+    // Figures mode's Inspector repeats "Figure N" as a read-only title; the
+    // targets are the tiles, their menus (own clip, may overlap) and the navigator.
+    let inspector =
+        egui::containers::panel::PanelState::load(ctx, egui::Id::new("figure_inspector"))
+            .map(|state| state.outer_rect);
+    for clipped in shapes {
         let mut points = Vec::new();
         texts(&clipped.shape, text, &mut points);
         found.extend(
             points
                 .into_iter()
                 .filter(|(_, ink)| {
-                    clipped.clip_rect.contains_rect(*ink) && ctx.content_rect().contains_rect(*ink)
+                    clipped.clip_rect.contains_rect(*ink)
+                        && ctx.content_rect().contains_rect(*ink)
+                        && !inspector.is_some_and(|rect| rect.contains_rect(clipped.clip_rect))
                 })
                 .map(|(p, _)| p),
         );

@@ -5,6 +5,7 @@
 //! above PAR_REDUCE input elements. Every lane keeps its serial arithmetic
 //! order, so results never depend on the worker count.
 use super::{MAX_ELEMENTS, Matrix};
+use crate::broadcast2::Broadcast2;
 use crate::{ComplexMatrix, LogicalMatrix, Result, complex_matrix::Complex64, logical::ArrayRef};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -167,7 +168,15 @@ fn complex_better<const MAX: bool>(x: Complex64, x_abs: f64, y: Complex64, y_abs
     if x_abs != y_abs {
         return if MAX { x_abs > y_abs } else { x_abs < y_abs };
     }
-    let (x_angle, y_angle) = (x.im.atan2(x.re), y.im.atan2(y.re));
+    let angle = |z: Complex64| {
+        let a = z.im.atan2(z.re);
+        if a == -std::f64::consts::PI {
+            std::f64::consts::PI
+        } else {
+            a
+        }
+    };
+    let (x_angle, y_angle) = (angle(x), angle(y));
     if MAX {
         x_angle > y_angle
     } else {
@@ -374,37 +383,32 @@ impl ComplexMatrix {
         ))
     }
 
-    /// Elementwise complex min/max(A,B) with scalar expansion; NaN elements lose.
+    /// Elementwise complex min/max(A,B) with singleton expansion; NaN elements lose.
     pub fn extreme_pair(&self, other: &Self, kind: Extreme, cancel: &AtomicBool) -> Result<Self> {
-        check(cancel)?;
-        let (rows, cols) = if self.len() == 1 {
-            (other.rows(), other.cols())
-        } else if other.len() == 1 || (self.rows(), self.cols()) == (other.rows(), other.cols()) {
-            (self.rows(), self.cols())
-        } else {
-            return Err("Array dimensions must agree (only scalar expansion is supported)".into());
-        };
-        let len = Self::checked_len(rows, cols)?;
-        let at = |m: &Self, i: usize| m.data()[if m.len() == 1 { 0 } else { i }];
-        let mut out = Vec::new();
-        out.try_reserve_exact(len)
-            .map_err(|_| "Cannot allocate complex operation output".to_owned())?;
-        for first in (0..len).step_by(CHECK_EVERY) {
-            check(cancel)?;
-            out.extend((first..(first + CHECK_EVERY).min(len)).map(|i| {
-                let (a, b) = (at(self, i), at(other, i));
-                let (a_abs, b_abs) = (magnitude(a), magnitude(b));
-                let pick_b = !b_abs.is_nan()
-                    && (a_abs.is_nan()
-                        || match kind {
-                            Extreme::Min => complex_better::<false>(b, b_abs, a, a_abs),
-                            Extreme::Max => complex_better::<true>(b, b_abs, a, a_abs),
-                        });
-                if pick_b { b } else { a }
-            }));
-        }
-        Self::from_column_vec(rows, cols, out, cancel)
+        let shape = Broadcast2::new((self.rows(), self.cols()), (other.rows(), other.cols()))?;
+        Self::checked_len(shape.rows, shape.cols)?;
+        let out = shape.map(cancel, |i, j| {
+            let (a, b) = (self.data()[i], other.data()[j]);
+            if complex_pair_picks_second(kind, a, b) {
+                b
+            } else {
+                a
+            }
+        })?;
+        Self::from_column_vec(shape.rows, shape.cols, out, cancel)
     }
+}
+
+/// Elementwise complex min/max(a, b) rule (2-D and N-D): true when `b` wins.
+/// Order by abs, then angle; a NaN element loses; ties keep `a`.
+pub fn complex_pair_picks_second(kind: Extreme, a: Complex64, b: Complex64) -> bool {
+    let (a_abs, b_abs) = (magnitude(a), magnitude(b));
+    !b_abs.is_nan()
+        && (a_abs.is_nan()
+            || match kind {
+                Extreme::Min => complex_better::<false>(b, b_abs, a, a_abs),
+                Extreme::Max => complex_better::<true>(b, b_abs, a, a_abs),
+            })
 }
 
 /// any/all(A[,dim]) with a logical result. The default form maps 0x0 to a

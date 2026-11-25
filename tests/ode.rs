@@ -3,7 +3,9 @@
 //! call1; the error and semantics tests replay call2.
 use matrust::{Array, Engine, Matrix};
 
-const ODESET_FIELDS: [&str; 22] = [
+// MathWorks odeset reference, R2024b (MinStep introduced in R2024b):
+// https://www.mathworks.com/help/releases/R2024b/matlab/ref/odeset.html
+const ODESET_FIELDS: [&str; 23] = [
     "AbsTol",
     "BDF",
     "Events",
@@ -15,6 +17,7 @@ const ODESET_FIELDS: [&str; 22] = [
     "MassSingular",
     "MaxOrder",
     "MaxStep",
+    "MinStep",
     "NonNegative",
     "NormControl",
     "OutputFcn",
@@ -204,7 +207,7 @@ fn options_set_merge_and_get() {
     // Any struct with the option fields works as an option set; the default has fewer steps.
     assert_eq!(get(&e, "ya").data(), get(&e, "yb").data());
     assert!(get(&e, "ta").rows() > get(&e, "tc").rows());
-    assert_eq!((scalar("n"), scalar("em"), scalar("cls")), (22., 1., 1.));
+    assert_eq!((scalar("n"), scalar("em"), scalar("cls")), (23., 1., 1.));
     assert!(get(&e, "v").is_empty());
     let Some(Array::Struct(set)) = e.array("o") else {
         panic!("odeset returns a struct");
@@ -219,7 +222,7 @@ fn options_set_merge_and_get() {
     for (source, message) in [
         (
             "[t,y]=ode45('expdecay',[0 1],1,odeset('Events',1));",
-            "ode45 option 'Events' is not supported yet",
+            "The Events option must be a function handle.",
         ),
         (
             "[t,y]=ode23('expdecay',[0 1],1,odeset('Mass',1));",
@@ -292,7 +295,10 @@ fn argument_errors_name_the_problem() {
             "[t,y]=ode45('nosuch',[0 1],1);",
             "Undefined function 'nosuch'",
         ),
-        ("[t,y,te]=ode45('vdp',[0 1],[1;2]);", "at most two outputs"),
+        (
+            "[t,y,te,ye,ie,extra]=ode45('vdp',[0 1],[1;2]);",
+            "Too many output arguments.",
+        ),
         (
             "[t,y]=ode45('vdp',[0 1],[true;false]);",
             "Invalid type for argument Y. Type should be double.",
@@ -562,18 +568,14 @@ fn derivative_handle_errors_preserve_messages_and_matlab_size_diagnostics() {
 }
 
 #[test]
-fn odeset_keeps_event_handles_and_solvers_explicitly_reject_events() {
+fn odeset_keeps_event_handles_and_defers_output_validation() {
     let mut e = Engine::default();
     e.execute("ev=@(t,y) y; o=odeset('Events',ev); f=odeget(o,'Events'); v=f(0,7);")
         .unwrap();
     assert_eq!(get(&e, "v").data(), &[7.]);
     for solver in ["ode45", "ode23"] {
-        assert_eq!(
-            error(&mut e, &format!("[t,y]={solver}(@(t,y) -y,[0 1],1,o);")),
-            format!(
-                "{solver} option 'Events' is not supported yet; supported: AbsTol, InitialStep, MaxStep, Refine, RelTol"
-            )
-        );
+        let err = error(&mut e, &format!("[t,y]={solver}(@(t,y) -y,[0 1],1,o);"));
+        assert!(err.contains("output"), "{solver}: {err}");
     }
 }
 
@@ -790,4 +792,47 @@ fn help_examples_print_their_documented_output() {
     let y = get(&e, "y");
     assert!((y.data()[1] - 0.367879).abs() < 5e-7 && (y.data()[2] - 0.135335).abs() < 5e-7);
     assert!(matches!(e.array("opts"), Some(Array::Struct(_))));
+}
+
+#[test]
+fn corpus2_options_odeset_bare_merge_shadowing_and_solver() {
+    let mut e = Engine::default();
+    e.execute(
+        "opt = odeset; opt_p = odeset(); n_bare = numfields(opt); n_paren = numfields(opt_p);\
+         eq_fields = 1*isequal(fieldnames(opt), fieldnames(opt_p));\
+         em_bare = 1*isempty(opt.RelTol); min_empty = 1*isempty(opt.MinStep);\
+         min_named = odeset('minstep', 1e-10); min_value = min_named.MinStep;\
+         min_old = odeset(min_named, 'RelTol', 1e-5); min_kept = min_old.MinStep;\
+         min_overlay = odeset(min_named, struct('MINSTEP', 2e-10)); min_merged = min_overlay.MinStep;\
+         named = odeset('RelTol', 1e-6); named_unset = 1*isempty(named.AbsTol);\
+         o1 = odeset('RelTol', 1e-6, 'AbsTol', 1e-8);\
+         o2 = odeset('RelTol', 1e-4, 'Refine', 2);\
+         m = odeset(o1, o2);\
+         m_rt = m.RelTol; m_at = m.AbsTol; m_rf = m.Refine;\
+         o_empty = odeset('AbsTol', []);\
+         kept = odeset(o1, o_empty); kept_at = kept.AbsTol;\
+         cleared = odeset(o1, 'RelTol', []); cleared_rt = 1*isempty(cleared.RelTol);\
+         [t_def, y_def] = ode45(@(t,y) -y, [0 1], 1);\
+         [t_opt, y_opt] = ode45(@(t,y) -y, [0 1], 1, opt);\
+         same_sol = 1*isequal(y_def, y_opt);\
+         odeset = 42; shadowed = odeset;",
+    )
+    .unwrap();
+    let scalar = |n: &str| get(&e, n).data()[0];
+    assert_eq!(scalar("n_bare"), 23.);
+    assert_eq!(scalar("n_paren"), 23.);
+    assert_eq!(scalar("eq_fields"), 1.);
+    assert_eq!(scalar("em_bare"), 1.);
+    assert_eq!(scalar("min_empty"), 1.);
+    assert_eq!(scalar("min_value"), 1e-10);
+    assert_eq!(scalar("min_kept"), 1e-10);
+    assert_eq!(scalar("min_merged"), 2e-10);
+    assert_eq!(scalar("named_unset"), 1.);
+    assert_eq!(scalar("m_rt"), 1e-4);
+    assert_eq!(scalar("m_at"), 1e-8);
+    assert_eq!(scalar("m_rf"), 2.);
+    assert_eq!(scalar("kept_at"), 1e-8);
+    assert_eq!(scalar("cleared_rt"), 1.);
+    assert_eq!(scalar("same_sol"), 1.);
+    assert_eq!(scalar("shadowed"), 42.);
 }

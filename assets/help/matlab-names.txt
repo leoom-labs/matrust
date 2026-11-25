@@ -21,7 +21,6 @@ MaximizeCommandWindow
 MinimizeCommandWindow
 NET
 NaN
-NaT
 PutCharArray
 PutFullMatrix
 PutWorkspaceData
@@ -66,7 +65,6 @@ addedge
 addevent
 addmulti
 addnode
-addpath
 addpoints
 addpref
 addproperty
@@ -96,7 +94,6 @@ any
 appdesigner
 append
 area
-array2table
 arrayfun
 ascii
 asec
@@ -205,7 +202,6 @@ cast
 cat
 categorical
 categories
-caxis
 cd
 cdf2rdf
 cdfepoch
@@ -216,7 +212,6 @@ ceil
 cell
 cell2mat
 cell2struct
-cell2table
 celldisp
 cellfun
 cellplot
@@ -235,7 +230,6 @@ circumcenters
 cla
 clabel
 class
-classdef
 clc
 clear
 clearpoints
@@ -251,9 +245,7 @@ cmpermute
 cmunique
 colamd
 colon
-colorbar
 colordef
-colormap
 colormapeditor
 colperm
 comet
@@ -329,10 +321,7 @@ datenum
 dateshift
 datestr
 datetick
-datetime
 datevec
-day
-days
 dbclear
 dbcont
 dbdown
@@ -400,19 +389,15 @@ dlmwrite
 dmperm
 doc
 docsearch
-dos
 dot
 double
 dragrect
-drawnow
 dsearchn
-duration
 dynamicprops
 echo
 echodemo
 edgeAttachments
 edges
-edit
 eig
 eigs
 ellipj
@@ -442,7 +427,6 @@ evalc
 evalin
 eventlisteners
 events
-exceltime
 exist
 exit
 exp
@@ -471,7 +455,6 @@ fcontour
 feather
 featureEdges
 feof
-ferror
 feval
 fewerbins
 fft
@@ -559,7 +542,6 @@ gcf
 gcmr
 gco
 ge
-genpath
 genvarname
 get
 getAColParms
@@ -634,7 +616,6 @@ h5readatt
 h5write
 h5writeatt
 hadamard
-handle
 hankel
 hasFrame
 hasdata
@@ -658,7 +639,6 @@ hdfv
 hdfvf
 hdfvh
 hdfvs
-height
 help
 helpbrowser
 helpdesk
@@ -681,12 +661,9 @@ histcounts
 histcounts2
 histogram
 histogram2
-hms
 hold
 home
 horzcat
-hour
-hours
 hsv2rgb
 hypot
 i
@@ -698,7 +675,6 @@ ifft2
 ifftn
 ifftshift
 ilu
-im2double
 im2frame
 im2java
 imag
@@ -709,7 +685,6 @@ imapprox
 imfinfo
 imformats
 imgCompress
-import
 importdata
 imread
 imshow
@@ -719,7 +694,6 @@ inShape
 incenter
 incenters
 incidence
-ind2rgb
 ind2sub
 indegree
 inferiorto
@@ -783,11 +757,9 @@ ischar
 iscolumn
 iscom
 isdag
-isdatetime
 isdiag
 isdir
 isdst
-isduration
 isempty
 isenum
 isequal
@@ -798,7 +770,6 @@ isfield
 isfinite
 isfloat
 isgraphics
-ishandle
 ishermitian
 ishghandle
 ishold
@@ -816,7 +787,6 @@ ismembertol
 ismethod
 ismissing
 isnan
-isnat
 isnumeric
 isobject
 isocaps
@@ -827,20 +797,17 @@ isosurface
 ispc
 ispref
 isprime
-isprop
 isprotected
 isreal
 isrow
 isscalar
 issorted
 isspace
-issparse
 isstr
 isstrprop
 isstruct
 isstudent
 issymmetric
-istable
 istril
 istriu
 isundefined
@@ -859,7 +826,6 @@ javachk
 javaclasspath
 javarmpath
 join
-juliandate
 keyboard
 keys
 kron
@@ -935,24 +901,19 @@ memmapfile
 memory
 menu
 mergecats
-mesh
 meshc
 meshgrid
 meshz
 metaclass
-methods
 methodsview
 mex
 mexext
 mfilename
 mget
-milliseconds
 min
 minres
 minspantree
 minus
-minute
-minutes
 mislocked
 mkdir
 mkpp
@@ -963,7 +924,6 @@ mlock
 mmfileinfo
 mod
 mode
-month
 more
 morebins
 movAbsHDU
@@ -1033,7 +993,6 @@ numedges
 numel
 numnodes
 numpartitions
-nzmax
 ode113
 ode15i
 ode15s
@@ -1074,7 +1033,6 @@ parseSoapResponse
 partition
 pascal
 patch
-path
 path2rc
 pathsep
 pathtool
@@ -1100,7 +1058,6 @@ planerot
 play
 playblocking
 plot
-plot3
 plotbrowser
 plotedit
 plotmatrix
@@ -1120,12 +1077,10 @@ polyfit
 polyint
 polyval
 polyvalm
-posixtime
 pow2
 power
 ppval
 predecessors
-prefdir
 preferences
 preview
 primes
@@ -1188,7 +1143,6 @@ readRecord
 readall
 readasync
 readimage
-readtable
 real
 reallog
 realmax
@@ -1226,10 +1180,8 @@ resample
 reset
 reshape
 residue
-restoredefaultpath
 rethrow
 return
-rgb2gray
 rgb2hsv
 rgb2ind
 rgbplot
@@ -1240,7 +1192,6 @@ rmdir
 rmedge
 rmfield
 rmnode
-rmpath
 rmpref
 rng
 roots
@@ -1260,17 +1211,13 @@ save
 saveas
 savefig
 saveobj
-savepath
 scatter
-scatter3
 scatteredInterpolant
 schur
 scroll
 sec
 secd
 sech
-second
-seconds
 selectmoveresize
 semilogx
 semilogy
@@ -1297,7 +1244,6 @@ setstr
 settimeseriesnames
 setuniformtime
 setxor
-shading
 sheetnames
 shg
 shiftdim
@@ -1319,13 +1265,9 @@ sort
 sortrows
 sound
 soundsc
-spalloc
-sparse
 spaugment
 spconvert
-spdiags
 specular
-speye
 spfun
 sph2cart
 sphere
@@ -1334,7 +1276,6 @@ spline
 split
 splitEachLabel
 splitapply
-spones
 spparms
 sprand
 sprandn
@@ -1384,7 +1325,6 @@ strtok
 strtrim
 struct
 struct2cell
-struct2table
 structfun
 strvcat
 sub2ind
@@ -1398,14 +1338,10 @@ substruct
 subvolume
 successors
 sum
-summary
-superclasses
 superiorto
 support
 supportPackageInstaller
-surf
 surf2patch
-surface
 surfaceArea
 surfc
 surfl
@@ -1422,10 +1358,6 @@ symvar
 synchronize
 syntax
 system
-table
-table2array
-table2cell
-table2struct
 tabularTextDatastore
 tan
 tand
@@ -1438,7 +1370,6 @@ tempname
 testsuite
 tetramesh
 texlabel
-text
 textread
 textscan
 textwrap
@@ -1449,7 +1380,6 @@ throwAsCaller
 tic
 time
 timeit
-timeofday
 timer
 times
 timeseries
@@ -1494,6 +1424,7 @@ uigauge
 uigetdir
 uigetfile
 uigetpref
+uihtml
 uiimport
 uiknob
 uilabel
@@ -1532,7 +1463,6 @@ unicode2native
 union
 unique
 uniquetol
-unix
 unloadlibrary
 unmesh
 unmkpp
@@ -1547,7 +1477,6 @@ upper
 urlread
 urlwrite
 usejava
-userpath
 validateattributes
 validatestring
 values
@@ -1564,7 +1493,6 @@ version
 vertcat
 vertexAttachments
 vertexNormal
-view
 viewmtx
 visdiff
 volume
@@ -1578,7 +1506,6 @@ waitforbuttonpress
 warndlg
 warning
 waterfall
-web
 weboptions
 webread
 websave
@@ -1592,7 +1519,6 @@ while
 whitebg
 who
 whos
-width
 wilkinson
 winopen
 winqueryreg
@@ -1607,7 +1533,6 @@ writeImg
 writeKey
 writeKeyUnit
 writeVideo
-writetable
 xlabel
 xlim
 xlsfinfo
@@ -1617,15 +1542,9 @@ xmlread
 xmlwrite
 xor
 xslt
-year
-years
 ylabel
 ylim
-ymd
-yyaxis
 yyyymmdd
 zeros
 zip
-zlabel
-zlim
 zoom

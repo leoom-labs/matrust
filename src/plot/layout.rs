@@ -186,6 +186,108 @@ impl Position {
         l < or && ol < r && t < ob && ot < b
     }
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TileSpacing {
+    #[default]
+    Loose,
+    Compact,
+    Tight,
+    None,
+}
+impl TileSpacing {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Loose => "loose",
+            Self::Compact => "compact",
+            Self::Tight => "tight",
+            Self::None => "none",
+        }
+    }
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "loose" => Ok(Self::Loose),
+            "compact" => Ok(Self::Compact),
+            "tight" => Ok(Self::Tight),
+            "none" => Ok(Self::None),
+            _ => Err("TileSpacing must be loose, compact, tight or none".into()),
+        }
+    }
+    pub fn svg_margins(self) -> [f64; 4] {
+        match self {
+            Self::Loose => [70., 60., 40., 70.],
+            Self::Compact => [36., 32., 20., 36.],
+            Self::Tight => [16., 14., 8., 16.],
+            Self::None => [0., 0., 0., 0.],
+        }
+    }
+    pub fn desktop_inset(self) -> f32 {
+        match self {
+            Self::Loose => 4.,
+            Self::Compact => 2.,
+            Self::Tight => 1.,
+            Self::None => 0.,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum TilePadding {
+    #[default]
+    Loose,
+    Compact,
+    Tight,
+}
+impl TilePadding {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Loose => "loose",
+            Self::Compact => "compact",
+            Self::Tight => "tight",
+        }
+    }
+    pub fn parse(s: &str) -> Result<Self> {
+        match s.to_ascii_lowercase().as_str() {
+            "loose" => Ok(Self::Loose),
+            "compact" => Ok(Self::Compact),
+            "tight" => Ok(Self::Tight),
+            _ => Err("Padding must be loose, compact or tight".into()),
+        }
+    }
+    pub fn svg_margins(self) -> [f64; 4] {
+        match self {
+            Self::Loose => [70., 60., 40., 70.],
+            Self::Compact => [44., 38., 24., 44.],
+            Self::Tight => [24., 20., 12., 24.],
+        }
+    }
+    pub fn desktop_inset(self) -> f32 {
+        match self {
+            Self::Loose => 4.,
+            Self::Compact => 2.,
+            Self::Tight => 0.,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct AxisLink {
+    pub axes: Vec<crate::ObjectIdentity>,
+    pub x: bool,
+    pub y: bool,
+}
+impl AxisLink {
+    pub fn same_link(&self, other: &Self) -> bool {
+        self.x == other.x
+            && self.y == other.y
+            && self.axes.len() == other.axes.len()
+            && self
+                .axes
+                .iter()
+                .zip(&other.axes)
+                .all(|(a, b)| a.same_object(b))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Panel {
     pub position: Position,
@@ -197,11 +299,113 @@ pub struct Layout {
     pub others: Vec<Panel>,
     pub tiled: Option<super::TileGrid>,
     pub title: String,
+    pub title_style: super::LabelStyle,
+    pub subtitle: super::Subtitle,
+    pub xlabel: String,
+    pub ylabel: String,
+    pub label_styles: [super::LabelStyle; 2],
+    pub text_interpreters: [super::text_markup::Interpreter; 3],
+    pub text_lines: [Option<super::text_markup::TextSource>; 3],
+    pub tile_spacing: TileSpacing,
+    pub padding: TilePadding,
+    pub identity: crate::ObjectIdentity,
+    pub title_identity: crate::ObjectIdentity,
+    pub subtitle_identity: crate::ObjectIdentity,
+    pub xlabel_identity: crate::ObjectIdentity,
+    pub ylabel_identity: crate::ObjectIdentity,
+    pub linked_axes: Vec<AxisLink>,
 }
 impl Layout {
+    pub fn plain(active: Position) -> Self {
+        Self {
+            active,
+            others: Vec::new(),
+            tiled: None,
+            title: String::new(),
+            title_style: Default::default(),
+            subtitle: Default::default(),
+            xlabel: String::new(),
+            ylabel: String::new(),
+            label_styles: Default::default(),
+            text_interpreters: Default::default(),
+            text_lines: Default::default(),
+            tile_spacing: TileSpacing::default(),
+            padding: TilePadding::default(),
+            identity: crate::ObjectIdentity::default(),
+            title_identity: crate::ObjectIdentity::default(),
+            subtitle_identity: crate::ObjectIdentity::default(),
+            xlabel_identity: crate::ObjectIdentity::default(),
+            ylabel_identity: crate::ObjectIdentity::default(),
+            linked_axes: Vec::new(),
+        }
+    }
+    /// Margins `[left, top, right, bottom]` in tile-local SVG units when
+    /// `TileSpacing` or `Padding` differs from the `loose` default.
+    pub fn tiled_svg_margins(&self, position: Position) -> Option<[f64; 4]> {
+        let grid = self.tiled?;
+        if position.custom.is_some()
+            || (self.tile_spacing == TileSpacing::Loose && self.padding == TilePadding::Loose)
+        {
+            return None;
+        }
+        let outer = self.padding.svg_margins();
+        let inner = self.tile_spacing.svg_margins();
+        Some([
+            if position.left == 0 {
+                outer[0]
+            } else {
+                inner[0]
+            },
+            if position.top == 0 {
+                outer[1]
+            } else {
+                inner[1]
+            },
+            if usize::from(position.right) == grid.columns {
+                outer[2]
+            } else {
+                inner[2]
+            },
+            if usize::from(position.bottom) == grid.rows {
+                outer[3]
+            } else {
+                inner[3]
+            },
+        ])
+    }
+    /// Per-edge desktop insets `[left, top, right, bottom]` in points for a tiled cell.
+    pub fn tiled_desktop_insets(&self, position: Position) -> [f32; 4] {
+        let Some(grid) = self.tiled else {
+            return [4.; 4];
+        };
+        if position.custom.is_some() {
+            return [4.; 4];
+        }
+        let outer = self.padding.desktop_inset();
+        let inner = self.tile_spacing.desktop_inset();
+        [
+            if position.left == 0 { outer } else { inner },
+            if position.top == 0 { outer } else { inner },
+            if usize::from(position.right) == grid.columns {
+                outer
+            } else {
+                inner
+            },
+            if usize::from(position.bottom) == grid.rows {
+                outer
+            } else {
+                inner
+            },
+        ]
+    }
     pub fn validate(&self) -> Result<()> {
-        if self.title.len() > 4096 {
-            return Err("Shared figure title exceeds 4096 bytes".into());
+        self.title_style.validate()?;
+        for style in self.label_styles {
+            style.validate()?;
+        }
+        self.subtitle.validate()?;
+        if self.title.len() > 4096 || self.xlabel.len() > 4096 || self.ylabel.len() > 4096 {
+            return Err("Shared figure label exceeds 4096 bytes".into());
         }
         if let Some(grid) = self.tiled {
             grid.validate()?;
@@ -424,12 +628,7 @@ impl Figure {
         }
         let active = Position::from_normalized(values)?;
         let positions = self.normalized_axes_positions();
-        let mut layout = self.layout.clone().unwrap_or(Layout {
-            active,
-            others: Vec::new(),
-            tiled: None,
-            title: String::new(),
-        });
+        let mut layout = self.layout.clone().unwrap_or_else(|| Layout::plain(active));
         layout.active = active;
         layout.tiled = None;
         for panel in &mut layout.others {
@@ -474,6 +673,24 @@ impl Figure {
                 .map(|p| &mut p.axes),
         )
     }
+    pub(crate) fn move_axes_to_subplot(&mut self, source: Position, slot: Position) -> Result<()> {
+        if !self.all_axes().any(|(position, _)| position == source) {
+            return Err("Subplot axes is no longer live".into());
+        }
+        if self.active_position() != source {
+            self.select_subplot(source, false)?;
+        }
+        if source != slot {
+            let layout = self.layout.get_or_insert_with(|| Layout::plain(slot));
+            layout.active = slot;
+            layout.tiled = None;
+            layout.others.retain(|panel| !panel.position.overlaps(slot));
+            self.axes.placement = None;
+            self.prune_linked_axes();
+        }
+        Ok(())
+    }
+
     pub fn select_subplot(&mut self, position: Position, replace: bool) -> Result<()> {
         position.validate()?;
         self.validate()?;
@@ -490,6 +707,7 @@ impl Figure {
             if !empty && layout.active == position {
                 if replace {
                     self.axes = fresh_axes();
+                    self.prune_linked_axes();
                 }
                 return Ok(());
             }
@@ -502,6 +720,9 @@ impl Figure {
                     self.axes = fresh_axes();
                 }
                 layout.others.sort_by_key(|p| p.position);
+                if replace {
+                    self.prune_linked_axes();
+                }
                 return Ok(());
             }
             let retained = layout
@@ -514,11 +735,17 @@ impl Figure {
                 return Err("At most 16 subplot axes per figure".into());
             }
         }
-        let title = self
+        let previous = std::mem::replace(&mut self.axes, fresh_axes());
+        let mut next_layout = self
             .layout
             .as_ref()
-            .map_or_else(String::new, |l| l.title.clone());
-        let previous = std::mem::replace(&mut self.axes, fresh_axes());
+            .map(|l| Layout {
+                active: position,
+                others: Vec::new(),
+                tiled: None,
+                ..l.clone()
+            })
+            .unwrap_or_else(|| Layout::plain(position));
         let mut panels = if let Some(mut layout) = self.layout.take() {
             if !empty {
                 layout.others.push(Panel {
@@ -538,12 +765,172 @@ impl Figure {
         }
         panels.retain(|p| !p.position.overlaps(position));
         panels.sort_by_key(|p| p.position);
-        self.layout = Some(Layout {
-            active: position,
-            others: panels,
-            tiled: None,
-            title,
-        });
+        next_layout.others = panels;
+        self.layout = Some(next_layout);
+        self.prune_linked_axes();
         Ok(())
+    }
+
+    pub fn prune_linked_axes(&mut self) {
+        let live: Vec<crate::ObjectIdentity> =
+            self.all_axes().map(|(_, a)| a.identity.clone()).collect();
+        if let Some(layout) = &mut self.layout {
+            for link in &mut layout.linked_axes {
+                link.axes
+                    .retain(|id| live.iter().any(|live_id| live_id.same_object(id)));
+            }
+            layout
+                .linked_axes
+                .retain(|link| link.axes.len() >= 2 && (link.x || link.y));
+        }
+    }
+
+    pub fn set_linked_axes(&mut self, axes_ids: &[crate::ObjectIdentity], x: bool, y: bool) {
+        self.prune_linked_axes();
+        let mut limits: Option<([f64; 2], [f64; 2])> = None;
+        for (_, axes) in self
+            .all_axes()
+            .filter(|(_, a)| axes_ids.iter().any(|id| id.same_object(&a.identity)))
+        {
+            let (xb, yb) = axes.bounds();
+            let (xb, yb) = (axes.xlim.unwrap_or(xb), axes.ylim.unwrap_or(yb));
+            limits = Some(match limits {
+                None => (xb, yb),
+                Some((a, b)) => (
+                    [a[0].min(xb[0]), a[1].max(xb[1])],
+                    [b[0].min(yb[0]), b[1].max(yb[1])],
+                ),
+            });
+        }
+        let Some(layout) = &mut self.layout else {
+            return;
+        };
+        // Remove only the dimensions being relinked; 'off' removes both.
+        let (remove_x, remove_y) = if !x && !y { (true, true) } else { (x, y) };
+        let mut remaining = Vec::new();
+        for link in layout.linked_axes.drain(..) {
+            for (dimension, remove) in [(true, remove_x), (false, remove_y)] {
+                if (dimension && !link.x) || (!dimension && !link.y) {
+                    continue;
+                }
+                let mut ids = link.axes.clone();
+                if remove {
+                    ids.retain(|id| !axes_ids.iter().any(|target| target.same_object(id)));
+                }
+                if ids.len() >= 2 {
+                    remaining.push(AxisLink {
+                        axes: ids,
+                        x: dimension,
+                        y: !dimension,
+                    });
+                }
+            }
+        }
+        layout.linked_axes = remaining;
+        if (!x && !y) || axes_ids.len() < 2 {
+            return;
+        }
+        let mut unique = Vec::with_capacity(axes_ids.len());
+        for id in axes_ids {
+            if !unique
+                .iter()
+                .any(|u: &crate::ObjectIdentity| u.same_object(id))
+            {
+                unique.push(id.clone());
+            }
+        }
+        if unique.len() >= 2 {
+            layout.linked_axes.push(AxisLink {
+                axes: unique.clone(),
+                x,
+                y,
+            });
+            if let Some((xb, yb)) = limits {
+                let apply = |a: &mut Axes| {
+                    if unique.iter().any(|id| id.same_object(&a.identity)) {
+                        if x {
+                            a.xlim = Some(xb);
+                        }
+                        if y {
+                            a.ylim = Some(yb);
+                        }
+                    }
+                };
+                apply(&mut self.axes);
+                if let Some(layout) = &mut self.layout {
+                    for panel in &mut layout.others {
+                        apply(&mut panel.axes);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn sync_linked_axes(
+        &mut self,
+        source_id: &crate::ObjectIdentity,
+        sync_x: bool,
+        sync_y: bool,
+    ) {
+        if !sync_x && !sync_y {
+            return;
+        }
+        let Some(layout) = &self.layout else {
+            return;
+        };
+        let mut target_x_ids: Vec<crate::ObjectIdentity> = Vec::new();
+        let mut target_y_ids: Vec<crate::ObjectIdentity> = Vec::new();
+        for link in &layout.linked_axes {
+            if link.axes.iter().any(|id| id.same_object(source_id)) {
+                for id in &link.axes {
+                    if !id.same_object(source_id) {
+                        if sync_x && link.x {
+                            target_x_ids.push(id.clone());
+                        }
+                        if sync_y && link.y {
+                            target_y_ids.push(id.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if target_x_ids.is_empty() && target_y_ids.is_empty() {
+            return;
+        }
+        let Some((_, source)) = self
+            .all_axes()
+            .find(|(_, a)| a.identity.same_object(source_id))
+        else {
+            return;
+        };
+        let (xb, yb) = source.bounds();
+        let new_xlim = if sync_x {
+            Some(source.xlim.unwrap_or(xb))
+        } else {
+            None
+        };
+        let new_ylim = if sync_y {
+            Some(source.ylim.unwrap_or(yb))
+        } else {
+            None
+        };
+        let apply = |axes: &mut Axes| {
+            if let Some(xl) = new_xlim
+                && target_x_ids.iter().any(|id| id.same_object(&axes.identity))
+            {
+                axes.xlim = Some(xl);
+            }
+            if let Some(yl) = new_ylim
+                && target_y_ids.iter().any(|id| id.same_object(&axes.identity))
+            {
+                axes.ylim = Some(yl);
+            }
+        };
+        apply(&mut self.axes);
+        if let Some(layout) = &mut self.layout {
+            for panel in &mut layout.others {
+                apply(&mut panel.axes);
+            }
+        }
     }
 }

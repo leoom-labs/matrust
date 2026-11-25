@@ -12,12 +12,12 @@ fn tool_tab_texts(shape: &egui::epaint::Shape, label: &str, found: &mut Vec<egui
 fn tool_tab_label(output: &egui::FullOutput, label: &str) -> Option<egui::Pos2> {
     let mut found = Vec::new();
     output.shapes.iter().for_each(|s| tool_tab_texts(&s.shape, label, &mut found));
-    found.into_iter().max_by(|a, b| a.y.total_cmp(&b.y))
+    found.into_iter().filter(|p| p.x < 240. && p.y > 76.).min_by(|a, b| a.y.total_cmp(&b.y))
 }
 fn tool_tab_on_row(output: &egui::FullOutput, label: &str, row: egui::Pos2) -> Option<egui::Pos2> {
     let mut found = Vec::new();
     output.shapes.iter().for_each(|s| tool_tab_texts(&s.shape, label, &mut found));
-    found.into_iter().find(|p| (p.y - row.y).abs() < 1.)
+    found.into_iter().find(|p| p.y < row.y)
 }
 fn tool_tab_close(output: &egui::FullOutput, tab: egui::Pos2) -> egui::Pos2 {
     let mut found = Vec::new();
@@ -53,7 +53,7 @@ fn apps_toolstrip_opens_tools_as_selected_tabs_without_windows() {
     let designer = app.toolkits.designer_region().expect("designer fills the main area");
     assert!(app.toolkits.model_document_region().is_none());
     let tab = tool_tab_label(&output, "Filter Designer").unwrap();
-    assert!(tab.y < designer.top(), "tab strip above the tool content");
+    assert!(tab.x < designer.left(), "navigator beside the tool content");
     click_label_at(&mut app, &ctx, size, "Block Simulation");
     assert_eq!(app.toolkits.tabs().collect::<Vec<_>>(), [Tool::Designer, Tool::Model]);
     assert_eq!(app.toolkits.selected_tool(), Some(Tool::Model));
@@ -66,9 +66,9 @@ fn apps_toolstrip_opens_tools_as_selected_tabs_without_windows() {
     assert!(no_tool_windows(&ctx));
     let designer_tab = tool_tab_label(&output, "Filter Designer").unwrap();
     let model_tab = tool_tab_label(&output, "Block Simulation").unwrap();
-    assert!(designer_tab.x < model_tab.x && (designer_tab.y - model_tab.y).abs() < 1.);
+    assert!(designer_tab.y < model_tab.y);
     let command = tool_tab_on_row(&output, "Command", designer_tab).expect("Command tab");
-    assert!(command.x < designer_tab.x);
+    assert!(command.y < designer_tab.y);
     tool_tab_click(&mut app, &ctx, size, designer_tab);
     assert_eq!(app.toolkits.selected_tool(), Some(Tool::Designer));
     frame_at(&mut app, &ctx, size, vec![]);
@@ -126,6 +126,12 @@ fn add_to_block_model_selects_the_block_simulation_tab() {
     let mut app = Workspace::with_context(ctx.clone(), true);
     app.toolkits.open_tool(Tool::Designer);
     let blocks = app.toolkits.model.nodes.len();
+    // The button waits for the background preview; under load it takes a while.
+    let start = std::time::Instant::now();
+    while !app.toolkits.preview_done() && start.elapsed() < std::time::Duration::from_secs(30) {
+        frame_at(&mut app, &ctx, size, vec![]);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     click_label_at(&mut app, &ctx, size, "Add to block model");
     finish(&mut app);
     frame_at(&mut app, &ctx, size, vec![]);
@@ -165,7 +171,7 @@ fn layout_modes_and_reset_keep_tools_open_and_return_to_documents() {
     app.select_tool_tab(Tool::Designer);
     let output = frame_at(&mut app, &ctx, size, vec![]);
     assert!(app.toolkits.designer_region().is_some() && no_tool_windows(&ctx));
-    let documents = tool_tab_label(&output, "Editor and figure").expect("legacy documents tab");
+    let documents = output.shapes.iter().find_map(|s| text_position(&s.shape, "Editor")).expect("Editor mode");
     tool_tab_click(&mut app, &ctx, size, documents);
     assert!(app.toolkits.selected_tool().is_none());
     assert!(app.toolkits.designer_open && app.toolkits.model_open);

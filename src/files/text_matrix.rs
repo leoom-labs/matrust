@@ -23,23 +23,26 @@ pub fn write_matrix_text(
     cancel: &AtomicBool,
 ) -> Result<()> {
     check_cancel(cancel)?;
-    if !matches!(delimiter, ',' | ';' | '\t') {
-        return Err("Numeric text delimiter must be comma, semicolon or tab".into());
+    if !matches!(delimiter, ',' | ';' | '\t' | ' ') {
+        return Err("Numeric text delimiter must be comma, semicolon, tab or space".into());
     }
     let rows = if array.is_empty() { 0 } else { array.rows() };
     match array {
-        Array::Character(_)
+        Array::Str(_)
+        | Array::Character(_)
         | Array::Cell(_)
         | Array::Graphics(_)
         | Array::Struct(_)
         | Array::Typed(_)
-        | Array::Handle(_) => {
+        | Array::Handle(_)
+        | Array::Datetime(_) | Array::Duration(_) | Array::Table(_) | Array::Sparse(_) => {
             Err("Numeric text export does not support character, cell, struct, function handle or graphics handle arrays".into())
         }
         Array::Complex(_) => Err(
             "Complex numeric text export is not implemented; use explicit component variables"
                 .into(),
         ),
+        Array::Categorical(_) => Err("categorical is not supported by numeric text export yet".into()),
         Array::Numeric(a) => write_values(
             path,
             rows,

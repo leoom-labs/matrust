@@ -18,9 +18,22 @@ pub(super) fn format_short(value: f64) -> String {
 }
 
 /// Bounded VALUE column text: a scalar's value, a vector of up to ten
-/// elements in `format short`, otherwise `<rows>x<cols> <class>`. Reads at
+/// elements in `format short` (integer and single values add their class),
+/// otherwise `<rows>x<cols> <class>`. Reads at
 /// most ten elements or 32 characters.
 pub(super) fn value_preview(value: &matrust::Array) -> String {
+    if value.is_nd() {
+        let size = value
+            .dims()
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join("x");
+        return format!(
+            "{size} {}\nN-D array: use indexing, e.g. A(:,:,1)",
+            workspace_type_label(value)
+        );
+    }
     // A column vector reads as MATLAB writes it: [1;2;3].
     let separator = if value.cols() == 1 { ";" } else { " " };
     let list = |items: &mut dyn Iterator<Item = String>| {
@@ -29,6 +42,7 @@ pub(super) fn value_preview(value: &matrust::Array) -> String {
     let vector =
         (value.rows() == 1 || value.cols() == 1) && (2..=VECTOR_ELEMENTS).contains(&value.len());
     match value {
+        matrust::Array::Str(s) if s.len() == 1 || vector => s.preview(10),
         matrust::Array::Numeric(m) if m.len() == 1 => format_short(m.data()[0]),
         matrust::Array::Numeric(m) if vector => {
             list(&mut m.data().iter().map(|v| format_short(*v)))
@@ -41,11 +55,13 @@ pub(super) fn value_preview(value: &matrust::Array) -> String {
                     format_short(t.real(i))
                 }
             };
-            if t.len() == 1 {
+            // int8/single values look like doubles; the class says which.
+            let shown = if t.len() == 1 {
                 one(0)
             } else {
                 list(&mut (0..t.len()).map(one))
-            }
+            };
+            format!("{shown} {}", workspace_type_label(value))
         }
         matrust::Array::Logical(m) if m.len() == 1 => (m.data()[0] != 0).to_string(),
         matrust::Array::Logical(m) if vector => {
@@ -80,6 +96,18 @@ pub(super) fn value_preview(value: &matrust::Array) -> String {
 
 /// Row tooltip: full name, class, size and the untruncated value preview.
 pub(super) fn hover_text(name: &str, value: &matrust::Array) -> String {
+    if value.is_nd() {
+        let size = value
+            .dims()
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join("x");
+        return format!(
+            "{name}\n{size} {}\nN-D array: use indexing, e.g. {name}(:,:,1)",
+            workspace_type_label(value)
+        );
+    }
     format!(
         "{name}\n{}, {} x {}\n{}",
         workspace_type_label(value),
@@ -251,19 +279,23 @@ impl Layout {
             let fill = if selected {
                 p.accent_soft
             } else if response.hovered() {
-                p.surface_sunken
+                p.canvas
             } else {
                 Color32::TRANSPARENT
             };
             ui.painter().rect_filled(rect, 0., fill);
-            ui.painter().line_segment(
-                [rect.left_top(), rect.right_top()],
-                egui::Stroke::new(1., p.border),
-            );
+            if selected {
+                // Selected: selection tint and a 2 px accent bar at the left.
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(rect.min, egui::vec2(2., rect.height())),
+                    0.,
+                    p.accent,
+                );
+            }
             panels::focus_ring(ui, &response);
             let [name_rect, value_rect, size_rect] = self.columns(rect);
             let body = ui.text_style_height(&egui::TextStyle::Body);
-            let name_color = if selected { p.accent_text } else { p.text };
+            let name_color = p.text;
             // A large dimension label may exceed the usual SIZE column. Drop
             // that chip before it can take VALUE below its minimum.
             let chip_fits = self.show_size && {

@@ -28,12 +28,6 @@ enum CxlNorm {
     Fro,
 }
 
-/// MATLAB `eps(x)`.
-fn cxl_eps(x: f64) -> f64 {
-    let x = x.abs();
-    f64::from_bits(x.to_bits() + 1) - x
-}
-
 fn cxl_abs(z: Complex64) -> f64 {
     libm::hypot(z.re, z.im)
 }
@@ -220,9 +214,6 @@ impl Engine {
         if args.is_empty() || args.len() > 2 {
             return Err("svd expects 1 or 2 arguments".into());
         }
-        if count == 2 || count > 3 {
-            return Err(format!("svd does not support {count} outputs; use 1 or 3"));
-        }
         let a = self.cxl_svd_dense("svd", &args[0])?;
         if !cxl_finite(&a) {
             return Err(CXL_SVD_NONFINITE.into());
@@ -297,8 +288,9 @@ impl Engine {
         }
         let svd = self.cxl_svd(&a, false)?;
         let largest = svd.singular_values.iter().copied().fold(0., f64::max);
-        let tolerance =
-            tolerance.unwrap_or_else(|| a.nrows().max(a.ncols()) as f64 * cxl_eps(largest));
+        let tolerance = tolerance.unwrap_or_else(|| {
+            a.nrows().max(a.ncols()) as f64 * super::linear_algebra::eps_of(largest)
+        });
         let rank = svd
             .singular_values
             .iter()
@@ -458,7 +450,7 @@ impl Engine {
         let svd = self.cxl_svd(a, true)?;
         let s = &svd.singular_values;
         let smax = s.iter().copied().fold(0.0, f64::max);
-        let tol = tol.unwrap_or(m.max(n) as f64 * cxl_eps(smax));
+        let tol = tol.unwrap_or(m.max(n) as f64 * super::linear_algebra::eps_of(smax));
         let (u, vt) = (svd.u.as_ref().unwrap(), svd.v_t.as_ref().unwrap());
         let r = s.iter().filter(|&&x| x > tol).count();
         if r == 0 {

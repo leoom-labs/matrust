@@ -318,8 +318,8 @@ fn rearranging_builtins_keep_character_class() {
         ("transpose('abc')", (3, 1), &[97, 98, 99]),
         ("ctranspose(m)", (2, 2), &[97, 98, 99, 100]),
         ("rot90(m)", (2, 2), &[98, 97, 100, 99]),
-        // Reference behavior: a scalar shift without dim moves rows, so a row is unchanged.
-        ("circshift(s,1)", (1, 4), &[97, 98, 99, 100]),
+        // A scalar shift without dim uses the first non-singleton dimension.
+        ("circshift(s,1)", (1, 4), &[100, 97, 98, 99]),
         ("circshift(s,1,2)", (1, 4), &[100, 97, 98, 99]),
         ("circshift(m,1)", (2, 2), &[99, 97, 100, 98]),
         ("reshape(s,2,2)", (2, 2), &[97, 98, 99, 100]),
@@ -344,25 +344,29 @@ fn rearranging_builtins_keep_character_class() {
 }
 
 #[test]
-fn double_quoted_literals_keep_their_earlier_behaviour() {
-    // Pinned to main 756505b: double-quoted text is not a char array here.
+fn double_quoted_literals_have_string_semantics_and_keep_legacy_numeric_options() {
     let mut engine = run("a=max(\"abc\");");
     numeric(&engine, "a", 1, 1, &[99.]);
-    for (source, message) in [
-        ("b=size(\"abc\");", "Expected an array"),
-        ("b=\"abc\"==\"abd\";", "Expected an array"),
-        ("b=double(\"abc\");", "Expected a numeric or logical value"),
-        ("b=[\"ab\" 'c'];", "Expected an array"),
+    engine
+        .execute(
+            r#"sz=size("abc"); eq="abc"=="abd"; d=double("abc"); mixed=["ab" 'c']; sum="abc"+0;"#,
+        )
+        .unwrap();
+    numeric(&engine, "sz", 1, 2, &[1., 1.]);
+    assert_eq!(engine.logical_variables["eq"].data(), &[0]);
+    assert!(engine.variables["d"].data()[0].is_nan());
+    assert_eq!(engine.array("mixed").unwrap().class(), "string");
+    assert_eq!(
         (
-            "b=\"abc\"+0;",
-            "Arithmetic requires numeric or logical operands",
+            engine.array("mixed").unwrap().rows(),
+            engine.array("mixed").unwrap().cols()
         ),
-        ("b=abs(\"a\");", "abs requires numeric arguments"),
-    ] {
-        let error = engine.execute(source).unwrap_err();
-        assert!(error.contains(message), "{source}: {error}");
-        assert!(engine.array("b").is_none(), "{source}");
-    }
+        (1, 2)
+    );
+    assert_eq!(engine.array("sum").unwrap().preview(1), "\"abc0\"");
+    let error = engine.execute("b=abs(\"a\");").unwrap_err();
+    assert!(error.contains("abs requires numeric arguments"), "{error}");
+    assert!(engine.array("b").is_none());
 }
 
 #[test]
@@ -396,10 +400,8 @@ fn indexed_char_writes_follow_the_destination_class() {
         panic!("complex z");
     };
     assert_eq!((z.data()[0].re, z.data()[0].im), (97., 0.));
-    // MATLAB would create a char row; that growth is not implemented, so it
-    // must fail rather than silently create a double.
-    assert!(engine.execute("w(2)='a';").is_err());
-    assert!(engine.array("w").is_none());
+    engine.execute("w(2)='a';").unwrap();
+    character(&engine, "w", 1, 2, &[0, 97]);
 }
 
 #[test]
@@ -408,4 +410,46 @@ fn fractional_double_concatenated_with_char_truncates() {
     let mut engine = Engine::default();
     engine.execute("a=[65.5 'a']; d=double(a);").unwrap();
     numeric(&engine, "d", 1, 2, &[65., 97.]);
+}
+
+#[test]
+fn fix14_circshift_first_nonsingleton() {
+    let e = run(
+        "a=circshift('abcd',1); b=circshift('abcd',-1); c=circshift('abcd',5); d=circshift('abcd',1,1); e=circshift(['ab';'cd'],1); f=circshift('abcd',[0 1]); g=circshift(1:4,1); h=circshift([1;2;3;4],-1); j=circshift([1 2;3 4],1,2); q=circshift([true false false],1); z=circshift([1+1i 2+2i 3+3i],1); cellrow=circshift({1,2,3},1); cellvalues=[cellrow{:}]; str=circshift([\"a\" \"b\" \"c\"],1); s1=char(str(1)); s2=char(str(2)); s3=char(str(3));",
+    );
+    character(&e, "a", 1, 4, &[100, 97, 98, 99]);
+    character(&e, "b", 1, 4, &[98, 99, 100, 97]);
+    character(&e, "c", 1, 4, &[100, 97, 98, 99]);
+    character(&e, "d", 1, 4, &[97, 98, 99, 100]);
+    character(&e, "e", 2, 2, &[99, 97, 100, 98]);
+    character(&e, "f", 1, 4, &[100, 97, 98, 99]);
+    numeric(&e, "g", 1, 4, &[4., 1., 2., 3.]);
+    numeric(&e, "h", 4, 1, &[2., 3., 4., 1.]);
+    numeric(&e, "j", 2, 2, &[2., 4., 1., 3.]);
+    assert_eq!(e.logical_variables["q"].data(), &[0, 1, 0]);
+    let z = &e.complex_variables["z"];
+    assert_eq!(
+        z.data().iter().map(|x| x.re).collect::<Vec<_>>(),
+        vec![3., 1., 2.]
+    );
+    numeric(&e, "cellvalues", 1, 3, &[3., 1., 2.]);
+    character(&e, "s1", 1, 1, &[99]);
+    character(&e, "s2", 1, 1, &[97]);
+    character(&e, "s3", 1, 1, &[98]);
+}
+
+#[test]
+fn fix14e_circshift_nd_default_dimension() {
+    let e = run(
+        "a=circshift(reshape(1:3,1,1,3),1); b=circshift(reshape(1:8,2,2,2),[0 0 1]); c=circshift(reshape(1:3,1,1,3),-1,3);",
+    );
+    let a = &e.variables["a"];
+    assert_eq!(a.dims().as_ref(), &[1, 1, 3]);
+    assert_eq!(a.data(), &[3., 1., 2.]);
+    let b = &e.variables["b"];
+    assert_eq!(b.dims().as_ref(), &[2, 2, 2]);
+    assert_eq!(b.data(), &[5., 6., 7., 8., 1., 2., 3., 4.]);
+    let c = &e.variables["c"];
+    assert_eq!(c.dims().as_ref(), &[1, 1, 3]);
+    assert_eq!(c.data(), &[2., 3., 1.]);
 }

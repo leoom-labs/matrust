@@ -1,8 +1,11 @@
 //! Built-in functions for integer and single values: constructors, class
 //! queries, bit operations, and the class rules of the everyday functions
 //! (which keep the class, which return double, which reject integers).
+use super::logical_values::broadcast_error;
 use super::typed_values::is_typed;
 use super::{Engine, Execution, Value};
+use crate::broadcast2::Broadcast2;
+use crate::syntax::Token;
 use crate::typed_array::{NumericClass, TypedArray, divide_round};
 use crate::{Array, LogicalMatrix, Matrix, Result};
 
@@ -26,9 +29,14 @@ const OWN: &[&str] = &[
     "typecast",
     "zeros",
     "ones",
+    "nan",
+    "NaN",
+    "inf",
+    "Inf",
     "eye",
     "rand",
     "randn",
+    "randi",
     "realmax",
     "realmin",
     "eps",
@@ -50,8 +58,7 @@ const FLOAT_ONLY: &[&str] = &[
 /// Functions whose integer result keeps the integer class.
 const INT_KEEP: &[&str] = &[
     "abs", "sign", "floor", "ceil", "round", "fix", "max", "min", "cumsum", "cumprod", "diff",
-    "mod", "rem", "sort", "unique", "real", "conj", "median", "mode", "uminus", "uplus", "plus",
-    "minus", "times", "dot",
+    "mod", "rem", "sort", "unique", "real", "conj", "median", "mode", "dot",
 ];
 
 /// Functions whose single result stays single (computed in double, rounded).
@@ -61,9 +68,8 @@ const SINGLE_KEEP: &[&str] = &[
     "sind", "cosd", "tand", "inv", "pinv", "expm", "sqrtm", "gamma", "erf", "erfc", "norm",
     "hypot", "nthroot", "abs", "sign", "floor", "ceil", "round", "fix", "max", "min", "sum",
     "prod", "cumsum", "cumprod", "diff", "mean", "median", "mode", "std", "var", "mod", "rem",
-    "linspace", "sort", "unique", "real", "conj", "cross", "dot", "trace", "power", "plus",
-    "minus", "times", "uminus", "uplus", "polyval", "interp1", "trapz", "cumtrapz", "fft", "ifft",
-    "erfcx",
+    "linspace", "sort", "unique", "real", "conj", "cross", "dot", "trace", "uminus", "uplus",
+    "polyval", "interp1", "trapz", "cumtrapz", "fft", "ifft", "erfcx",
 ];
 
 /// Functions that only move elements: they run on positions, so every value
@@ -86,6 +92,9 @@ const PERMUTE: &[&str] = &[
 
 /// Functions that receive integer and single values unchanged.
 const KEEP_ARGS: &[&str] = &[
+    // Rejects single and integer matrices itself instead of storing a double copy.
+    "decomposition",
+    "colon",
     "size",
     "numel",
     "length",
@@ -121,7 +130,154 @@ const KEEP_ARGS: &[&str] = &[
     "vertcat",
     "cat",
     "isa",
+    "vecnorm",
+    "eq",
+    "ne",
+    "lt",
+    "gt",
+    "le",
+    "ge",
+    "and",
+    "or",
+    "xor",
 ];
+
+fn check_integer_operands(args: &[Value], class: NumericClass) -> Result<()> {
+    if args.iter().any(|v| match v {
+        Value::Container(Array::Typed(t)) => t.class() != class,
+        Value::Matrix(m) => m.len() != 1,
+        _ => true,
+    }) {
+        return Err(
+            "Integers can only be combined with integers of the same class, or scalar doubles."
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+fn int_mod_rem(is_mod: bool, x: i128, y: i128) -> i128 {
+    if y == 0 {
+        return if is_mod { x } else { 0 };
+    }
+    // The quotient i128::MIN / -1 overflows, but its remainder is exactly zero.
+    let r = x.wrapping_rem(y);
+    if is_mod && r != 0 && ((r < 0) != (y < 0)) {
+        r + y
+    } else {
+        r
+    }
+}
+
+/// Finite integral `d` as an `i128`. `None` when `d` is not a finite integer
+/// or does not fit: `+2^127` is the first positive value outside `i128`,
+/// while `-2^127` is `i128::MIN`. Every finite integer inside that range is
+/// exact, so there is no smaller magnitude cutoff.
+fn integral_i128(d: f64) -> Option<i128> {
+    if !d.is_finite() || d.fract() != 0.0 {
+        return None;
+    }
+    if d == 0.0 {
+        return Some(0);
+    }
+    let bits = d.to_bits();
+    let sign: i128 = if bits >> 63 == 1 { -1 } else { 1 };
+    let exp = ((bits >> 52) & 0x7ff) as i32;
+    let frac = (bits & ((1u64 << 52) - 1)) as i128;
+    if exp == 0 {
+        return Some(0);
+    }
+    let (mant, scale) = (sign * (frac | (1i128 << 52)), exp - 1075);
+    if scale <= 0 {
+        let shift = (-scale) as u32;
+        if shift >= 127 {
+            return Some(0);
+        }
+        Some(mant >> shift)
+    } else {
+        let power = 1i128.checked_shl(scale as u32)?;
+        mant.checked_mul(power)
+    }
+}
+
+/// `(mant * 2^exp) mod modulus` for `modulus > 1`. Residues stay below
+/// `2^64` (the widest integer class), so the product fits in `u128`.
+fn mul_pow2_mod(mant: u128, exp: u32, modulus: u128) -> u128 {
+    if modulus <= 1 {
+        return 0;
+    }
+    let mut factor = 2u128 % modulus;
+    let mut pow = 1u128;
+    let mut left = exp;
+    while left > 0 {
+        if left & 1 == 1 {
+            pow = (pow * factor) % modulus;
+        }
+        left >>= 1;
+        if left > 0 {
+            factor = (factor * factor) % modulus;
+        }
+    }
+    (mant % modulus) * pow % modulus
+}
+
+/// `mod`/`rem` of an integral double that does not fit in `i128` by an
+/// integer-class divisor. The double is `mant * 2^(exp-1075)`.
+fn huge_double_mod_rem(is_mod: bool, d: f64, y: i128) -> i128 {
+    let bits = d.to_bits();
+    let negative = bits >> 63 == 1;
+    let exp = ((bits >> 52) & 0x7ff) as u32;
+    let mant = ((bits & ((1u64 << 52) - 1)) as u128) | (1u128 << 52);
+    let rem_abs = mul_pow2_mod(mant, exp.saturating_sub(1075), y.unsigned_abs());
+    let rem = if negative {
+        -(rem_abs as i128)
+    } else {
+        rem_abs as i128
+    };
+    if is_mod && rem != 0 && (rem < 0) != (y < 0) {
+        rem + y
+    } else {
+        rem
+    }
+}
+
+/// Exact integer `mod`/`rem` of one integer-class value and one scalar double.
+/// `None` keeps the floating-point path for fractional and non-finite doubles.
+fn exact_int_double_mod_rem(
+    is_mod: bool,
+    class: NumericClass,
+    integer: i128,
+    double: f64,
+    double_is_dividend: bool,
+) -> Option<i128> {
+    if double_is_dividend {
+        if integer == 0 {
+            return Some(if is_mod { class.from_f64(double) } else { 0 });
+        }
+    } else if double == 0.0 {
+        return Some(if is_mod { integer } else { 0 });
+    }
+    if let Some(n) = integral_i128(double) {
+        return Some(if double_is_dividend {
+            class.saturate(int_mod_rem(is_mod, n, integer))
+        } else {
+            int_mod_rem(is_mod, integer, n)
+        });
+    }
+    if !(double.is_finite() && double.fract() == 0.0) {
+        return None;
+    }
+    // |double| >= 2^127, so it is strictly larger than every integer-class value.
+    Some(if double_is_dividend {
+        class.saturate(huge_double_mod_rem(is_mod, double, integer))
+    } else if !is_mod || integer == 0 || (integer > 0) != double.is_sign_negative() {
+        integer
+    } else if double.is_sign_negative() {
+        class.min()
+    } else {
+        class.max()
+    })
+}
 
 fn reject_wide(name: &str, args: &[Value], cancel: &std::sync::atomic::AtomicBool) -> Result<()> {
     for a in args.iter().filter_map(typed) {
@@ -140,6 +296,71 @@ fn reject_wide(name: &str, args: &[Value], cancel: &std::sync::atomic::AtomicBoo
         }
     }
     Ok(())
+}
+
+/// A real double that is not a finite integer (`1.5`, `NaN`, `Inf`).
+fn noninteger_double(value: &Value) -> bool {
+    let Value::Matrix(m) = value else {
+        return false;
+    };
+    m.data().iter().any(|v| !(v.is_finite() && *v == v.trunc()))
+}
+
+fn fill_like(engine: &Engine, name: &str, sizes: &[Value], prototype: &Value) -> Result<Value> {
+    let sizes = sizes
+        .iter()
+        .cloned()
+        .map(demote)
+        .collect::<Result<Vec<_>>>()?;
+    let dims = if sizes.is_empty() {
+        vec![1, 1]
+    } else {
+        super::shape_arguments::shape_dims(&sizes, None)?
+    };
+    let rows = dims[0];
+    let cols = super::nd::shape_product(&dims[1..])?;
+    let ones = name == "ones";
+    match prototype {
+        Value::Complex(p) => {
+            let n = crate::ComplexMatrix::checked_len(rows, cols)?;
+            engine.preflight_elements(2 * n)?;
+            let fill = crate::Complex64::new(if ones { 1. } else { 0. }, 0.);
+            let result = crate::ComplexMatrix::filled(rows, cols, fill, &engine.cancel)?;
+            Ok(Value::Complex(
+                result.with_single_class(p.is_single()).with_dims(&dims)?,
+            ))
+        }
+        Value::Container(Array::Sparse(p)) => {
+            if dims.len() > 2 {
+                return Err(format!("{name}: sparse arrays must be two-dimensional"));
+            }
+            let nnz = if ones {
+                super::nd::shape_product(&dims)?
+            } else {
+                0
+            };
+            engine.preflight_elements((cols + 1).saturating_add(nnz.saturating_mul(2)))?;
+            engine.check_cancel()?;
+            let mut b = crate::sparse::Builder::new(rows, cols, p.is_logical(), nnz)?;
+            for col in 0..cols {
+                if col.is_multiple_of(8192) {
+                    engine.check_cancel()?;
+                }
+                if ones {
+                    for row in 0..rows {
+                        if (col * rows + row).is_multiple_of(8192) {
+                            engine.check_cancel()?;
+                        }
+                        b.push(row, 1.)?;
+                    }
+                }
+                b.end_column();
+            }
+            engine.check_cancel()?;
+            Ok(super::sparse_fns::wrap(b.finish()))
+        }
+        _ => unreachable!("sparse or complex prototype"),
+    }
 }
 
 fn demote(value: Value) -> Result<Value> {
@@ -197,7 +418,7 @@ fn class_error(name: &str, class: NumericClass) -> String {
 
 /// Converts any numeric, logical or character value to `class`.
 pub(super) fn convert(value: &Value, class: NumericClass) -> Result<TypedArray> {
-    match value {
+    let result = match value {
         Value::Container(Array::Typed(t)) => t.cast(class),
         Value::Matrix(m) => TypedArray::from_matrix(class, m),
         Value::Logical(m) => TypedArray::from_reals(
@@ -228,6 +449,11 @@ pub(super) fn convert(value: &Value, class: NumericClass) -> Result<TypedArray> 
             "Conversion to {} from this class is not possible.",
             class.name()
         )),
+    };
+    if value.is_nd() {
+        result?.with_dims(&value.dims())
+    } else {
+        result
     }
 }
 
@@ -238,7 +464,9 @@ fn typed_value(a: TypedArray) -> Value {
 /// Restores `class` on a double result (logical and other results pass through).
 fn recast(value: Value, class: NumericClass) -> Result<Value> {
     match value {
-        Value::Matrix(m) => Ok(typed_value(TypedArray::from_matrix(class, &m)?)),
+        Value::Matrix(m) => Ok(typed_value(
+            TypedArray::from_matrix(class, &m)?.with_dims(&m.dims())?,
+        )),
         Value::Complex(_) if class == NumericClass::Single => {
             Err("Complex single values are not supported yet".into())
         }
@@ -299,7 +527,7 @@ impl Engine {
     /// Native min/max selection. Neither the comparison keys nor the selected
     /// integer values pass through floating point; only index outputs are double.
     pub(super) fn typed_extreme(
-        &self,
+        &mut self,
         name: &str,
         args: &[Value],
         outputs: usize,
@@ -337,52 +565,35 @@ impl Engine {
                 return Err("Integers can only be combined with integers of the same class, or scalar doubles.".into());
             }
             let (a, b) = (convert(a, class)?, convert(b, class)?);
-            let (rows, cols) = if a.len() == 1 {
-                (b.rows(), b.cols())
-            } else if b.len() == 1 || (a.rows(), a.cols()) == (b.rows(), b.cols()) {
-                (a.rows(), a.cols())
-            } else {
-                return Err("Matrix dimensions must agree.".into());
-            };
-            let n = Matrix::checked_len(rows, cols)?;
-            let mut picks = Vec::with_capacity(n);
-            for k in 0..n {
-                if k.is_multiple_of(8192) {
-                    self.check_cancel()?;
-                }
-                let (i, j) = (
-                    if a.len() == 1 { 0 } else { k },
-                    if b.len() == 1 { 0 } else { k },
-                );
-                picks.push(better(&b, j, &a, i));
-            }
+            let shape = Broadcast2::new((a.rows(), a.cols()), (b.rows(), b.cols()))
+                .map_err(|message| broadcast_error(self, message))?;
+            let (rows, cols) = (shape.rows, shape.cols);
+            let n = shape.len();
+            self.preflight_elements(n.saturating_mul(class.size()).div_ceil(8))?;
+            let selected = shape.checked_indices(&self.cancel).map(|pair| {
+                let (i, j) = pair?;
+                Ok(if better(&b, j, &a, i) {
+                    (&b, j)
+                } else {
+                    (&a, i)
+                })
+            });
             let value = if class.is_integer() {
-                TypedArray::from_ints(
+                TypedArray::try_from_ints(
                     class,
                     rows,
                     cols,
-                    picks.iter().enumerate().map(|(k, &b_wins)| {
-                        if b_wins {
-                            b.int(if b.len() == 1 { 0 } else { k })
-                        } else {
-                            a.int(if a.len() == 1 { 0 } else { k })
-                        }
-                    }),
+                    selected.map(|s| s.map(|(a, i)| a.int(i))),
                 )?
             } else {
-                TypedArray::from_reals(
+                TypedArray::try_from_reals(
                     class,
                     rows,
                     cols,
-                    picks.iter().enumerate().map(|(k, &b_wins)| {
-                        if b_wins {
-                            b.real(if b.len() == 1 { 0 } else { k })
-                        } else {
-                            a.real(if a.len() == 1 { 0 } else { k })
-                        }
-                    }),
+                    selected.map(|s| s.map(|(a, i)| a.real(i))),
                 )?
             };
+            self.check_cancel()?;
             return Ok(Some(vec![typed_value(value)]));
         }
         let (a, dim) = match args {
@@ -391,9 +602,7 @@ impl Engine {
                 (a, Some(self.reduction_dimension(name, d)?))
             }
             _ => {
-                return Err(format!(
-                    "Use {name}(A), {name}(A,[],dim) or {name}(A,B); 'all' and NaN flags are not implemented"
-                ));
+                return Err(format!("Invalid arguments for {name}"));
             }
         };
         let a = convert(a, class)?;
@@ -404,13 +613,7 @@ impl Engine {
             _ => (a.rows(), a.cols(), 1),
         };
         let n = Matrix::checked_len(rows, cols)?;
-        if self
-            .evaluated_elements
-            .saturating_add(n.saturating_mul(1 + usize::from(want_indices)))
-            > 32 * 1024 * 1024
-        {
-            return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
-        }
+        self.preflight_elements(n.saturating_mul(1 + usize::from(want_indices)))?;
         let mut positions = Vec::with_capacity(n);
         let mut indices = if want_indices {
             Vec::with_capacity(n)
@@ -465,7 +668,28 @@ impl Engine {
         if !any_typed {
             return Ok(Err(args));
         }
-        if KEEP_ARGS.contains(&name) {
+        if KEEP_ARGS.contains(&name) || super::core_more::elementwise_operator(name).is_some() {
+            return Ok(Err(args));
+        }
+        // Volume payload setters need the original class and all three dimensions.
+        if name == "set"
+            && let Some(Value::Container(Array::Graphics(h))) = args.first()
+            && h.scalar_handle()
+                .is_ok_and(|h| h.kind() == crate::GraphicsKind::Volume)
+            && args.iter().skip(1).step_by(2).any(|p| {
+                text(p).is_some_and(|n| {
+                    n.eq_ignore_ascii_case("Data") || n.eq_ignore_ascii_case("OverlayData")
+                })
+            })
+        {
+            return Ok(Err(args));
+        }
+        // set(h, 'CData', uint8 image): image colours depend on the class.
+        if name == "set"
+            && args
+                .iter()
+                .any(|v| matches!(v, Value::Text(t) if t.eq_ignore_ascii_case("cdata")))
+        {
             return Ok(Err(args));
         }
         let class = args
@@ -632,6 +856,31 @@ impl Engine {
         {
             return Ok(Ok(values.remove(0)));
         }
+        if matches!(name, "mod" | "rem")
+            && let Some(int_class) = args
+                .iter()
+                .filter_map(typed)
+                .map(TypedArray::class)
+                .find(|c| c.is_integer())
+        {
+            return self.typed_mod_rem(name, &args, int_class).map(Ok);
+        }
+        if class.is_integer() {
+            // Function forms are the operators. Demoting to double first loses
+            // saturation and every int64 value above 2^53.
+            if matches!(name, "mtimes" | "mpower" | "uminus" | "uplus") {
+                return Ok(Err(args));
+            }
+            if matches!(name, "mldivide" | "mrdivide") && args.len() == 2 {
+                let op = if name == "mldivide" {
+                    Token::Backslash
+                } else {
+                    Token::Slash
+                };
+                let [left, right] = <[Value; 2]>::try_from(args).expect("two arguments");
+                return Ok(Ok(self.typed_arithmetic(&op, left, right)?));
+            }
+        }
         let keep = if class.is_integer() {
             INT_KEEP.contains(&name)
         } else {
@@ -640,7 +889,16 @@ impl Engine {
         if class.is_integer() && keep {
             reject_wide(name, &args, &self.cancel)?;
         }
-        let args = args.into_iter().map(demote).collect::<Result<Vec<_>>>()?;
+        let preserve_dims = super::elementary::binary_function(name).is_some();
+        let args = args
+            .into_iter()
+            .map(|arg| {
+                if preserve_dims && let Some(a) = typed(&arg).filter(|a| a.is_nd()) {
+                    return Ok(Value::Matrix(a.to_matrix()?.with_dims(&a.dims())?));
+                }
+                demote(arg)
+            })
+            .collect::<Result<Vec<_>>>()?;
         // Typed division and single inv retain the original Matrix policy;
         // warning-aware square solves apply only to real double arguments.
         if matches!(name, "mldivide" | "mrdivide") {
@@ -665,17 +923,23 @@ impl Engine {
         args: &[Value],
         out: &mut Execution,
     ) -> Result<Option<Value>> {
-        if matches!(name, "zeros" | "ones" | "eye" | "rand" | "randn")
-            && args.len() >= 2
+        if matches!(
+            name,
+            "zeros" | "ones" | "eye" | "rand" | "randn" | "randi" | "nan" | "NaN" | "inf" | "Inf"
+        ) && args.len() >= 2
             && text(&args[args.len() - 2]).as_deref() == Some("like")
         {
-            let class = args
-                .last()
-                .expect("prototype")
-                .clone()
-                .array(&self.cancel)?
-                .class()
-                .to_owned();
+            let prototype = args.last().expect("prototype");
+            if matches!(name, "zeros" | "ones")
+                && matches!(
+                    prototype,
+                    Value::Complex(_) | Value::Container(Array::Sparse(_))
+                )
+            {
+                let sizes = &args[..args.len() - 2];
+                return fill_like(self, name, sizes, prototype).map(Some);
+            }
+            let class = prototype.clone().array(&self.cancel)?.class().to_owned();
             let mut values = args[..args.len() - 2].to_vec();
             values.push(Value::Text(class));
             return self.typed_own(name, &values, out);
@@ -744,10 +1008,18 @@ impl Engine {
                         t == Some(NumericClass::Single)
                             || matches!(v, Value::Matrix(_) | Value::Complex(_))
                     }
-                    other => v
-                        .clone()
-                        .array(&self.cancel)
-                        .is_ok_and(|a| a.class() == other),
+                    other => {
+                        if let Value::Container(Array::Graphics(handles)) = v
+                            && let Some(matched) =
+                                super::ui_components::graphics_isa_ui_class(self, handles, other)
+                        {
+                            matched
+                        } else {
+                            v.clone()
+                                .array(&self.cancel)
+                                .is_ok_and(|a| a.class() == other)
+                        }
+                    }
                 })))
             }
             "cast" => {
@@ -854,7 +1126,8 @@ impl Engine {
                     v,
                 ))))
             }
-            "zeros" | "ones" | "eye" | "rand" | "randn"
+            "zeros" | "ones" | "eye" | "rand" | "randn" | "randi" | "nan" | "NaN" | "inf"
+            | "Inf"
                 if args
                     .last()
                     .and_then(text)
@@ -869,7 +1142,9 @@ impl Engine {
                 let value = self.call(name, rest, out)?;
                 match NumericClass::parse(&c) {
                     Some(class) => {
-                        if matches!(name, "rand" | "randn") && class.is_integer() {
+                        if matches!(name, "rand" | "randn" | "nan" | "NaN" | "inf" | "Inf")
+                            && class.is_integer()
+                        {
                             return Err(format!("{name} does not support class '{c}'"));
                         }
                         Ok(Some(recast(value, class)?))
@@ -949,6 +1224,108 @@ impl Engine {
         )?))
     }
 
+    fn typed_mod_rem(&mut self, name: &str, args: &[Value], class: NumericClass) -> Result<Value> {
+        let [a, b] = args else {
+            return Err(format!("{name} expects two inputs"));
+        };
+        check_integer_operands(args, class)?;
+        let f = super::elementary::binary_function(name).expect("mod or rem");
+        let is_mod = name == "mod";
+        let eval = |lhs: (Option<i128>, f64), rhs: (Option<i128>, f64)| -> i128 {
+            match (lhs, rhs) {
+                ((Some(x), _), (Some(y), _)) => int_mod_rem(is_mod, x, y),
+                ((Some(x), _), (None, d)) => exact_int_double_mod_rem(is_mod, class, x, d, false)
+                    .unwrap_or_else(|| class.from_f64(f(x as f64, d))),
+                ((None, d), (Some(y), _)) => exact_int_double_mod_rem(is_mod, class, y, d, true)
+                    .unwrap_or_else(|| class.from_f64(f(d, y as f64))),
+                ((None, _), (None, _)) => unreachable!("one operand is typed"),
+            }
+        };
+        let get = |v: &Value, i: usize| -> (Option<i128>, f64) {
+            match v {
+                Value::Container(Array::Typed(t)) => (Some(t.int(i)), 0.),
+                Value::Matrix(m) => (None, m.data()[i]),
+                _ => unreachable!("validated by check_integer_operands"),
+            }
+        };
+        if !a.is_nd() && !b.is_nd() {
+            let shape_of = |v: &Value| {
+                let d = v.dims();
+                (d[0], d[1])
+            };
+            let shape = Broadcast2::new(shape_of(a), shape_of(b))
+                .map_err(|message| broadcast_error(self, message))?;
+            let n = shape.len();
+            self.preflight_elements(n.saturating_mul(class.size()).div_ceil(8))?;
+            self.charge(n)?;
+            let values = shape
+                .checked_indices(&self.cancel)
+                .map(|pair| pair.map(|(i, j)| eval(get(a, i), get(b, j))));
+            let result = TypedArray::try_from_ints(class, shape.rows, shape.cols, values)?;
+            self.check_cancel()?;
+            return Ok(typed_value(result));
+        }
+        let da = a.dims();
+        let db = b.dims();
+        let nd = da.len().max(db.len());
+        let mut dims = Vec::with_capacity(nd);
+        for k in 0..nd {
+            let x = da.get(k).copied().unwrap_or(1);
+            let y = db.get(k).copied().unwrap_or(1);
+            let d = if x == 1 {
+                y
+            } else if y == 1 || x == y {
+                x
+            } else {
+                return Err(broadcast_error(
+                    self,
+                    crate::broadcast2::SIZE_MISMATCH.to_owned(),
+                ));
+            };
+            dims.push(d);
+        }
+        // Checked length and the class-sized output budget come before any
+        // product storage. A scratch `Vec<i128>` would be 16 bytes an element
+        // and is not what that budget admits, so values stream into the typed
+        // result. Strides are the only extra state, and they are O(rank).
+        let cols = dims[1..]
+            .iter()
+            .try_fold(1usize, |acc, &extent| acc.checked_mul(extent))
+            .ok_or_else(|| "Requested array size exceeds platform limits.".to_owned())?;
+        let n = Matrix::checked_len(dims[0], cols)?;
+        self.preflight_elements(n.saturating_mul(class.size()).div_ceil(8))?;
+        self.charge(n)?;
+        let strides = |d: &[usize]| -> Vec<usize> {
+            let mut out = Vec::with_capacity(nd);
+            let mut s = 1usize;
+            for k in 0..nd {
+                let len = d.get(k).copied().unwrap_or(1);
+                out.push(if len == 1 { 0 } else { s });
+                s = s.saturating_mul(len);
+            }
+            out
+        };
+        let (sa, sb) = (strides(&da), strides(&db));
+        let cancel = &self.cancel;
+        let values = (0..n).map(|idx| {
+            if idx.is_multiple_of(8192) {
+                crate::dsp::check_cancel(cancel)?;
+            }
+            let mut rem_idx = idx;
+            let (mut ia, mut ib) = (0usize, 0usize);
+            for k in 0..nd {
+                let coord = rem_idx % dims[k];
+                rem_idx /= dims[k];
+                ia += coord * sa[k];
+                ib += coord * sb[k];
+            }
+            Ok(eval(get(a, ia), get(b, ib)))
+        });
+        let result = TypedArray::try_from_ints(class, dims[0], cols, values)?.with_dims(&dims)?;
+        self.check_cancel()?;
+        Ok(typed_value(result))
+    }
+
     fn typed_bits(&mut self, name: &str, args: &[Value], class: NumericClass) -> Result<Value> {
         if !class.is_integer() {
             return Err(class_error(name, class));
@@ -956,36 +1333,50 @@ impl Engine {
         let [a, b] = args else {
             return Err(format!("{name} expects two inputs"));
         };
+        if matches!(name, "bitand" | "bitor" | "bitxor") {
+            check_integer_operands(args, class)?;
+        }
+        // Same predicates as the double path in number_theory: a fractional or
+        // non-finite double is an error, not a truncated shift or a rounded mask.
+        if name == "bitshift" {
+            if noninteger_double(a) {
+                return Err(
+                    "Double inputs must have integer values in the range of ASSUMEDTYPE.".into(),
+                );
+            }
+            if noninteger_double(b) {
+                return Err("Shift counts must be integers.".into());
+            }
+        } else if noninteger_double(a) || noninteger_double(b) {
+            return Err(
+                "Double inputs must have integer values in the range of ASSUMEDTYPE.".into(),
+            );
+        }
         let bits = class.size() as u32 * 8;
         let x = convert(a, class)?;
-        let (y_len, y): (usize, Box<dyn Fn(usize) -> i128>) = if name == "bitshift" {
+        let y_counts;
+        let y_bits;
+        let (y_shape, y): (_, &dyn Fn(usize) -> i128) = if name == "bitshift" {
             let m = demote(b.clone())?.matrix(&self.cancel)?;
-            let data = m.data().to_vec();
-            (data.len(), Box::new(move |i| data[i] as i128))
+            let shape = (m.rows(), m.cols());
+            y_counts = move |i: usize| m.data()[i] as i128;
+            (shape, &y_counts)
         } else {
             let t = convert(b, class)?;
-            (t.len(), Box::new(move |i| t.int(i)))
+            let shape = (t.rows(), t.cols());
+            y_bits = move |i| t.int(i);
+            (shape, &y_bits)
         };
-        let y_shape = b.shape(&self.cancel)?;
-        let x_shape = (x.rows(), x.cols());
-        let (rows, cols) = if x.len() == 1 {
-            y_shape
-        } else if y_len == 1 || x_shape == y_shape {
-            x_shape
-        } else {
-            return Err("Matrix dimensions must agree.".into());
-        };
-        let n = Matrix::checked_len(rows, cols)?;
+        let shape = Broadcast2::new((x.rows(), x.cols()), y_shape)
+            .map_err(|message| broadcast_error(self, message))?;
+        let n = shape.len();
+        self.preflight_elements(n.saturating_mul(class.size()).div_ceil(8))?;
         self.charge(n)?;
-        let pick = |len: usize, i: usize| if len == 1 { 0 } else { i };
         let mask: i128 = (1i128 << bits) - 1;
-        let mut values = Vec::with_capacity(n);
-        for i in 0..n {
-            if i.is_multiple_of(8192) {
-                self.check_cancel()?;
-            }
-            let (p, q) = (x.int(pick(x.len(), i)), y(pick(y_len, i)));
-            values.push(match name {
+        let values = shape.checked_indices(&self.cancel).map(|pair| {
+            let (i, j) = pair?;
+            let (p, q) = (x.int(i), y(j));
+            Ok(match name {
                 "bitand" => p & q,
                 "bitor" => p | q,
                 "bitxor" => p ^ q,
@@ -1001,13 +1392,10 @@ impl Engine {
                         }
                     }
                 }
-            });
-        }
-        Ok(typed_value(TypedArray::from_ints(
-            class,
-            rows,
-            cols,
-            values.into_iter(),
-        )?))
+            })
+        });
+        let result = TypedArray::try_from_ints(class, shape.rows, shape.cols, values)?;
+        self.check_cancel()?;
+        Ok(typed_value(result))
     }
 }

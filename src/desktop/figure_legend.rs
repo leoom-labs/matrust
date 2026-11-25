@@ -43,25 +43,50 @@ pub(super) fn show(ui: &mut egui::Ui, axes: &Axes, frame: Rect, id: egui::Id) ->
     )
 }
 
+fn legend_grid(axes: &Axes, count: usize) -> (usize, usize) {
+    let columns = if let Some(n) = axes.extras.legend_num_columns {
+        n.min(count).max(1)
+    } else if axes.extras.legend_orientation == matrust::plot::LegendOrientation::Horizontal {
+        count.max(1)
+    } else {
+        1
+    };
+    (columns, count.div_ceil(columns))
+}
+
+fn legend_font(ui: &egui::Ui, axes: &Axes) -> egui::FontId {
+    let mut font = crate::theme::figure_body(ui.ctx());
+    font.size = axes.extras.legend_style.font_size_pixels(font.size);
+    font
+}
+
+fn legend_row_height(ui: &egui::Ui, axes: &Axes) -> f32 {
+    let font = legend_font(ui, axes);
+    let line_height = ui.fonts_mut(|fonts| fonts.row_height(&font));
+    24_f32.max(line_height + 4.)
+}
+
 pub(super) fn extent(ui: &egui::Ui, axes: &Axes, available: Rect, outside: bool) -> Option<Vec2> {
     let count = axes.legend_entries().count();
     if !axes.legend || count == 0 || available.width() < 48. || available.height() < 32. {
         return None;
     }
+    let (columns, total_rows) = legend_grid(axes, count);
+    let row_height = legend_row_height(ui, axes);
+    let pitch = row_height + 2.;
     let inset = 4. + 2. * ui.visuals().window_stroke().width;
     let max_height = if outside {
         available.height()
     } else {
-        (available.height() * 0.5).max(24. + inset)
+        (available.height() * 0.5).max(row_height + inset)
     };
-    let rows = (((max_height - inset + 2.) / 26.).floor() as usize)
+    let rows = (((max_height - inset + 2.) / pitch).floor() as usize)
         .max(1)
-        .min(count);
+        .min(total_rows);
+    let base_w = (available.width() * if outside { 1. } else { 0.65 }).clamp(100., 240.);
     Some(egui::vec2(
-        (available.width() * if outside { 1. } else { 0.65 })
-            .clamp(100., 240.)
-            .min(available.width()),
-        rows as f32 * 26. - 2. + inset,
+        (base_w * columns as f32).min(available.width()),
+        rows as f32 * pitch - 2. + inset,
     ))
 }
 
@@ -93,12 +118,26 @@ pub(super) fn show_placed(
         ui.ctx().data_mut(|d| d.remove::<KeyboardFocus>(focus_key));
         return result;
     }
-    let row_height = 24.;
-    let width = (available.width() * if placement.is_some() { 1. } else { 0.65 })
-        .clamp(100., 240.)
-        .min(available.width());
-    let border = ui.visuals().window_stroke();
-    let inset = 4. + 2. * border.width;
+    let (columns, total_rows) = legend_grid(axes, entries.len());
+    let row_height = legend_row_height(ui, axes);
+    let base_width =
+        (available.width() * if placement.is_some() { 1. } else { 0.65 }).clamp(100., 240.);
+    let width = if placement.is_some() && columns > 1 {
+        available.width()
+    } else {
+        (base_width * columns as f32).min(available.width())
+    };
+    let border = if axes.extras.legend_box.is_on() {
+        ui.visuals().window_stroke()
+    } else {
+        Stroke::NONE
+    };
+    let fill = if axes.extras.legend_box.is_on() {
+        ui.visuals().extreme_bg_color
+    } else {
+        Color32::TRANSPARENT
+    };
+    let inset = 4. + 2. * ui.visuals().window_stroke().width;
     let max_height = if placement.is_some() {
         available.height()
     } else {
@@ -106,7 +145,7 @@ pub(super) fn show_placed(
     };
     let shown_rows = (((max_height - inset + 2.) / (row_height + 2.)).floor() as usize)
         .max(1)
-        .min(entries.len());
+        .min(total_rows);
     let height = shown_rows as f32 * (row_height + 2.) - 2. + inset;
     // Explicit isolated capture mode drives the same input path as the user.
     let capture_id = egui::Id::new("legend_keyboard_capture");
@@ -248,14 +287,14 @@ pub(super) fn show_placed(
     let mut shapes = Vec::with_capacity(4);
     egui::Frame::new()
         .inner_margin(2)
-        .fill(ui.visuals().extreme_bg_color)
+        .fill(fill)
         .stroke(border)
         .corner_radius(3)
         .show(&mut legend, |ui| {
             ui.set_width((width - inset).max(1.));
             let mut scroll = egui::ScrollArea::vertical()
                 .id_salt(id.with("legend_scroll"))
-                .scroll_bar_visibility(if entries.len() > shown_rows {
+                .scroll_bar_visibility(if total_rows > shown_rows {
                     egui::scroll_area::ScrollBarVisibility::AlwaysVisible
                 } else {
                     egui::scroll_area::ScrollBarVisibility::AlwaysHidden
@@ -263,7 +302,8 @@ pub(super) fn show_placed(
                 .max_height((height - inset).max(1.))
                 .min_scrolled_height(0.)
                 .auto_shrink([false, true]);
-            if let Some(row) = target {
+            if let Some(entry_idx) = target {
+                let row = entry_idx / columns;
                 let top = row as f32 * (row_height + 2.);
                 let bottom = top + row_height;
                 let offset = ui.ctx().data(|d| d.get_temp::<f32>(id.with("legend_offset"))).unwrap_or(0.);
@@ -271,11 +311,18 @@ pub(super) fn show_placed(
                 scroll = scroll.vertical_scroll_offset(if top < offset { top }
                     else if bottom > offset + viewport { bottom - viewport } else { offset });
             }
-            let output = scroll.show_rows_themed(ui, row_height, entries.len(), |ui, range| {
-                    for row in range {
-                        let (index, series) = entries[row];
-                        let (_, rect) =
-                            ui.allocate_space(egui::vec2(ui.available_width(), row_height));
+            let cell_width = ((width - inset - 4. * (columns.saturating_sub(1)) as f32) / columns as f32).max(24.);
+            let output = scroll.show_rows_themed(ui, row_height, total_rows, |ui, range| {
+                    for grid_row in range {
+                        ui.horizontal(|ui| {
+                            for col_idx in 0..columns {
+                                let row = grid_row * columns + col_idx;
+                                if row >= entries.len() {
+                                    break;
+                                }
+                                let (index, series) = entries[row];
+                                let w = if columns == 1 { ui.available_width() } else { cell_width };
+                                let (_, rect) = ui.allocate_space(egui::vec2(w, row_height));
                         let response =
                             ui.interact(rect, id.with(("legend_series", index)), Sense::click());
                         response.widget_info(|| {
@@ -327,20 +374,32 @@ pub(super) fn show_placed(
                         } else {
                             ui.visuals().weak_text_color()
                         };
-                        let galley = egui::WidgetText::from(series.label.as_str()).into_galley(
-                            ui,
-                            Some(egui::TextWrapMode::Truncate),
-                            text_rect.width().max(0.),
-                            crate::theme::figure_body(ui.ctx()),
+                        let emphasis = super::super::graphics_overlay::TextEmphasis::from(
+                            axes.extras.legend_style,
                         );
-                        ui.painter().galley(
-                            egui::pos2(
-                                text_rect.left(),
-                                text_rect.center().y - galley.size().y * 0.5,
-                            ),
-                            galley,
+                        let mut job = super::super::graphics_overlay::markup_job_styled(
+                            &series.label,
+                            axes.extras.legend_interpreter,
+                            legend_font(ui, axes),
                             color,
+                            emphasis,
                         );
+                        job.wrap.max_width = text_rect.width().max(1.);
+                        job.wrap.max_rows = 1;
+                        let galley = ui.painter().layout_job(job);
+                        let pos = egui::pos2(
+                            text_rect.left(),
+                            text_rect.center().y - galley.size().y * 0.5,
+                        );
+                        if emphasis.bold {
+                            super::super::graphics_overlay::paint_bold_copy(
+                                ui.painter(),
+                                pos,
+                                &galley,
+                                color,
+                            );
+                        }
+                        ui.painter().galley(pos, galley, color);
                         response.on_hover_ui(|ui| {
                             ui.set_max_width(320.);
                             egui::ScrollArea::vertical()
@@ -351,6 +410,8 @@ pub(super) fn show_placed(
                             ui.label("Click or Space/Enter to show/hide; Alt-click to isolate or restore all.");
                             ui.label("Up/Down, Home/End and Page Up/Down move through the legend.");
                             ui.label("Legend symbols are fitted to the row.");
+                        });
+                            }
                         });
                     }
                 });

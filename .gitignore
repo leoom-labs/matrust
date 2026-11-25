@@ -37,6 +37,9 @@ __pycache__/
 /dist/
 /a.txt
 /b.bin
+/f.txt
+/lines.txt
+/out.txt
 
 # MatRust static website
 /site/node_modules/

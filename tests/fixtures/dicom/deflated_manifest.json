@@ -1,0 +1,469 @@
+{
+  "valid": [
+    {
+      "native": "deflated_u8_native",
+      "deflated": "deflated_u8_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 1.0,
+        "BitsAllocated": 8.0,
+        "BitsStored": 5.0,
+        "HighBit": 4.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_u16_native",
+      "deflated": "deflated_u16_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 1.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 16.0,
+        "HighBit": 15.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_u12_native",
+      "deflated": "deflated_u12_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 1.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 12.0,
+        "HighBit": 11.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_i16_native",
+      "deflated": "deflated_i16_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 1.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 16.0,
+        "HighBit": 15.0,
+        "PixelRepresentation": 1.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_i12_native",
+      "deflated": "deflated_i12_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 1.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 12.0,
+        "HighBit": 11.0,
+        "PixelRepresentation": 1.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_gray_frames_native",
+      "deflated": "deflated_gray_frames_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 1.0,
+        "PhotometricInterpretation": "MONOCHROME1",
+        "NumberOfFrames": 3.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 16.0,
+        "HighBit": 15.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_rgb8_pc0_native",
+      "deflated": "deflated_rgb8_pc0_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 3.0,
+        "PhotometricInterpretation": "RGB",
+        "NumberOfFrames": 2.0,
+        "BitsAllocated": 8.0,
+        "BitsStored": 8.0,
+        "HighBit": 7.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_rgb8_pc1_native",
+      "deflated": "deflated_rgb8_pc1_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 3.0,
+        "PhotometricInterpretation": "RGB",
+        "NumberOfFrames": 2.0,
+        "BitsAllocated": 8.0,
+        "BitsStored": 8.0,
+        "HighBit": 7.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_rgb16_pc0_native",
+      "deflated": "deflated_rgb16_pc0_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 3.0,
+        "PhotometricInterpretation": "RGB",
+        "NumberOfFrames": 2.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 16.0,
+        "HighBit": 15.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    },
+    {
+      "native": "deflated_rgb16_pc1_native",
+      "deflated": "deflated_rgb16_pc1_raw",
+      "fields": {
+        "SpecificCharacterSet": "ISO_IR 192",
+        "PatientID": "SYNTHETIC-É-ONLY",
+        "StudyDate": "20000102",
+        "StudyTime": "030405",
+        "Modality": "OT",
+        "Rows": 2.0,
+        "Columns": 3.0,
+        "SamplesPerPixel": 3.0,
+        "PhotometricInterpretation": "RGB",
+        "NumberOfFrames": 2.0,
+        "BitsAllocated": 16.0,
+        "BitsStored": 16.0,
+        "HighBit": 15.0,
+        "PixelRepresentation": 0.0,
+        "RescaleSlope": 2.5,
+        "RescaleIntercept": -1024.0,
+        "PixelSpacing": [
+          0.5,
+          0.75
+        ],
+        "ImagePositionPatient": [
+          -1.5,
+          0.0,
+          3.25
+        ],
+        "SelectorSSValue": [
+          -23.0,
+          12.0
+        ],
+        "SelectorUSValue": [
+          7.0,
+          65535.0
+        ],
+        "PatientName.FamilyName": "Synthetique",
+        "PatientName.GivenName": "Élodie",
+        "ReferencedStudySequence.Item_1.ReferencedImageSequence.Item_1.PatientID": "NESTED-É",
+        "DigitalSignaturesSequence.Item_1.PatientID": "AFTER-PIXEL-É",
+        "DigitalSignaturesSequence.Item_1.ReferencedImageSequence.Item_1.ReferencedSOPInstanceUID": "1.2.826.0.1.3680043.10.543.75.42"
+      }
+    }
+  ],
+  "invalid": {
+    "deflated_bad_truncated": "truncated",
+    "deflated_bad_corrupt": "corrupt",
+    "deflated_bad_zlib": "deflate",
+    "deflated_bad_gzip": "deflate",
+    "deflated_bad_junk": "padding",
+    "deflated_bad_concatenated": "padding",
+    "deflated_bad_two_nulls": "padding",
+    "deflated_bad_unneeded_pad": "padding",
+    "deflated_bad_missing_pad": "padding",
+    "deflated_bad_nonzero_pad": "padding",
+    "deflated_bad_dataset": "explicit VR",
+    "deflated_bad_bomb": "memory"
+  },
+  "padding": [
+    "deflated_pad_0",
+    "deflated_pad_1"
+  ],
+  "large": {
+    "shape": [
+      512,
+      1025
+    ],
+    "last": 4660
+  }
+}

@@ -193,6 +193,7 @@ macro_rules! each_int {
 pub struct TypedArray {
     rows: usize,
     cols: usize,
+    nd: Option<Arc<Vec<usize>>>,
     data: TypedData,
 }
 
@@ -279,6 +280,29 @@ impl TypedArray {
     pub fn cols(&self) -> usize {
         self.cols
     }
+    pub fn dims(&self) -> std::borrow::Cow<'_, [usize]> {
+        self.nd.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(vec![self.rows, self.cols]),
+            |dims| std::borrow::Cow::Borrowed(dims.as_slice()),
+        )
+    }
+    pub fn ndims(&self) -> usize {
+        self.nd.as_ref().map_or(2, |dims| dims.len())
+    }
+    pub fn is_nd(&self) -> bool {
+        self.nd.is_some()
+    }
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        let dims = crate::array::normalize_dims(dims)?;
+        if dims[0] != self.rows
+            || dims[1..].iter().try_fold(1usize, |n, &d| n.checked_mul(d)) != Some(self.cols)
+        {
+            return Err("reshape dimensions do not match folded typed storage".into());
+        }
+        let mut result = self.clone();
+        result.nd = (dims.len() > 2).then(|| Arc::new(dims));
+        Ok(result)
+    }
     pub fn len(&self) -> usize {
         self.rows * self.cols
     }
@@ -324,6 +348,19 @@ impl TypedArray {
         each_int!(&self.data, d => d[i] != 0, s => s[i] != 0.)
     }
     pub fn to_f64_vec(&self) -> Result<Vec<f64>> {
+        self.to_f64_vec_within(crate::matrix::MAX_ELEMENTS)
+    }
+    /// The values as doubles, refused before allocating when there are more
+    /// than `max` of them (a caller's memory budget in 8-byte units).
+    pub fn to_f64_vec_within(&self, max: usize) -> Result<Vec<f64>> {
+        if self.len() > max {
+            return Err(format!(
+                "Converting {} {} values to double exceeds the {} MiB memory limit",
+                self.len(),
+                self.class().name(),
+                max / (128 * 1024)
+            ));
+        }
         let mut out = reserve(self.len())?;
         out.extend((0..self.len()).map(|i| self.real(i)));
         Ok(out)
@@ -338,11 +375,22 @@ impl TypedArray {
         cols: usize,
         values: impl Iterator<Item = i128>,
     ) -> Result<Self> {
+        Self::try_from_ints(class, rows, cols, values.map(Ok))
+    }
+
+    pub(crate) fn try_from_ints(
+        class: NumericClass,
+        rows: usize,
+        cols: usize,
+        values: impl Iterator<Item = Result<i128>>,
+    ) -> Result<Self> {
         let n = Matrix::checked_len(rows, cols)?;
         macro_rules! build {
             ($variant:ident, $t:ty) => {{
                 let mut v: Vec<$t> = reserve(n)?;
-                v.extend(values.take(n).map(|x| class.saturate(x) as $t));
+                for x in values.take(n) {
+                    v.push(class.saturate(x?) as $t);
+                }
                 TypedData::$variant(v.into())
             }};
         }
@@ -357,7 +405,9 @@ impl TypedArray {
             NumericClass::Uint64 => build!(Uint64, u64),
             NumericClass::Single => {
                 let mut v: Vec<f32> = reserve(n)?;
-                v.extend(values.take(n).map(|x| x as f32));
+                for x in values.take(n) {
+                    v.push(x? as f32);
+                }
                 TypedData::Single(v.into())
             }
         };
@@ -370,13 +420,29 @@ impl TypedArray {
         cols: usize,
         values: impl Iterator<Item = f64>,
     ) -> Result<Self> {
+        Self::try_from_reals(class, rows, cols, values.map(Ok))
+    }
+
+    pub(crate) fn try_from_reals(
+        class: NumericClass,
+        rows: usize,
+        cols: usize,
+        values: impl Iterator<Item = Result<f64>>,
+    ) -> Result<Self> {
         if class == NumericClass::Single {
             let n = Matrix::checked_len(rows, cols)?;
             let mut v: Vec<f32> = reserve(n)?;
-            v.extend(values.take(n).map(|x| x as f32));
+            for x in values.take(n) {
+                v.push(x? as f32);
+            }
             return Self::checked(rows, cols, TypedData::Single(v.into()));
         }
-        Self::from_ints(class, rows, cols, values.map(|x| class.from_f64(x)))
+        Self::try_from_ints(
+            class,
+            rows,
+            cols,
+            values.map(|x| x.map(|x| class.from_f64(x))),
+        )
     }
     pub fn from_matrix(class: NumericClass, m: &Matrix) -> Result<Self> {
         Self::from_reals(class, m.rows(), m.cols(), m.data().iter().copied())
@@ -392,7 +458,12 @@ impl TypedArray {
         if len != Matrix::checked_len(rows, cols)? {
             return Err("Typed array data does not match its shape".into());
         }
-        Ok(Self { rows, cols, data })
+        Ok(Self {
+            rows,
+            cols,
+            nd: None,
+            data,
+        })
     }
     /// The same class and data under a new shape of equal length.
     pub fn reshaped(&self, rows: usize, cols: usize) -> Result<Self> {
@@ -402,6 +473,7 @@ impl TypedArray {
         Ok(Self {
             rows,
             cols,
+            nd: None,
             data: self.data.clone(),
         })
     }
@@ -448,7 +520,12 @@ impl TypedArray {
             TypedData::Uint64(d) => gather!(Uint64, d),
             TypedData::Single(d) => gather!(Single, d),
         };
-        Ok(Self { rows, cols, data })
+        Ok(Self {
+            rows,
+            cols,
+            nd: None,
+            data,
+        })
     }
     /// Actual scratch/payload bytes needed by an in-bounds write. Unique small
     /// writes allocate nothing; large unique writes retain an undo buffer so
@@ -709,7 +786,7 @@ impl TypedArray {
         if class == self.class() {
             return Ok(self.clone());
         }
-        if self.is_integer() && class.is_integer() {
+        let result = if self.is_integer() && class.is_integer() {
             Self::from_ints(
                 class,
                 self.rows,
@@ -730,6 +807,11 @@ impl TypedArray {
                 self.cols,
                 (0..self.len()).map(|i| self.real(i)),
             )
+        }?;
+        if self.is_nd() {
+            result.with_dims(&self.dims())
+        } else {
+            Ok(result)
         }
     }
     /// Raw little-endian bytes, for `typecast` and MAT files.
@@ -917,43 +999,190 @@ pub fn exact_with_double(x: i128, d: f64, op: char, swap: bool) -> Option<i128> 
         '/' => {
             let (m, e) = decompose(d);
             if !swap {
-                // x / (m 2^e) = (x 2^-e) / m
                 if m == 0 {
                     return None;
                 }
-                if -e > 60 || e > 60 {
-                    return None;
-                }
-                let (num, den) = if e <= 0 {
-                    (x.checked_mul(1i128 << (-e))?, m)
-                } else {
-                    (x, m.checked_mul(1i128 << e)?)
-                };
-                Some(round_div(num, den))
+                // x / (m 2^e). Every finite double is an integer times a power of two.
+                Some(exact_quotient(x, 0, m, e))
+            } else if x == 0 {
+                None
             } else {
                 // (m 2^e) / x
-                if x == 0 || e.abs() > 60 {
-                    return None;
-                }
-                let (num, den) = if e >= 0 {
-                    (m.checked_mul(1i128 << e)?, x)
-                } else {
-                    (m, x.checked_mul(1i128 << (-e))?)
-                };
-                Some(round_div(num, den))
+                Some(exact_quotient(m, e, x, 0))
             }
         }
         _ => None,
     }
 }
 
-fn round_div(num: i128, den: i128) -> i128 {
-    let q = num / den;
-    let r = num % den;
-    if 2 * r.unsigned_abs() >= den.unsigned_abs() {
-        q + num.signum() * den.signum()
+/// `2^64`: past both `int64` and `uint64`, so the caller saturates.
+const PAST_U64: u128 = 1u128 << 64;
+
+/// `v << s` when every set bit stays inside `u128`.
+/// `checked_shl` only rejects a count past the width, so `2^52 << 76` is `Some(0)`.
+fn shl_exact(v: u128, s: u32) -> Option<u128> {
+    if s >= 128 || v.leading_zeros() < s {
+        None
     } else {
-        q
+        Some(v << s)
+    }
+}
+
+/// Round half away from zero of `(numer * 2^numer_exp) / (denom * 2^denom_exp)`.
+/// A magnitude that does not fit in `u64` is returned as `2^64` (or its
+/// negation) so `NumericClass::saturate` clamps to `intmax` / `intmin`.
+fn exact_quotient(numer: i128, numer_exp: i32, denom: i128, denom_exp: i32) -> i128 {
+    if numer == 0 {
+        return 0;
+    }
+    if denom == 0 {
+        return if numer > 0 { i128::MAX } else { i128::MIN };
+    }
+    let neg = (numer < 0) ^ (denom < 0);
+    let n = numer.unsigned_abs();
+    let d = denom.unsigned_abs();
+    let shift = i64::from(numer_exp) - i64::from(denom_exp);
+    let mag = if shift >= 0 {
+        round_shl(n, d, shift as u32)
+    } else {
+        round_shr(n, d, (-shift) as u32)
+    };
+    if neg {
+        if mag > i128::MAX as u128 {
+            i128::MIN
+        } else {
+            -(mag as i128)
+        }
+    } else if mag > i128::MAX as u128 {
+        i128::MAX
+    } else {
+        mag as i128
+    }
+}
+
+/// `2*r >= d` without overflowing, `d > 0`.
+fn rounds_away(r: u128, d: u128) -> bool {
+    r > d / 2 || (d.is_multiple_of(2) && r == d / 2)
+}
+
+/// `floor((hi * 2^64 + lo) / d)` with `hi < d`, so the quotient fits in 64 bits.
+fn div192(mut rem: u128, lo: u64, d: u128) -> (u128, u128) {
+    if rem >= d {
+        return (PAST_U64, 0);
+    }
+    let mut q = 0u128;
+    for i in (0..64).rev() {
+        let bit = u128::from((lo >> i) & 1);
+        let (shifted, overflow) = rem.overflowing_shl(1);
+        rem = shifted | bit;
+        if overflow || rem >= d {
+            rem = if overflow {
+                rem.wrapping_sub(d)
+            } else {
+                rem - d
+            };
+            q |= 1u128 << i;
+        }
+    }
+    (q, rem)
+}
+
+/// `floor(r * 2^s / d)` for `r < d`.
+fn floor_lt(r: u128, d: u128, s: u32) -> (u128, u128) {
+    if let Some(numer) = shl_exact(r, s) {
+        return (numer / d, numer % d);
+    }
+    if s >= 64 {
+        let k = s - 64;
+        if k >= 128 {
+            return (PAST_U64, 0);
+        }
+        let Some(x) = shl_exact(r, k) else {
+            return (PAST_U64, 0);
+        };
+        return div192(x, 0, d);
+    }
+    let k = 64 - s;
+    let hi = r >> k;
+    let lo = ((r & ((1u128 << k) - 1)) << s) as u64;
+    div192(hi, lo, d)
+}
+
+/// `floor(n * 2^s / d)` and the remainder. A quotient past `u64` is `PAST_U64`.
+fn floor_div_shl(n: u128, d: u128, s: u32) -> (u128, u128) {
+    if let Some(numer) = shl_exact(n, s) {
+        return (numer / d, numer % d);
+    }
+    let q1 = n / d;
+    let r1 = n % d;
+    let head = if s >= 64 || q1 == 0 {
+        0
+    } else {
+        shl_exact(q1, s).unwrap_or(PAST_U64)
+    };
+    if head >= PAST_U64 {
+        return (PAST_U64, 0);
+    }
+    if r1 == 0 {
+        return (head, 0);
+    }
+    let (q2, r2) = floor_lt(r1, d, s);
+    (head.saturating_add(q2), r2)
+}
+
+/// Round half away from zero of `n * 2^s / d`.
+fn round_shl(n: u128, d: u128, s: u32) -> u128 {
+    if n == 0 {
+        return 0;
+    }
+    if s >= 256 {
+        return PAST_U64;
+    }
+    // n * 2^s >= d * 2^64 means the quotient is already past every 64-bit class.
+    let past = if s >= 64 {
+        match shl_exact(n, s - 64) {
+            Some(v) => v >= d,
+            None => true,
+        }
+    } else {
+        match shl_exact(d, 64 - s) {
+            Some(limit) => n >= limit,
+            None => false,
+        }
+    };
+    if past {
+        return PAST_U64;
+    }
+    let (q, r) = floor_div_shl(n, d, s);
+    if q >= PAST_U64 {
+        return PAST_U64;
+    }
+    if rounds_away(r, d) { q + 1 } else { q }
+}
+
+/// Round half away from zero of `n / (d * 2^s)`.
+fn round_shr(n: u128, d: u128, s: u32) -> u128 {
+    if s >= 128 {
+        // Denominator is at least 2^128. Only `1 / 2^128` can round up to 1.
+        return u128::from(s == 128 && d == 1 && n >= (1u128 << 127));
+    }
+    if let Some(den) = shl_exact(d, s) {
+        let q = n / den;
+        let r = n % den;
+        let q = if rounds_away(r, den) {
+            q.saturating_add(1)
+        } else {
+            q
+        };
+        return if q >= PAST_U64 { PAST_U64 } else { q };
+    }
+    let half_shift = s - 1;
+    if half_shift >= 128 {
+        return 0;
+    }
+    match shl_exact(d, half_shift) {
+        Some(half) => u128::from(n >= half),
+        None => 0,
     }
 }
 

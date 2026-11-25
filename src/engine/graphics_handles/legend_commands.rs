@@ -15,9 +15,14 @@ fn property(name: &str) -> bool {
             | "interpreter"
             | "string"
             | "box"
+            | "numcolumns"
+            | "orientation"
             | "color"
             | "textcolor"
             | "edgecolor"
+            | "fontsize"
+            | "fontweight"
+            | "fontangle"
     )
 }
 fn on_off(value: &Value) -> Result<bool> {
@@ -32,12 +37,10 @@ impl Engine {
     fn legend_labels(&self, value: &Value) -> Result<Vec<String>> {
         let values = match value {
             Value::Container(Array::Cell(cell)) => {
-                if cell.len() > crate::plot::MAX_SERIES
+                if cell.len() > crate::script_containers::MAX_CELL_SLOTS
                     || (!cell.is_empty() && cell.rows() != 1 && cell.cols() != 1)
                 {
-                    return Err(
-                        "Legend labels require a cell vector of at most 64 character rows".into(),
-                    );
+                    return Err("Legend labels require a cell vector of character rows".into());
                 }
                 let mut labels = Vec::new();
                 for i in 0..cell.len() {
@@ -53,7 +56,7 @@ impl Engine {
                 }
                 labels
             }
-            Value::Text(label) => vec![label.clone()],
+            Value::Text(label) | Value::QuotedString(label) => vec![label.clone()],
             _ => {
                 return Err(
                     "Legend labels require character text or a cell vector of character rows"
@@ -101,9 +104,36 @@ impl Engine {
                 "visible"=>axes.legend=on_off(&pair[1])?,
                 "autoupdate"=>axes.legend_state.as_mut().ok_or("Legend object is absent")?.auto_update=on_off(&pair[1])?,
                 "string"=>self.apply_legend_labels(axes,self.legend_labels(&pair[1])?)?,
-                "interpreter" if text(&pair[1])?.eq_ignore_ascii_case("none")=>{},
-                "box" if text(&pair[1])?.eq_ignore_ascii_case("on")=>{},
-                _=>return Err("Legend supports Location, Visible, AutoUpdate, String, Color, TextColor, EdgeColor, Interpreter none and Box on; no property change was published".into()),
+                "interpreter" => axes.extras.legend_interpreter = crate::plot::text_markup::Interpreter::parse(text(&pair[1])?)?,
+                "numcolumns" => {
+                    let v = super::dot_syntax::real_scalar(&pair[1], "NumColumns")?;
+                    if v < 1. || v.fract() != 0. || v > usize::MAX as f64 {
+                        return Err("Legend NumColumns must be a positive integer".into());
+                    }
+                    axes.extras.legend_num_columns = Some(v as usize);
+                }
+                "orientation" => {
+                    let orientation = crate::plot::LegendOrientation::parse(text(&pair[1])?)?;
+                    axes.extras.legend_orientation = orientation;
+                    if orientation == crate::plot::LegendOrientation::Horizontal {
+                        axes.extras.legend_num_columns = None;
+                    }
+                }
+                "box" => axes.extras.legend_box = crate::plot::LegendBox::parse(text(&pair[1])?)?,
+                "fontsize" => {
+                    let size = super::dot_syntax::real_scalar(&pair[1], "FontSize")?;
+                    crate::plot::validate_font_size(size)?;
+                    axes.extras.legend_style.font_size = Some(size);
+                }
+                "fontweight" => {
+                    axes.extras.legend_style.bold =
+                        Some(super::dot_syntax::text_font_weight(&pair[1])?);
+                }
+                "fontangle" => {
+                    axes.extras.legend_style.italic =
+                        Some(super::dot_syntax::text_font_angle(&pair[1])?);
+                }
+                _=>return Err("Legend supports Location, Visible, AutoUpdate, String, Color, TextColor, EdgeColor, Interpreter, NumColumns, Orientation, Box, FontSize, FontWeight and FontAngle; no property change was published".into()),
             }
         }
         Ok(())
@@ -130,9 +160,13 @@ impl Engine {
         self.publish_graphics_figure(id, figure);
         Ok(())
     }
-    pub(super) fn legend_object_call(&mut self, args: &[Value]) -> Result<Value> {
+    pub(super) fn legend_object_call(
+        &mut self,
+        args: &[Value],
+        out: &mut super::Execution,
+    ) -> Result<Value> {
         self.check_cancel()?;
-        if args.len() > 98 {
+        if args.len() > crate::script_containers::MAX_CELL_SLOTS + 34 {
             return Err("Legend call exceeds bounded labels and properties".into());
         }
         let mut start = 0;
@@ -145,11 +179,12 @@ impl Engine {
             start = 1;
         }
         let mut subset = None;
+        let mut selected = std::collections::HashSet::new();
         if let Some(Value::Container(Array::Graphics(handles))) = args.get(start) {
-            if handles.len() > crate::plot::MAX_SERIES
+            if handles.len() > crate::plot::MAX_PLOT_SERIES
                 || (!handles.is_empty() && handles.rows() != 1 && handles.cols() != 1)
             {
-                return Err("Legend subset requires a vector of at most 64 series handles".into());
+                return Err("Legend subset requires a bounded vector of series handles".into());
             }
             let mut members = Vec::new();
             for i in 0..handles.len() {
@@ -164,10 +199,7 @@ impl Engine {
                 }) {
                     return Err("Legend members must belong to one target axes".into());
                 }
-                if members
-                    .iter()
-                    .any(|old: &ObjectIdentity| old.same_object(&h.object))
-                {
+                if !selected.insert(h.object.recovery_key()) {
                     return Err("Legend subset contains a duplicate handle".into());
                 }
                 target = Some(located);
@@ -182,14 +214,18 @@ impl Engine {
             start += 1;
         }
         let id = target.map_or(self.current_figure, |t| t.figure);
-        if !self.figures().any(|(n, _)| n == id) && self.figure_ids().len() >= 16 {
+        let is_uiaxes = super::super::ui_components::is_uiaxes_fig_id(id);
+        if !is_uiaxes && !self.figures().any(|(n, _)| n == id) && self.figure_ids().len() >= 16 {
             return Err("Legend would exceed 16 figures".into());
         }
-        let mut figure = self
-            .figures()
-            .find(|(n, _)| *n == id)
-            .map(|(_, f)| f.clone())
-            .unwrap_or_default();
+        let mut figure = if is_uiaxes {
+            self.graphics_figure(id)?.clone()
+        } else {
+            self.figures()
+                .find(|(n, _)| *n == id)
+                .map(|(_, f)| f.clone())
+                .unwrap_or_default()
+        };
         figure.validate()?;
         figure.activate_tile();
         let previous = figure.axes.identity.clone();
@@ -222,6 +258,10 @@ impl Engine {
             }
             figure.axes.legend = false;
             figure.axes.legend_state = None;
+            figure.axes.extras.legend_num_columns = None;
+            figure.axes.extras.legend_orientation = Default::default();
+            figure.axes.extras.legend_box = Default::default();
+            figure.axes.extras.legend_style = Default::default();
             if let Some(colors) = &mut figure.axes.colors {
                 colors.legend = None;
             }
@@ -236,21 +276,29 @@ impl Engine {
                     .axes
                     .series
                     .iter()
+                    .filter(|s| !s.legend_hidden)
                     .map(|s| s.identity.clone())
                     .collect(),
                 auto_update: true,
             });
         }
+        let state = figure.axes.legend_state.as_mut().unwrap();
         if let Some(members) = subset {
-            figure.axes.legend_state.as_mut().unwrap().members = members;
+            state.members = members;
+        } else if command.is_none() && labels_end != 0 {
+            state.members = figure
+                .axes
+                .series
+                .iter()
+                .filter(|s| !s.legend_hidden)
+                .map(|s| s.identity.clone())
+                .collect();
         }
+        let mut ignore_extra = false;
         if command.is_none() && labels_end != 0 {
             let labels = if labels_end == 1 {
                 self.legend_labels(&tail[0])?
             } else {
-                if labels_end > crate::plot::MAX_SERIES {
-                    return Err("Legend exceeds 64 labels".into());
-                }
                 let mut labels = Vec::new();
                 for value in &tail[..labels_end] {
                     self.check_cancel()?;
@@ -262,6 +310,11 @@ impl Engine {
                 }
                 labels
             };
+            let mut labels = labels;
+            let members = &mut state.members;
+            ignore_extra = labels.len() > members.len();
+            labels.truncate(members.len());
+            members.truncate(labels.len());
             self.apply_legend_labels(&mut figure.axes, labels)?;
         }
         figure.axes.legend = match command.as_deref() {
@@ -276,6 +329,13 @@ impl Engine {
             &self.cancel,
         )?;
         self.finish_legend_update(id, figure, &previous)?;
+        if ignore_extra {
+            self.lang_utils_call(
+                "warning",
+                &[Value::Text("Ignoring extra legend entries.".into())],
+                out,
+            )?;
+        }
         Ok(Value::Container(result.into()))
     }
     pub(super) fn get_legend_property(&self, located: Located, args: &[Value]) -> Result<Value> {
@@ -302,13 +362,35 @@ impl Engine {
             "type"=>"legend", "location"=>axes.legend_location.name(),
             "visible"=>if axes.legend {"on"}else{"off"},
             "autoupdate"=>if state.auto_update {"on"}else{"off"},
-            "interpreter"=>"none","box"=>"on",
+            "interpreter"=>axes.extras.legend_interpreter.as_str(),
+            "box"=>axes.extras.legend_box.name(),
+            "orientation"=>axes.extras.legend_orientation.name(),
+            "fontsize" => {
+                let size = axes
+                    .extras
+                    .legend_style
+                    .font_size
+                    .unwrap_or_else(|| axes.extras.font_size.unwrap_or(10.) * 0.9);
+                return Ok(Value::Matrix(crate::Matrix::from_column_slice(1, 1, &[size])?));
+            }
+            "fontweight" => if axes.extras.legend_style.bold.unwrap_or(false) { "bold" } else { "normal" },
+            "fontangle" => if axes.extras.legend_style.italic.unwrap_or(false) { "italic" } else { "normal" },
+            "numcolumns"=>{
+                let cols = axes.extras.legend_num_columns.unwrap_or_else(|| {
+                    if axes.extras.legend_orientation == crate::plot::LegendOrientation::Horizontal {
+                        axes.legend_entries().count().max(1)
+                    } else {
+                        1
+                    }
+                });
+                return Ok(Value::Matrix(crate::Matrix::from_column_slice(1, 1, &[cols as f64])?));
+            },
             "string"=>{
                 let mut labels=Vec::new();
                 for (_,series) in axes.legend_members() {self.check_cancel()?;labels.push(Arc::new(CharacterRow::from_text(&series.label,&self.cancel)?.into()));}
                 return Ok(Value::Container(CellArray::from_shared(labels.len(),1,labels,&self.cancel)?.into()));
             },
-            _=>return Err("Unsupported legend query; supported properties are Type, Location, Visible, AutoUpdate, String, Color, TextColor, EdgeColor, Interpreter and Box".into()),
+            _=>return Err("Unsupported legend query; supported properties are Type, Location, Visible, AutoUpdate, String, Color, TextColor, EdgeColor, Interpreter, NumColumns, Orientation and Box".into()),
         };
         Ok(Value::Text(value.into()))
     }

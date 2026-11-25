@@ -151,12 +151,24 @@ impl Engine {
         let mut style = baseline.style;
         let mut value = None;
         let mut style_changed = false;
+        let mut bar_layout = None;
+        let mut bar_width = None;
         let mut ordinary = Vec::with_capacity(args.len());
         for pair in args.as_chunks::<2>().0 {
             match text(&pair[0])?.to_ascii_lowercase().as_str() {
                 "basevalue" => value=Some(vector(&pair[1],1)?[0]),
                 "showbaseline" => {style.visible=visibility(&pair[1])?;style_changed=true;}
                 "baseline" => return Err("Chart BaseLine is read-only; edit its properties through get(chart,'BaseLine')".into()),
+                "barlayout" if kind == crate::plot::PlotKind::Bar => {
+                    bar_layout = Some(super::super::plot_properties::parse_bar_layout(&pair[1])?);
+                }
+                "barwidth" if kind == crate::plot::PlotKind::Bar => {
+                    let w = vector(&pair[1], 1)?[0];
+                    if !w.is_finite() || !(0. < w && w <= 1.) {
+                        return Err("BarWidth requires a real scalar in (0,1]".into());
+                    }
+                    bar_width = Some(w);
+                }
                 _ => ordinary.extend(pair.iter().cloned()),
             }
         }
@@ -167,6 +179,27 @@ impl Engine {
                 return Err("set requires property/value pairs only".into());
             }
             properties.apply(&mut axes.series[index..index + 1], kind)?;
+        }
+        if let Some(layout) = bar_layout {
+            axes.series[index].bar_layout = layout;
+        }
+        if let Some(w) = bar_width {
+            let target_group = axes.series[index].bar_group_id.clone();
+            let target_id = identity.clone();
+            for s in &mut axes.series {
+                if s.kind == crate::plot::PlotKind::Bar
+                    && match (&target_group, &s.bar_group_id) {
+                        (Some(a), Some(b)) => a.same_object(b),
+                        (None, None) => s.baseline_identity.same_object(&target_id),
+                        _ => false,
+                    }
+                {
+                    s.bar_relative_width = Some(w);
+                }
+            }
+        }
+        if bar_layout.is_some() || bar_width.is_some() {
+            axes.relayout_bar_group(index)?;
         }
         if value.is_some()
             && !style_changed

@@ -123,7 +123,7 @@ fn script_exports_rasters_decode_with_exact_lossless_pixels_and_compression() {
     let reference = image::open(dir.path().join("reference.png"))
         .unwrap()
         .to_rgb8();
-    assert_eq!(reference.dimensions(), (1440, 840));
+    assert_eq!(reference.dimensions(), (960, 560));
     for (format, expected) in [
         ("png", image::ImageFormat::Png),
         ("jpeg", image::ImageFormat::Jpeg),
@@ -176,6 +176,23 @@ fn script_exports_rasters_decode_with_exact_lossless_pixels_and_compression() {
             .starts_with(b"%PDF")
     );
     assert!(e.take_figure_file_events().is_empty());
+
+    e.execute("plot([0 1],[.5 .5],'r-','LineWidth',4);axis([0 1 0 1]);saveas(gcf,'scaled.png');")
+        .unwrap();
+    let scaled = image::open(dir.path().join("scaled.png"))
+        .unwrap()
+        .to_rgb8();
+    assert_eq!(scaled.dimensions(), (960, 560));
+    let red_at = |x, y| scaled.get_pixel(x, y).0 == [255, 0, 0];
+    // saveas PNG maps Position 1:1: the default 960×560 SVG data box spans
+    // x=70..920 and y=60..490, so a line at data y=.5 sits on row 275.
+    for x in [74, 480, 913] {
+        assert!(red_at(x, 275), "missing line at x={x}");
+    }
+    for x in [60, 927] {
+        assert!(!red_at(x, 275), "line extends beyond the axes");
+    }
+    assert!(!red_at(480, 183));
 }
 
 #[cfg(not(feature = "plot-export"))]

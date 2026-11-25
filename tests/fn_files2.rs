@@ -17,31 +17,7 @@ const REFERENCE_FOLDER: &str = r"C:\reference\temp\files2";
 /// must fail in the stated way (an error naming the missing feature); a case
 /// that starts passing must leave this table.
 const KNOWN: &[(usize, &str)] = &[
-    (
-        3,
-        "N-D arrays (RGB image MxNx3) are not supported by the engine",
-    ),
-    (
-        4,
-        "N-D arrays (RGB image MxNx3) are not supported by the engine",
-    ),
-    (24, "BMP files are not supported yet (task: PNG only)"),
-    (25, "TIFF files are not supported yet (task: PNG only)"),
     (26, "GIF files are not supported yet (task: PNG only)"),
-    (27, "JPEG files are not supported yet (task: PNG only)"),
-    (28, "JPEG files and N-D arrays are not supported yet"),
-    (29, "JPEG files are not supported yet (task: PNG only)"),
-    (
-        37,
-        "N-D arrays (ones(2,2,2)) are not supported by the engine",
-    ),
-    (
-        40,
-        "N-D arrays (ones(2,3,3)) are not supported by the engine",
-    ),
-    (47, "JPEG files are not supported yet (task: PNG only)"),
-    (48, "JPEG files are not supported yet (task: PNG only)"),
-    (49, "BMP files are not supported yet (task: PNG only)"),
     (72, "FLAC files are not supported yet (task: WAV only)"),
     (73, "FLAC files are not supported yet (task: WAV only)"),
     (
@@ -62,15 +38,6 @@ const KNOWN: &[(usize, &str)] = &[
         110,
         "Existing cell renderer left-aligns [] in a column of text instead of right-aligning it",
     ),
-    (
-        125,
-        "N-D arrays (cat(3, ...) RGB image) are not supported by the engine",
-    ),
-    (
-        178,
-        "Existing cell renderer does not shorten long text to the oracle's 0x1A ellipsis",
-    ),
-    (185, "JPEG files are not supported yet (task: PNG only)"),
 ];
 
 /// Engine gaps outside this task: `sort` of a cell array, transposing a cell
@@ -412,7 +379,8 @@ fn compare(case: &Case, e: &Engine, actual: String) -> Result<(), String> {
     }
 }
 fn expected_console(case: &Case) -> String {
-    let mut expected = case.console.clone();
+    // The oracle's `evalc` saved the cell-text ellipsis (U+2026) as 0x1A (case 178).
+    let mut expected = case.console.replace('\u{1a}', "\u{2026}");
     if case.id == 70 {
         expected = warning_line(&expected);
     }
@@ -428,10 +396,6 @@ fn expected_console(case: &Case) -> String {
 /// (class and size still exact).
 fn known_display(case: &Case, e: &Engine, actual: &str) -> bool {
     let adjusted = match case.id {
-        178 => actual.replace(
-            "'MATLAB:FILEATTRIB:CannotFindFile'",
-            "'MATLAB:FILEATTRIB:CannotFin\u{1a}'",
-        ),
         110 => actual.replace("'Title line'    [] \n", "'Title line'     []\n"),
         _ => return false,
     };
@@ -746,7 +710,7 @@ fn importdata_audio_limits_and_wav_errors() {
     let error = e.execute("importdata('big.csv', ',', 100001)").unwrap_err();
     assert!(error.contains("limit"), "{error}");
     // PCM8 file whose sample count exceeds the element limit.
-    let samples = 17 * 1024 * 1024u32;
+    let samples: u32 = 48 * 1024 * 1024 + 1;
     let mut wav = b"RIFF".to_vec();
     wav.extend_from_slice(&(36 + samples).to_le_bytes());
     wav.extend_from_slice(b"WAVEfmt ");
@@ -1220,4 +1184,75 @@ fn rev3_archives_skip_fifos_and_root_names_keep_their_separator() {
     assert_eq!(e.variables["k"].data(), &[1.]);
     run(&mut e, "[s, a] = fileattrib('/');");
     assert_eq!(run(&mut e, "disp(a.Name)"), "/\n");
+}
+
+#[test]
+fn isfile_isfolder_shapes_paths_and_errors() {
+    let root = folder(".files2-isfile-");
+    fs::create_dir(root.path().join("sub")).unwrap();
+    fs::write(root.path().join("f.txt"), b"x").unwrap();
+    fs::write(root.path().join("sub").join("g.txt"), b"y").unwrap();
+    let mut e = Engine::default();
+    e.set_current_folder(root.path()).unwrap();
+    let abs = format!("'{}'", quoted(&root.path().join("f.txt")));
+    run(
+        &mut e,
+        &format!(
+            "a1 = isfile('f.txt'); a2 = isfolder('f.txt'); a3 = isfile('sub'); a4 = isfolder('sub');
+             a5 = isfile({abs}); a6 = isfile('missing.txt'); a7 = isfolder('missing');
+             a8 = isfile(''); a9 = isfolder(''); a10 = isfile(\"sub/g.txt\");
+             a11 = isfile(tempdir); a12 = isfolder(tempdir); a13 = isfile(string(missing));
+             s = [\"f.txt\" \"sub\"; \"nope\" string({abs})]; f = isfile(s); d = isfolder(s);
+             c = isfolder({{'sub'; 'f.txt'; ''}}); z = isfile({{}}); sz = size(isfile(strings(2,0)));"
+        ),
+    );
+    let flag = |e: &Engine, name: &str| e.logical_variables[name].data().to_vec();
+    for (name, want) in [
+        ("a1", 1),
+        ("a2", 0),
+        ("a3", 0),
+        ("a4", 1),
+        ("a5", 1),
+        ("a6", 0),
+        ("a7", 0),
+        ("a8", 0),
+        ("a9", 0),
+        ("a10", 1),
+        ("a11", 0),
+        ("a12", 1),
+        ("a13", 0),
+    ] {
+        assert_eq!(flag(&e, name), vec![want], "{name}");
+    }
+    // Column-major 2x2: f.txt, nope, sub, abs f.txt.
+    assert_eq!(flag(&e, "f"), vec![1, 0, 0, 1]);
+    assert_eq!(flag(&e, "d"), vec![0, 0, 1, 0]);
+    assert_eq!(e.logical_variables["f"].dims().as_ref(), &[2, 2]);
+    assert_eq!(flag(&e, "c"), vec![1, 0, 0]);
+    assert_eq!(e.logical_variables["c"].dims().as_ref(), &[3, 1]);
+    assert_eq!(e.logical_variables["z"].dims().as_ref(), &[0, 0]);
+    assert_eq!(e.variables["sz"].data(), &[2., 0.]);
+    for (source, want) in [
+        (
+            "isfile(5)",
+            "isfile: Invalid input argument of type 'double'",
+        ),
+        (
+            "isfolder(struct('a',1))",
+            "isfolder: Invalid input argument of type 'struct'",
+        ),
+        (
+            "isfolder({1})",
+            "isfolder: Invalid input argument of type 'cell'",
+        ),
+        (
+            "isfile(['ab';'cd'])",
+            "isfile: Invalid input argument of type 'char'",
+        ),
+        ("isfile()", "Not enough input arguments."),
+        ("isfolder('a', 'b')", "Too many input arguments."),
+    ] {
+        let error = e.execute(source).unwrap_err();
+        assert!(error.contains(want), "{source}: {error}");
+    }
 }

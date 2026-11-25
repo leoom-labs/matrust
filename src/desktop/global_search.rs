@@ -6,7 +6,7 @@ use matrust::session::DesktopTheme;
 const MAX_QUERY_CHARS: usize = 128;
 const MAX_QUERY_BYTES: usize = 512;
 /// Palette card width before clamping to the window.
-const WIDTH: f32 = 560.;
+const WIDTH: f32 = 640.;
 /// Result row height and the rows shown before the list scrolls.
 const ROW: f32 = 28.;
 const MAX_ROWS: usize = 10;
@@ -29,6 +29,8 @@ enum Entry {
     Theme(DesktopTheme),
     Scale(u16),
     Help,
+    UndockFigure,
+    Settings,
 }
 impl Entry {
     fn label(self) -> &'static str {
@@ -41,6 +43,8 @@ impl Entry {
             Self::Scale(100) => "Desktop scale: 100%",
             Self::Scale(125) => "Desktop scale: 125%",
             Self::Scale(_) => "Desktop scale: 150%",
+            Self::UndockFigure => "Undock figure",
+            Self::Settings => "Settings",
             Self::Help => "Help: MatRust syntax and supported commands",
         }
     }
@@ -49,6 +53,7 @@ impl Entry {
         match self {
             Self::Theme(_) => "theme dark light appearance mode colour color",
             Self::Scale(_) => "zoom size",
+            Self::Settings => "preferences options theme scale workspace",
             _ => "",
         }
     }
@@ -56,21 +61,24 @@ impl Entry {
     fn shortcut(self) -> Option<&'static str> {
         match self {
             Self::Action(toolstrip::Action::NewScript) => Some("Ctrl+N"),
-            Self::Action(toolstrip::Action::RunScript) => Some("Ctrl+Enter"),
+            Self::Action(toolstrip::Action::RunScript) => Some("F5"),
             Self::Action(toolstrip::Action::RunSelection) => Some("F9"),
             _ => None,
         }
     }
     fn category(self) -> &'static str {
         match self {
-            Self::Action(_) => "Action",
-            Self::Theme(_) | Self::Scale(_) => "Setting",
+            Self::Action(_) | Self::UndockFigure => "Action",
+            Self::Theme(_) | Self::Scale(_) | Self::Settings => "Setting",
             Self::Help => "Help",
         }
     }
     fn enabled(self, app: &Workspace) -> bool {
         match self {
             Self::Action(action) => action.enabled_for_search(app),
+            Self::UndockFigure => {
+                !app.busy && app.figure.is_some() && !app.detached.contains(app.current_figure)
+            }
             _ => !app.busy,
         }
     }
@@ -79,6 +87,8 @@ impl Entry {
             Self::Action(action) => action.invoke(app, ctx),
             Self::Theme(theme) => app.set_desktop_theme(ctx, theme),
             Self::Scale(scale) => app.set_desktop_scale(ctx, scale),
+            Self::UndockFigure => app.undock_figure(app.current_figure, ctx),
+            Self::Settings => theme::open_settings(ctx),
             Self::Help => {
                 app.console.push(matrust::engine::HELP.into());
                 app.queue_pane_focus(ctx, navigation::FocusPane::Command);
@@ -96,6 +106,7 @@ fn matches(query: &str) -> Vec<Entry> {
     let query = query.trim().to_lowercase();
     let mut found = toolstrip::Action::ALL
         .into_iter()
+        .chain(crate::apps::AppKind::built().map(toolstrip::Action::App))
         .map(Entry::Action)
         .chain([
             Entry::Theme(DesktopTheme::Light),
@@ -105,6 +116,8 @@ fn matches(query: &str) -> Vec<Entry> {
             Entry::Scale(100),
             Entry::Scale(125),
             Entry::Scale(150),
+            Entry::Settings,
+            Entry::UndockFigure,
             Entry::Help,
         ])
         .filter(|entry| {
@@ -126,9 +139,51 @@ fn matches(query: &str) -> Vec<Entry> {
     found
 }
 
-/// The palette card: the panel card with S padding.
+/// The palette dialog (plan sections 5, 9): surface 2 with a 1 px border,
+/// 16 px padding and room above the body for the 24 px title bar on
+/// surface 3 that [`paint_title_bar`] draws.
 pub(super) fn card_frame(ctx: &egui::Context) -> egui::Frame {
-    tokens::card(ctx).inner_margin(tokens::S as i8)
+    let pad = tokens::L as i8;
+    crate::dialog_windows::dialog_frame(ctx).inner_margin(egui::Margin {
+        left: pad,
+        right: pad,
+        top: (crate::dialog_windows::TITLE_BAR + tokens::L) as i8,
+        bottom: pad,
+    })
+}
+
+/// Title bar of the palette dialog, painted into the frame's top margin
+/// above `body` (the padded content rect).
+fn paint_title_bar(ui: &egui::Ui, body: egui::Rect) {
+    let p = tokens::palette(ui.ctx());
+    let bar = egui::Rect::from_min_max(
+        egui::pos2(
+            body.left() - tokens::L,
+            body.top() - tokens::L - crate::dialog_windows::TITLE_BAR,
+        ),
+        egui::pos2(body.right() + tokens::L, body.top() - tokens::L),
+    );
+    let painter = ui.painter();
+    painter.rect_filled(bar, 0., p.canvas);
+    painter.hline(
+        bar.x_range(),
+        bar.bottom() - 0.5,
+        egui::Stroke::new(1., p.hairline),
+    );
+    painter.text(
+        bar.left_center() + egui::vec2(tokens::M, 0.),
+        egui::Align2::LEFT_CENTER,
+        "Search actions",
+        tokens::semibold(tokens::BODY),
+        p.text,
+    );
+    painter.text(
+        bar.right_center() - egui::vec2(tokens::M, 0.),
+        egui::Align2::RIGHT_CENTER,
+        "Ctrl+K",
+        egui::FontId::proportional(tokens::CAPTION),
+        p.text_muted,
+    );
 }
 
 /// "No matches for '<query>'", quoting at most 24 characters of the query.
@@ -142,8 +197,15 @@ pub(super) fn no_matches(query: &str) -> String {
 }
 
 /// One result: BODY label at S padding, the shortcut right-aligned in CAPTION;
-/// the selected or hovered row is filled with accent_soft.
-fn result_row(ui: &mut egui::Ui, entry: Entry, selected: bool, width: f32) -> egui::Response {
+/// the selected or hovered row is filled with the full selection tint.
+/// Disabled rows keep full-strength paint (no egui fade) in text 3.
+fn result_row(
+    ui: &mut egui::Ui,
+    entry: Entry,
+    selected: bool,
+    enabled: bool,
+    width: f32,
+) -> egui::Response {
     let palette = tokens::palette(ui.ctx());
     let (rect, response) = ui.allocate_exact_size(egui::vec2(width, ROW), egui::Sense::CLICK);
     response.widget_info(|| {
@@ -157,37 +219,51 @@ fn result_row(ui: &mut egui::Ui, entry: Entry, selected: bool, width: f32) -> eg
     if !ui.is_rect_visible(rect) {
         return response;
     }
-    let highlighted = selected || response.hovered();
+    // A disabled Ui fades its painter; the row picks its own disabled ink.
+    let mut painter = ui.painter().clone();
+    painter.set_opacity(1.0);
+    let highlighted = selected || (enabled && response.hovered());
     if highlighted {
-        ui.painter()
-            .rect_filled(rect, tokens::CONTROL_RADIUS, palette.accent_soft);
+        painter.rect_filled(rect, tokens::CONTROL_RADIUS, palette.accent_soft);
     }
+    if selected {
+        // 2 px accent bar at the left of the keyboard-selected row.
+        let bar = egui::Rect::from_min_size(rect.min, egui::vec2(2., rect.height()));
+        painter.rect_filled(bar, 0., palette.accent);
+    }
+    let muted = if enabled {
+        palette.text_muted
+    } else {
+        palette.text_disabled
+    };
     let inner = rect.shrink2(egui::vec2(tokens::S, 0.));
     let mut right = inner.right();
     if let Some(shortcut) = entry.shortcut() {
-        let galley = ui.painter().layout_no_wrap(
+        let galley = painter.layout_no_wrap(
             shortcut.into(),
             egui::FontId::proportional(tokens::CAPTION),
-            palette.text_muted,
+            muted,
         );
         right -= galley.size().x;
         let at = egui::pos2(right, inner.center().y - galley.size().y / 2.);
-        ui.painter().galley(at, galley, palette.text_muted);
+        painter.galley(at, galley, muted);
         right -= tokens::S;
     }
-    let color = if highlighted {
-        palette.accent_text
-    } else {
+    // Selected rows keep text 1 on the selection tint (plus the accent bar);
+    // disabled rows are text 3.
+    let color = if enabled {
         palette.text
+    } else {
+        palette.text_disabled
     };
     let mut job = egui::text::LayoutJob::single_section(
         entry.label().into(),
         egui::TextFormat::simple(egui::FontId::proportional(tokens::BODY), color),
     );
     job.wrap = egui::text::TextWrapping::truncate_at_width((right - inner.left()).max(0.));
-    let galley = ui.painter().layout_job(job);
+    let galley = painter.layout_job(job);
     let at = egui::pos2(inner.left(), inner.center().y - galley.size().y / 2.);
-    ui.painter().galley(at, galley, color);
+    painter.galley(at, galley, color);
     response
 }
 
@@ -271,6 +347,8 @@ pub(super) struct State {
     generation: u64,
     selected: usize,
     reveal: bool,
+    /// Move a fresh selection off disabled rows (set when the list resets).
+    preselect: bool,
     focus_query: bool,
     key_frame: Option<u64>,
     finished_frame: Option<u64>,
@@ -280,6 +358,10 @@ impl State {
     #[cfg(test)]
     pub(super) fn anchor_rect(&self) -> Option<egui::Rect> {
         self.anchor.map(|(rect, _)| rect)
+    }
+    #[cfg(test)]
+    pub(super) fn selected(&self) -> usize {
+        self.selected
     }
     pub(super) fn is_open(&self) -> bool {
         self.authority.is_some()
@@ -352,8 +434,9 @@ impl Workspace {
     pub(super) fn global_search_launcher(&mut self, ui: &mut egui::Ui) {
         let enabled = self.global_search.is_open() || self.global_search_available(ui.ctx());
         let response = if ui.ctx().content_rect().width() < tokens::SEARCH_ICON_WIDTH {
+            // Toolstrip buttons always carry text: icon and "Search".
             ui.add_enabled_ui(enabled, |ui| {
-                panels::icon_button(ui, panels::Glyph::Search, "Search")
+                panels::strip_action(ui, "Search", shell::Icon::Search, false)
             })
             .inner
         } else {
@@ -374,6 +457,7 @@ impl Workspace {
                 self.global_search.anchor = Some((response.rect, response.layer_id));
                 self.global_search.query.clear();
                 self.global_search.selected = 0;
+                self.global_search.preselect = true;
                 self.global_search.generation = self.global_search.generation.wrapping_add(1);
                 self.global_search.focus_query = true;
                 self.global_search.reveal = true;
@@ -402,10 +486,19 @@ impl Workspace {
                 .authority
                 .as_ref()
                 .is_some_and(|a| a.valid(self));
-        // One card under the top-bar search box, like a command palette.
+        // A centred 640 px command dialog (plan 5); the top-bar field only
+        // opens it. It sits below the launcher so the bars stay readable.
         let width = WIDTH
             .min(ctx.content_rect().width() - 2. * tokens::L)
             .max(120.);
+        let content = ctx.content_rect();
+        let top = anchor
+            .bottom()
+            .max(content.top() + (content.height() * 0.12).round());
+        let anchor = egui::Rect::from_min_size(
+            egui::pos2((content.center().x - width / 2.).round(), top),
+            egui::vec2(width, 0.),
+        );
         let palette = tokens::palette(ctx);
         let frame = card_frame(ctx);
         egui::Popup::new(popup_id(), ctx.clone(), anchor, layer)
@@ -452,6 +545,7 @@ impl Workspace {
                     self.global_search.generation = self.global_search.generation.wrapping_add(1);
                     self.global_search.pending = None;
                     self.global_search.selected = 0;
+                    self.global_search.preselect = true;
                     self.global_search.reveal = true;
                 }
                 if self.global_search.focus_query {
@@ -459,6 +553,13 @@ impl Workspace {
                     self.global_search.focus_query = false;
                 }
                 let entries = matches(&self.global_search.query);
+                if std::mem::take(&mut self.global_search.preselect) {
+                    // Do not pre-select a disabled row.
+                    self.global_search.selected = entries
+                        .iter()
+                        .position(|entry| allowed && entry.enabled(self))
+                        .unwrap_or(0);
+                }
                 self.global_search.selected = self
                     .global_search
                     .selected
@@ -518,7 +619,7 @@ impl Workspace {
                             let selected = index == self.global_search.selected;
                             let response = ui
                                 .add_enabled_ui(enabled, |ui| {
-                                    result_row(ui, entry, selected, row_width)
+                                    result_row(ui, entry, selected, enabled, row_width)
                                 })
                                 .inner;
                             response.clone().on_hover_text(format!(
@@ -547,6 +648,7 @@ impl Workspace {
                     ui.label(caption("Action unavailable. Close search and try again."));
                 }
                 ui.label(caption("Up/Down to select, Enter to run, Esc to close"));
+                paint_title_bar(ui, ui.min_rect());
             });
     }
 

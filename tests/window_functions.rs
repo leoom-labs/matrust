@@ -67,7 +67,7 @@ fn windows_reject_unbounded_and_cancelled_work() {
         f64::NEG_INFINITY,
         -1.,
         -0.1,
-        16_777_217.,
+        50_331_649.,
     ] {
         assert!(window_length(n).is_err(), "{n}");
     }

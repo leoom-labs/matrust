@@ -272,9 +272,9 @@ fn value_column_shows_scalars_short_vectors_and_sizes_like_matlab() {
         ("zs", "1+2i"),
         ("c", "3x2 char"),
         ("e", "[]"),
-        ("ts", "0.8147"),
-        ("ti", "5"),
-        ("tv", "[1 2 3]"),
+        ("ts", "0.8147 single"),
+        ("ti", "5 int8"),
+        ("tv", "[1 2 3] int8"),
         ("tm", "4x4 int16"),
     ] {
         assert_eq!(row::value_preview(&vars[name]), text, "{name}");

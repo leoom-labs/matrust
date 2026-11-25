@@ -106,7 +106,7 @@ fn script_shapes_normalizations_missing_values_and_explicit_rejections() {
         "std(A,2)",
         "std(A,[1 1 1])",
         "var(A,0,0)",
-        "var(A,0,[1 2])",
+        "var(A,0,[1 1])",
         "std(A,0,Inf)",
         "var(A,0,'all','unknown')",
         "std(A,'all')",

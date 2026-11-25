@@ -10,7 +10,7 @@ const PARALLEL_WORK: usize = 1_000_000;
 
 /// Current documented MATLAB matrix/gain syntax, with a whole-cascade
 /// implementation awaiting SciPy validation. MATLAB numerical parity is unverified.
-/// SOS requires 1..64 rows; scalar or exactly L+1 scale values are supported.
+/// SOS requires 1..MAX_SOS_SECTIONS rows; scalar or exactly L+1 scale values are supported.
 pub fn filtfilt_sos(
     sos: &Matrix,
     gains: &[f64],

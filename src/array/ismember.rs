@@ -1,7 +1,9 @@
 //! Borrowed real/logical vector membership; production strategy is serial.
-use super::sort::{allocate, check, compare, sort_lane};
+use super::sort::{
+    Key, allocate, check, compare_keys as compare, keys_equal, sort_lane, typed_key,
+};
 use crate::{
-    Array, LogicalMatrix, Matrix, Result,
+    Array, LogicalMatrix, Matrix, Result, TypedArray,
     array::{MissingPlacement, SortOrder},
 };
 #[cfg(test)]
@@ -37,12 +39,14 @@ fn checkpoint(cancel: &AtomicBool, phase: Phase) -> Result<()> {
 enum Values<'a> {
     Real(&'a [f64]),
     Logical(&'a [u8]),
+    Typed(&'a TypedArray),
 }
 impl Values<'_> {
-    fn get(self, i: usize) -> f64 {
+    fn key(self, i: usize) -> Key {
         match self {
-            Self::Real(a) => a[i],
-            Self::Logical(a) => f64::from(a[i]),
+            Self::Real(a) => Key::Real(a[i]),
+            Self::Logical(a) => Key::Real(f64::from(a[i])),
+            Self::Typed(a) => typed_key(a, i),
         }
     }
     fn logical(self) -> bool {
@@ -53,12 +57,10 @@ fn admit(input: &Array) -> Result<Values<'_>> {
     let values = match input {
         Array::Numeric(a) => Values::Real(a.data()),
         Array::Logical(a) => Values::Logical(a.data()),
-        _ => return Err("ismember supports real double or logical inputs only".into()),
+        Array::Typed(a) => Values::Typed(a),
+        _ => return Err("ismember supports real numeric or logical inputs only".into()),
     };
     Matrix::checked_len(input.rows(), input.cols())?;
-    if !input.is_empty() && input.rows() != 1 && input.cols() != 1 {
-        return Err("ismember supports vectors and shaped empties, not nonempty matrices".into());
-    }
     Ok(values)
 }
 fn private_budget(m: usize, n: usize, sorted: bool, outputs: [bool; 2]) -> Result<()> {
@@ -85,30 +87,30 @@ fn private_budget(m: usize, n: usize, sorted: bool, outputs: [bool; 2]) -> Resul
 enum Set<'a> {
     Empty,
     Bits([usize; 2]),
-    Borrowed(&'a [f64]),
+    Borrowed(Values<'a>, usize),
     Sorted {
-        values: &'a [f64],
+        values: Values<'a>,
         indices: Vec<u32>,
     },
 }
 impl Set<'_> {
-    fn locate(&self, query: f64) -> usize {
+    fn locate(&self, query: Key) -> usize {
         match self {
             Self::Empty => 0,
             Self::Bits(first) => {
-                if query == 0. {
+                if keys_equal(query, Key::Real(0.)) {
                     first[0]
-                } else if query == 1. {
+                } else if keys_equal(query, Key::Real(1.)) {
                     first[1]
                 } else {
                     0
                 }
             }
-            Self::Borrowed(values) => {
-                match_position(values.len(), query, |i| values[i]).map_or(0, |i| i + 1)
+            Self::Borrowed(values, len) => {
+                match_position(*len, query, |i| values.key(i)).map_or(0, |i| i + 1)
             }
             Self::Sorted { values, indices } => {
-                match_position(indices.len(), query, |i| values[indices[i] as usize])
+                match_position(indices.len(), query, |i| values.key(indices[i] as usize))
                     .map_or(0, |i| indices[i] as usize + 1)
             }
         }
@@ -116,21 +118,23 @@ impl Set<'_> {
 }
 
 // Shared numeric lower-bound/equality policy for the borrowed and indexed views.
-fn match_position(len: usize, query: f64, read: impl Fn(usize) -> f64) -> Option<usize> {
-    if query.is_nan() {
+fn match_position(len: usize, query: Key, read: impl Fn(usize) -> Key) -> Option<usize> {
+    if matches!(query, Key::Real(v) if v.is_nan()) {
         return None;
     }
     let (mut lo, mut hi) = (0, len);
     while lo < hi {
         let mid = lo + (hi - lo) / 2;
         // NaNs sort last and never compare less than a real query.
-        if read(mid) < query {
+        if compare(read(mid), query, SortOrder::Ascend, MissingPlacement::Last)
+            == std::cmp::Ordering::Less
+        {
             lo = mid + 1;
         } else {
             hi = mid;
         }
     }
-    if lo < len && read(lo) == query {
+    if lo < len && keys_equal(read(lo), query) {
         Some(lo)
     } else {
         None
@@ -147,17 +151,14 @@ fn prepare_ordered<'a>(
     if n == 0 || bits {
         return prepare(set, n, bits, cancel, parallel);
     }
-    let Values::Real(values) = set else {
-        unreachable!()
-    };
     checkpoint(cancel, Phase::Ordered)?;
     for i in 1..n {
         if i.is_multiple_of(CHUNK) {
             checkpoint(cancel, Phase::Ordered)?;
         }
         if compare(
-            values[i - 1],
-            values[i],
+            set.key(i - 1),
+            set.key(i),
             SortOrder::Ascend,
             MissingPlacement::Last,
         )
@@ -169,7 +170,7 @@ fn prepare_ordered<'a>(
         }
     }
     checkpoint(cancel, Phase::Ordered)?;
-    Ok(Set::Borrowed(values))
+    Ok(Set::Borrowed(set, n))
 }
 
 fn prepare<'a>(
@@ -188,11 +189,11 @@ fn prepare<'a>(
             if i.is_multiple_of(CHUNK) {
                 checkpoint(cancel, Phase::Scan)?;
             }
-            let value = set.get(i);
-            if value == 0. && first[0] == 0 {
+            let value = set.key(i);
+            if keys_equal(value, Key::Real(0.)) && first[0] == 0 {
                 first[0] = i + 1;
             }
-            if value == 1. && first[1] == 0 {
+            if keys_equal(value, Key::Real(1.)) && first[1] == 0 {
                 first[1] = i + 1;
             }
             if first.iter().all(|&i| i != 0) {
@@ -202,9 +203,6 @@ fn prepare<'a>(
         checkpoint(cancel, Phase::Scan)?;
         return Ok(Set::Bits(first));
     }
-    let Values::Real(values) = set else {
-        unreachable!()
-    };
     checkpoint(cancel, Phase::Initialize)?;
     let mut indices = allocate::<u32>(n, cancel)?;
     for (chunk, data) in indices.chunks_mut(CHUNK).enumerate() {
@@ -225,8 +223,8 @@ fn prepare<'a>(
         parallel,
         &|a, b| {
             compare(
-                values[a as usize],
-                values[b as usize],
+                set.key(a as usize),
+                set.key(b as usize),
                 SortOrder::Ascend,
                 MissingPlacement::Last,
             )
@@ -235,7 +233,10 @@ fn prepare<'a>(
     )?;
     checkpoint(cancel, Phase::Sort)?;
     drop(scratch);
-    Ok(Set::Sorted { values, indices })
+    Ok(Set::Sorted {
+        values: set,
+        indices,
+    })
 }
 
 fn membership_impl(
@@ -302,7 +303,7 @@ fn membership_preparation(
                 .as_ref()
                 .map_or_else(|| loc.as_ref().unwrap().len(), |a| a.len());
             for at in 0..len {
-                let index = set.locate(queries.get(start + at));
+                let index = set.locate(queries.key(start + at));
                 if let Some(lia) = &mut lia {
                     lia[at] = u8::from(index != 0);
                 }
@@ -379,9 +380,141 @@ fn membership_preparation(
     })
 }
 
+fn membership_rows(
+    a: &Array,
+    b: &Array,
+    outputs: [bool; 2],
+    cancel: &AtomicBool,
+) -> Result<MembershipResult> {
+    let av = admit(a)?;
+    let bv = admit(b)?;
+    if a.is_nd() || b.is_nd() {
+        return Err("ismember: 'rows' is not supported for N-D arrays".into());
+    }
+    if a.cols() != b.cols() {
+        return Err("A and B must have the same number of columns.".into());
+    }
+    let (ma, mb, cols) = (a.rows(), b.rows(), a.cols());
+    private_budget(ma, mb, mb > 0 && cols > 0, outputs)?;
+    if !outputs[0] && !outputs[1] {
+        return Ok(MembershipResult {
+            membership: None,
+            locations: None,
+        });
+    }
+    let b_indices = if mb > 0 && cols > 0 {
+        let mut indices = allocate::<u32>(mb, cancel)?;
+        for (i, slot) in indices.iter_mut().enumerate() {
+            if i.is_multiple_of(CHUNK) {
+                checkpoint(cancel, Phase::Initialize)?;
+            }
+            *slot = i as u32;
+        }
+        let mut scratch = allocate::<u32>(mb, cancel)?;
+        checkpoint(cancel, Phase::Sort)?;
+        sort_lane(
+            &mut indices,
+            &mut scratch,
+            false,
+            &|r1, r2| {
+                for col in 0..cols {
+                    let ord = compare(
+                        bv.key(col * mb + r1 as usize),
+                        bv.key(col * mb + r2 as usize),
+                        SortOrder::Ascend,
+                        MissingPlacement::Last,
+                    );
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            },
+            cancel,
+        )?;
+        Some(indices)
+    } else {
+        None
+    };
+
+    let mut flags = if outputs[0] {
+        Some(allocate::<u8>(ma, cancel)?)
+    } else {
+        None
+    };
+    let mut locs = if outputs[1] {
+        Some(allocate::<f64>(ma, cancel)?)
+    } else {
+        None
+    };
+    for r in 0..ma {
+        if r.is_multiple_of(CHUNK) {
+            checkpoint(cancel, Phase::Query)?;
+        }
+        let loc = if mb == 0 {
+            0
+        } else if cols == 0 {
+            1
+        } else if (0..cols).any(|col| matches!(av.key(col * ma + r), Key::Real(v) if v.is_nan())) {
+            0
+        } else {
+            let indices = b_indices.as_ref().unwrap();
+            let (mut lo, mut hi) = (0, mb);
+            while lo < hi {
+                let mid = lo + (hi - lo) / 2;
+                let br = indices[mid] as usize;
+                let mut ord = std::cmp::Ordering::Equal;
+                for col in 0..cols {
+                    ord = compare(
+                        bv.key(col * mb + br),
+                        av.key(col * ma + r),
+                        SortOrder::Ascend,
+                        MissingPlacement::Last,
+                    );
+                    if ord != std::cmp::Ordering::Equal {
+                        break;
+                    }
+                }
+                if ord == std::cmp::Ordering::Less {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
+            }
+            if lo < mb {
+                let br = indices[lo] as usize;
+                if (0..cols).all(|col| keys_equal(bv.key(col * mb + br), av.key(col * ma + r))) {
+                    br + 1
+                } else {
+                    0
+                }
+            } else {
+                0
+            }
+        };
+        if let Some(f) = &mut flags {
+            f[r] = u8::from(loc != 0);
+        }
+        if let Some(l) = &mut locs {
+            l[r] = loc as f64;
+        }
+    }
+    let membership = flags
+        .map(|f| LogicalMatrix::from_column_vec(ma, 1, f, cancel))
+        .transpose()?;
+    let locations = locs
+        .map(|l| Matrix::from_column_vec(ma, 1, l))
+        .transpose()?;
+    check(cancel)?;
+    Ok(MembershipResult {
+        membership,
+        locations,
+    })
+}
+
 impl Array {
-    /// Exact real/logical membership for vectors and shaped empties. Results
-    /// retain query shape; locations are the first original one-based set index.
+    /// Exact real/logical membership. Results retain query shape (or ma x 1 with 'rows');
+    /// locations are the first original one-based set index.
     /// NaNs never match; signed zeros compare equal. No input payload is copied.
     pub fn membership(
         &self,
@@ -390,6 +523,20 @@ impl Array {
         cancel: &AtomicBool,
     ) -> Result<MembershipResult> {
         membership_impl(self, set, outputs, cancel, false)
+    }
+
+    pub fn membership_with_options(
+        &self,
+        set: &Array,
+        rows_mode: bool,
+        outputs: [bool; 2],
+        cancel: &AtomicBool,
+    ) -> Result<MembershipResult> {
+        if rows_mode {
+            membership_rows(self, set, outputs, cancel)
+        } else {
+            membership_impl(self, set, outputs, cancel, false)
+        }
     }
 }
 
@@ -488,15 +635,11 @@ mod tests {
         assert!(a.membership(&only_false, [true; 2], &cancel).is_ok());
         assert!(private_budget(usize::MAX, 1, false, [true; 2]).is_err());
         assert!(private_budget(1, usize::MAX, true, [true; 2]).is_err());
-        assert!(
-            private_budget(
-                crate::matrix::MAX_ELEMENTS,
-                crate::matrix::MAX_ELEMENTS,
-                true,
-                [true; 2]
-            )
-            .is_ok()
-        );
+        // 16 Mi queries against 16 Mi sorted values fit the fixed 256 MiB
+        // private budget. The native element cap is larger, so the budget
+        // binds first.
+        assert!(private_budget(16 * 1024 * 1024, 16 * 1024 * 1024, true, [true; 2]).is_ok());
+        assert!(private_budget(48 * 1024 * 1024, 48 * 1024 * 1024, true, [true; 2]).is_err());
     }
     #[test]
     fn all_masks_and_actual_one_eight_strategies_match_across_merge_boundaries() {
@@ -543,9 +686,10 @@ mod tests {
         assert!(a.membership(&b, [false; 2], &cancel).is_ok());
         assert!(!cancel.load(Ordering::Relaxed));
         CANCEL.with(|slot| slot.set(None));
-        let bad: Array = Matrix::filled(2, 2, 0.).unwrap().into();
-        assert!(bad.membership(&b, [false; 2], &cancel).is_err());
-        assert!(a.membership(&bad, [false; 2], &cancel).is_err());
+        // Nonempty matrices are valid ismember inputs since fix 18.
+        let matrix: Array = Matrix::filled(2, 2, 0.).unwrap().into();
+        assert!(matrix.membership(&b, [false; 2], &cancel).is_ok());
+        assert!(a.membership(&matrix, [false; 2], &cancel).is_ok());
     }
     #[test]
     fn cancellation_inside_actual_query_chunks_uses_captured_atomic_not_worker_tls() {
@@ -841,13 +985,13 @@ mod tests {
                         let prepared =
                             prepare_ordered(admit(&b).unwrap(), b.len(), false, &cancel, false)
                                 .unwrap();
-                        assert_eq!(matches!(prepared, Set::Borrowed(_)), *borrowed);
-                        if let Set::Borrowed(values) = prepared {
+                        assert_eq!(matches!(prepared, Set::Borrowed(_, _)), *borrowed);
+                        if let Set::Borrowed(Values::Real(values), len) = prepared {
                             let Array::Numeric(source) = &b else {
                                 unreachable!()
                             };
                             assert_eq!(values.as_ptr(), source.data().as_ptr());
-                            assert_eq!(values.len(), source.data().len());
+                            assert_eq!(len, source.data().len());
                         }
                         for mask in [[false, false], [true, false], [false, true], [true, true]] {
                             for parallel in [false, true] {
@@ -862,7 +1006,9 @@ mod tests {
                                 equal(&old, &new);
                                 if let Some(loc) = &new.locations {
                                     for (i, &actual) in loc.data().iter().enumerate() {
-                                        let q = admit(&queries).unwrap().get(i);
+                                        let Key::Real(q) = admit(&queries).unwrap().key(i) else {
+                                            unreachable!()
+                                        };
                                         let first = data
                                             .iter()
                                             .position(|&v| v == q)

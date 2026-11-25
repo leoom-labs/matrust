@@ -262,6 +262,31 @@ impl Engine {
         Ok(data)
     }
 
+    /// xcov: xcorr of the mean-removed sequences (same lags and scale options).
+    pub(super) fn xcov_call(&self, args: &[Value], outputs: usize) -> Result<Vec<Value>> {
+        let text = |v: &Value| {
+            matches!(v, Value::Text(_) | Value::QuotedString(_))
+                || matches!(v, Value::Container(Array::Character(_)))
+        };
+        let numeric = args.iter().take_while(|v| !text(v)).count();
+        let mut centred = args.to_vec();
+        for (i, value) in args.iter().enumerate().take(numeric.min(2)) {
+            // A one-element second argument is maxlag, not a sequence.
+            let m = self.real_arg("xcov", value)?;
+            if i == 1 && m.len() == 1 {
+                break;
+            }
+            if m.is_empty() {
+                continue;
+            }
+            let mean = m.data().iter().sum::<f64>() / m.len() as f64;
+            let data = m.data().iter().map(|v| v - mean).collect();
+            centred[i] = Value::Matrix(Matrix::from_column_vec(m.rows(), m.cols(), data)?);
+        }
+        self.xcorr_call(&centred, outputs)
+            .map_err(|e| e.replacen("xcorr", "xcov", 1))
+    }
+
     fn xcorr_vector(&self, value: &Value) -> Result<Matrix> {
         let m = self.real_arg("xcorr", value)?;
         if m.rows() > 1 && m.cols() > 1 {

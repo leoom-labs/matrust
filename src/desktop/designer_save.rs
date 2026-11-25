@@ -1,6 +1,6 @@
 //! Retain a Designer save gesture until root admission; the existing worker owns saving.
 use super::*;
-use designer_apply::Design;
+use filter_spec::Spec as Design;
 
 #[cfg(test)]
 type Picker = fn(&mut Workspace, &egui::Context) -> Option<PathBuf>;
@@ -26,30 +26,6 @@ struct Action {
     folder: PathBuf,
 }
 
-fn same_design(a: Design, b: Design) -> bool {
-    match (a, b) {
-        (Design::Fir(a), Design::Fir(b)) => {
-            a.order == b.order
-                && a.band == b.band
-                && a.sample_rate.to_bits() == b.sample_rate.to_bits()
-                && a.cutoff.to_bits() == b.cutoff.to_bits()
-                && a.upper.to_bits() == b.upper.to_bits()
-                && a.window == b.window
-                && a.scale == b.scale
-        }
-        (Design::Iir(a), Design::Iir(b)) => {
-            a.family == b.family
-                && a.ripple_db.to_bits() == b.ripple_db.to_bits()
-                && a.order == b.order
-                && a.band == b.band
-                && a.sample_rate.to_bits() == b.sample_rate.to_bits()
-                && a.cutoff.to_bits() == b.cutoff.to_bits()
-                && a.upper.to_bits() == b.upper.to_bits()
-        }
-        _ => false,
-    }
-}
-
 impl Workspace {
     fn designer_save_context(&self, ctx: &egui::Context) -> bool {
         self.root_open_context(ctx)
@@ -65,13 +41,13 @@ impl Workspace {
             && action.interaction == self.document_save.interaction_generation()
             && action.focus == ctx.memory(|m| m.focused())
             && action.folder == self.folder
-            && same_design(action.design, self.toolkits.selected_save_design())
+            && action.design == *self.toolkits.selected_save_design()
     }
 
     pub(super) fn queue_designer_save(&mut self, ctx: &egui::Context, design: Design) {
         let stamp = (ctx.viewport_id(), ctx.cumulative_frame_nr());
         if !self.designer_save_context(ctx)
-            || !same_design(design, self.toolkits.selected_save_design())
+            || design != *self.toolkits.selected_save_design()
             || self.designer_save.action.is_some()
             || self.designer_save.finished == Some(stamp)
         {
@@ -121,10 +97,7 @@ impl Workspace {
         if let Some(path) = self.pick_designer_save_path(ctx)
             && self.valid_designer_save(ctx, &action)
         {
-            match action.design {
-                Design::Fir(design) => self.submit_fir_save(fir_designer::Save { design, path }),
-                Design::Iir(design) => self.submit_iir_save(iir_designer::Save { design, path }),
-            }
+            self.submit_design_save(&action.design, path);
         }
     }
 
@@ -152,7 +125,7 @@ mod tests {
     use super::*;
 
     const WIDE: egui::Vec2 = egui::vec2(1440., 900.);
-    const COMPACT: egui::Vec2 = egui::vec2(960., 650.);
+    const COMPACT: egui::Vec2 = egui::vec2(960., 1000.);
 
     fn finish(app: &mut Workspace) {
         let until = Instant::now() + Duration::from_secs(10);
@@ -191,6 +164,16 @@ mod tests {
         finish(&mut app);
         app.toolkits.open_designer_demo(iir);
         app.designer_save.picker = Some(|_, _| None);
+        // The background preview adds analysis lines above the Save button; clicks wait for it.
+        let until = Instant::now() + Duration::from_secs(30);
+        while !app.toolkits.preview_done() && Instant::now() < until {
+            frame(&mut app, &ctx, size, vec![]);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            app.toolkits.preview_done(),
+            "Designer preview did not finish"
+        );
         for _ in 0..5 {
             frame(&mut app, &ctx, size, vec![]);
         }
@@ -200,9 +183,7 @@ mod tests {
 
     fn text_rect(shape: &egui::epaint::Shape) -> Option<egui::Rect> {
         match shape {
-            egui::epaint::Shape::Text(text)
-                if text.galley.text() == "Save design script\u{2026}" =>
-            {
+            egui::epaint::Shape::Text(text) if text.galley.text() == "Save script\u{2026}" => {
                 Some(text.galley.rect.translate(text.pos.to_vec2()))
             }
             egui::epaint::Shape::Vec(shapes) => shapes.iter().find_map(text_rect),
@@ -308,12 +289,7 @@ mod tests {
     }
 
     fn change_settings(app: &mut Workspace) {
-        let mut design = app.toolkits.selected_save_design();
-        match &mut design {
-            Design::Fir(d) => d.cutoff += 1.,
-            Design::Iir(d) => d.ripple_db += 1.,
-        }
-        app.toolkits.set_save_design_for_test(design);
+        app.toolkits.spec_mut().apass += 0.25;
     }
 
     fn invalidate(app: &mut Workspace, ctx: &egui::Context, case: usize) {
@@ -334,14 +310,17 @@ mod tests {
             10 => app.toolkits.designer_open = false,
             11 => change_settings(app),
             12 => {
-                let iir = matches!(app.toolkits.selected_save_design(), Design::Iir(_));
+                let iir = app.toolkits.selected_save_design().method.iir();
                 app.toolkits.open_designer_demo(!iir);
+                if iir {
+                    app.toolkits
+                        .spec_mut()
+                        .set_method(filter_spec::Method::Window);
+                }
             }
             13 => {
-                let Design::Fir(d) = app.toolkits.selected_save_design() else {
-                    unreachable!()
-                };
-                app.toolkits.begin_fir_save(d).unwrap();
+                let title = app.toolkits.selected_save_design().title();
+                app.toolkits.begin_design_save(title).unwrap();
             }
             14 => ctx.input_mut(|i| i.focused = false),
             _ => unreachable!(),
@@ -437,18 +416,10 @@ mod tests {
             frame(&mut app, &ctx, WIDE, pointer(pos, true));
             // A settings edit before the release's UI pass must be in its snapshot.
             change_settings(&mut app);
-            let design = app.toolkits.selected_save_design();
-            let expected = match design {
-                Design::Fir(d) => d.exported_script().unwrap(),
-                Design::Iir(d) => d
-                    .portable_script(&std::sync::atomic::AtomicBool::new(false))
-                    .unwrap(),
-            };
+            let design = app.toolkits.selected_save_design().clone();
+            let expected = design.script().unwrap();
             release_discarded(&mut app, &ctx, WIDE, pos, |app, _| {
-                assert!(same_design(
-                    app.designer_save.action.as_ref().unwrap().design,
-                    design
-                ));
+                assert_eq!(app.designer_save.action.as_ref().unwrap().design, design);
             });
             assert_eq!(app.designer_save.calls, 1);
             assert!(app.busy);

@@ -9,7 +9,7 @@ pub(super) const MAX_TEXT: usize = 2 * 1024 * 1024;
 /// One flattened `sprintf` argument element: a number, or a character argument
 /// (consumed whole by `%s`, or one character at a time by every other conversion).
 #[derive(Clone, Debug)]
-pub(super) enum Item {
+pub(crate) enum Item {
     Num(f64),
     Str(Vec<char>),
 }
@@ -575,7 +575,7 @@ fn char_for(v: f64) -> Option<char> {
 }
 
 /// Core of `sprintf`/`fprintf`. `who` prefixes error messages.
-pub(super) fn format_items(
+pub(crate) fn format_items(
     who: &str,
     fmt: &str,
     items: &[Item],

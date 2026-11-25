@@ -22,12 +22,14 @@ pub(super) fn is_run_limit(message: &str) -> bool {
     [
         "Calculation cancelled",
         "evaluation budget",
-        "Execution exceeds 1000000",
+        "statement/loop steps",
         "Execution output exceeds",
+        "Displayed value exceeds",
         "exceeds 128 levels",
         "call depth exceeds",
         "Workspace exceeds",
         "256 MiB",
+        "Active for-loop inputs exceed",
     ]
     .iter()
     .any(|marker| message.contains(marker))
@@ -207,6 +209,14 @@ impl Spec {
     }
 }
 
+fn default_identifier(message: &str) -> String {
+    if message == crate::matrix::INCOMPATIBLE_SIZES {
+        "MATLAB:sizeDimensionsMustMatch".into()
+    } else {
+        String::new()
+    }
+}
+
 impl Engine {
     /// Only call at a failure site immediately returning Err. No successful
     /// operation may leave pending metadata; catch consumes it even without a
@@ -224,7 +234,7 @@ impl Engine {
     pub(super) fn note_wrapped(&mut self, raw: &str) {
         self.raised.get_or_insert_with(|| RaisedError {
             message: raw.to_owned(),
-            identifier: String::new(),
+            identifier: default_identifier(raw),
             object_error: false,
             object_report: None,
         });
@@ -232,7 +242,7 @@ impl Engine {
     /// The message and identifier lasterr reports for a propagating failure.
     pub(super) fn failure_text(&self, message: &str) -> (String, String) {
         self.raised.as_ref().map_or_else(
-            || (message.to_owned(), String::new()),
+            || (message.to_owned(), default_identifier(message)),
             |r| (r.message.clone(), r.identifier.clone()),
         )
     }
@@ -243,7 +253,7 @@ impl Engine {
     pub(super) fn error_value(&mut self, message: &str) -> Result<Array> {
         let (text, identifier, report, object_error) = match self.raised.take() {
             Some(r) => (r.message, r.identifier, r.object_report, r.object_error),
-            None => (message.to_owned(), String::new(), None, false),
+            None => (message.to_owned(), default_identifier(message), None, false),
         };
         self.functions.lng.last_error = (text.clone(), identifier.clone());
         let mut exception = self.lng_exception(&identifier, &text, true)?;

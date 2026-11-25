@@ -1,10 +1,15 @@
 //! Transactional typed indexed assignment, growth and literal [] deletion.
 use super::{Engine, Execution, Value, indexing::Indices, stored_array::StoredArray};
-use crate::LogicalMatrix;
+use crate::{Array, Complex64, ComplexMatrix, NumericClass};
 use crate::{Matrix, Result, matrix::MAX_ELEMENTS, syntax::Expr};
 use rayon::prelude::*;
 
 const CHUNK: usize = 8192;
+
+struct Promotion<'a, E> {
+    source: &'a Array,
+    element: fn(&Array, usize) -> E,
+}
 
 fn covers(indices: &Indices, bound: usize) -> bool {
     if indices.len() != bound {
@@ -21,6 +26,56 @@ fn all(len: usize) -> Indices {
         step: 1,
         len,
     }
+}
+
+pub(super) fn infer_assignment_colons(
+    first: &mut Indices,
+    second: Option<&mut Indices>,
+    source: (usize, usize),
+    colons: (bool, bool),
+) -> Result<()> {
+    let (rows, cols) = source;
+    let vector = rows == 1 || cols == 1;
+    match (second, colons) {
+        (None, (true, _)) => {
+            if rows * cols != 0 && !vector {
+                return Err("A new variable assigned through A(:) requires a vector".into());
+            }
+            *first = all(rows * cols);
+        }
+        (Some(second), (true, true)) => {
+            *first = all(rows);
+            *second = all(cols);
+        }
+        (Some(second), (true, false)) => {
+            *first = all(match second.len() {
+                0 => 0,
+                1 if vector => rows * cols,
+                _ => rows,
+            });
+        }
+        (Some(second), (false, true)) => {
+            *second = all(match first.len() {
+                0 => 0,
+                1 if vector => rows * cols,
+                _ => cols,
+            });
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+pub(super) fn complex_assignment_element(source: &Array, index: usize) -> Complex64 {
+    let real = match source {
+        Array::Numeric(a) => a.data()[index],
+        Array::Logical(a) => f64::from(a.data()[index]),
+        Array::Character(a) => f64::from(a.units()[index]),
+        Array::Typed(a) => a.real(index),
+        Array::Complex(a) => return a.data()[index],
+        _ => unreachable!("complex assignment source was validated"),
+    };
+    Complex64::new(real, 0.)
 }
 
 impl Engine {
@@ -147,7 +202,8 @@ impl Engine {
     fn write_budget<T: StoredArray>(&mut self, name: &str, shape: (usize, usize)) -> Result<usize> {
         let len = T::checked_len(shape.0, shape.1)?;
         let old = self.array(name).map_or(0, |a| a.retained_bytes());
-        if self.workspace_bytes() - old + len * T::BYTES > 256 * 1024 * 1024 {
+        if self.workspace_bytes() - old + len * T::BYTES > super::limits::memory_bytes(&self.limits)
+        {
             let logical = self.obj_workspace_bytes()
                 + self
                     .workspace()
@@ -155,10 +211,8 @@ impl Engine {
                     .map(crate::Array::bytes)
                     .sum::<usize>();
             let old_logical = self.array(name).map_or(0, |a| a.bytes());
-            if logical - old_logical + len * T::BYTES > 256 * 1024 * 1024 {
-                return Err(
-                    "Workspace exceeds its 256 MiB logical storage limit; use clear".into(),
-                );
+            if logical - old_logical + len * T::BYTES > super::limits::memory_bytes(&self.limits) {
+                return Err(super::limits::workspace_error(&self.limits));
             }
             // Final assign_workspace_array performs the cancellable fact-only
             // fallback atomically once the dense result has been constructed.
@@ -196,32 +250,117 @@ impl Engine {
         &mut self,
         name: &str,
         args: &[Expr],
-        value: Value,
+        mut value: Value,
         deletion: bool,
         quiet: bool,
         out: &mut Execution,
     ) -> Result<()> {
-        if matches!(value, Value::Container(crate::Array::Cell(_))) && !self.contains_array(name) {
+        if super::categorical_fns::assign(self, name, args, value.clone(), deletion, quiet, out)? {
+            return Ok(());
+        }
+        if (super::datetime_fns::is_dt(&value)
+            || matches!(
+                self.container_variables.get(name),
+                Some(crate::Array::Datetime(_) | crate::Array::Duration(_))
+            ))
+            && self.dtm_assign_indexed(name, args, value.clone(), deletion, quiet, out)?
+        {
+            return Ok(());
+        }
+        if let Value::Container(Array::Graphics(handles)) = &value
+            && (self.variables.contains_key(name)
+                || self
+                    .complex_variables
+                    .get(name)
+                    .is_some_and(|a| !a.is_single())
+                || matches!(self.container_variables.get(name), Some(Array::Sparse(a)) if !a.is_logical()))
+        {
+            self.charge(handles.len())?;
+            value = Value::Matrix(handles.to_double(&self.cancel)?);
+        }
+        if let Some(crate::Array::Sparse(s)) = self.container_variables.get(name) {
+            let s = s.clone();
+            return super::sparse_fns::assign(self, name, s, args, value, deletion, quiet, out);
+        }
+        if matches!(self.array(name), Some(crate::Array::Str(_)))
+            || (!self.contains_array(name) && super::string_class::is_string(&value))
+        {
+            let old = match self.array(name) {
+                Some(crate::Array::Str(s)) => Some(s),
+                _ if self.field_end_target.as_deref() == Some(name) => {
+                    Some(crate::StringArray::new(0, 0, vec![])?)
+                }
+                _ => None,
+            };
+            let updated = self.str_assign(old, args, value, deletion, out)?;
+            return self.assign_workspace_array(name, crate::Array::Str(updated), quiet, out);
+        }
+        let undefined = !self.contains_array(name);
+        let field_end = undefined && self.field_end_target.as_deref() == Some(name);
+        if undefined
+            && (matches!(
+                value,
+                Value::Container(Array::Struct(_) | Array::Graphics(_))
+            ) || (value.is_character() && args.len() <= 2))
+        {
             let value = value.array(&self.cancel)?;
-            let updated = self.cel_assign(None, args, false, value, deletion, out)?;
+            let updated =
+                self.cel_assign_end(None, field_end, args, false, value, deletion, out)?;
             return self.assign_workspace_array(name, updated, quiet, out);
         }
-        if self.complex_variables.contains_key(name)
-            || (!self.contains_array(name) && matches!(value, Value::Complex(_)))
-        {
-            let values = value.complex(&self.cancel)?;
-            return self.assign_typed::<crate::ComplexMatrix>(
-                name, args, values, deletion, quiet, out, None,
-            );
+        if args.len() > 2 || self.array(name).is_some_and(|a| a.is_nd()) {
+            return super::nd::assign(self, name, args, value, deletion, quiet, out);
         }
-        if matches!(value, Value::Complex(_)) {
-            return Err("Indexed complex assignment into a real/logical variable requires explicit complex conversion first".into());
+        if matches!(value, Value::Container(crate::Array::Cell(_))) && undefined {
+            let value = value.array(&self.cancel)?;
+            let updated =
+                self.cel_assign_end(None, field_end, args, false, value, deletion, out)?;
+            return self.assign_workspace_array(name, updated, quiet, out);
         }
-        if value.is_character() && !self.contains_array(name) {
-            // MATLAB creates char here; indexed char growth is not implemented.
-            return Err(
-                "Indexed char assignment needs an existing variable; assign the char array first"
-                    .into(),
+        if self.complex_variables.contains_key(name) || matches!(value, Value::Complex(_)) {
+            let old = self.array(name);
+            let single = match &old {
+                Some(Array::Complex(a)) => a.is_single(),
+                Some(Array::Numeric(_) | Array::Logical(_) | Array::Character(_)) => false,
+                Some(Array::Typed(a)) if a.class() == NumericClass::Single => true,
+                None => matches!(&value, Value::Complex(a) if a.is_single()),
+                _ => return Err(
+                    "Complex indexed assignment requires a floating-point, logical, or char target"
+                        .into(),
+                ),
+            };
+            let promoted = old.as_ref().filter(|a| !matches!(a, Array::Complex(_)));
+            let values = match value {
+                Value::Container(Array::Typed(a))
+                    if single && a.class() == NumericClass::Single =>
+                {
+                    ComplexMatrix::checked_len(a.rows(), a.cols())?;
+                    self.charge(a.len() * 2)?;
+                    let data = self.replacement_buffer::<ComplexMatrix>(a.len(), |i| {
+                        Complex64::new(a.real(i), 0.)
+                    })?;
+                    ComplexMatrix::from_column_vec(a.rows(), a.cols(), data, &self.cancel)?
+                        .with_single_class(true)
+                }
+                value => value.complex(&self.cancel)?,
+            };
+            let values = if single && !values.is_single() {
+                self.charge(values.len() * 2)?;
+                values.cast_single(&self.cancel)?
+            } else {
+                values.with_single_class(single)
+            };
+            return self.assign_typed(
+                name,
+                args,
+                values,
+                deletion,
+                quiet,
+                out,
+                promoted.map(|source| Promotion {
+                    source,
+                    element: complex_assignment_element,
+                }),
             );
         }
         if self.logical_variables.contains_key(name)
@@ -231,14 +370,14 @@ impl Engine {
                 return Err(super::character_values::CHAR_TO_LOGICAL.into());
             }
             let values = value.logical(&self.cancel)?;
-            self.assign_typed::<LogicalMatrix>(name, args, values, deletion, quiet, out, None)
+            self.assign_typed(name, args, values, deletion, quiet, out, None)
         } else {
             let values = value.matrix(&self.cancel)?;
-            self.assign_typed::<Matrix>(name, args, values, deletion, quiet, out, None)
+            self.assign_typed(name, args, values, deletion, quiet, out, None)
         }
     }
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn assign_typed<T: StoredArray>(
+    fn assign_typed<T: StoredArray>(
         &mut self,
         name: &str,
         args: &[Expr],
@@ -246,16 +385,20 @@ impl Engine {
         deletion: bool,
         quiet: bool,
         out: &mut Execution,
-        prepared: Option<(Indices, Option<Indices>)>,
+        promoted: Option<Promotion<'_, T::Element>>,
     ) -> Result<()> {
-        let original = T::lookup(self, name).map(|m| (m.rows(), m.cols()));
+        if args.is_empty() || args.len() > 2 {
+            return Err("Indexed assignment requires one or two subscripts".into());
+        }
+        let original = promoted
+            .as_ref()
+            .map(|p| (p.source.rows(), p.source.cols()))
+            .or_else(|| T::lookup(self, name).map(|m| (m.rows(), m.cols())));
         let old = original.unwrap_or((0, 0));
         if deletion && original.is_none() {
             return Err("Deletion requires an existing variable".into());
         }
-        let (mut rows, mut columns) = if let Some(prepared) = prepared {
-            prepared
-        } else {
+        let (mut rows, mut columns) = {
             let bound = if args.len() == 1 {
                 old.0 * old.1
             } else {
@@ -263,6 +406,8 @@ impl Engine {
             };
             let (rows, _) = self.subscript_with_limit(
                 &args[0],
+                // MATLAB: `end` on an undefined target is an error (recorded fixture
+                // tests/fixtures/indexing/indexed-assignment-oracle.mat).
                 original.map(|_| bound),
                 if deletion { bound } else { MAX_ELEMENTS },
                 out,
@@ -285,42 +430,21 @@ impl Engine {
         };
         if deletion {
             let result = self.delete_indexed::<T>(name, args, &rows, columns.as_ref())?;
-            return self.assign_array(name, result, quiet, out);
+            return self.assign_array(name, result.inherit_class(&values), quiet, out);
         }
 
-        if original.is_none() && args.len() == 1 && self.colon_subscript(&args[0]) {
-            if !values.is_empty() && values.rows() != 1 && values.cols() != 1 {
-                return Err("A new variable assigned through A(:) requires a vector".into());
-            }
-            rows = all(values.len());
-        }
         // Only a truly 0x0 destination infers missing colon dimensions. A 0xN
         // or Nx0 array retains its known dimensions, matching MATLAB.
-        if old == (0, 0)
-            && let Some(columns) = &mut columns
-        {
-            let row_colon = self.colon_subscript(&args[0]);
-            let col_colon = self.colon_subscript(&args[1]);
-            if row_colon && col_colon {
-                rows = all(values.rows());
-                *columns = all(values.cols());
-            } else if row_colon {
-                rows = all(if columns.len() == 0 {
-                    0
-                } else if columns.len() == 1 && (values.rows() == 1 || values.cols() == 1) {
-                    values.len()
-                } else {
-                    values.rows()
-                });
-            } else if col_colon {
-                *columns = all(if rows.len() == 0 {
-                    0
-                } else if rows.len() == 1 && (values.rows() == 1 || values.cols() == 1) {
-                    values.len()
-                } else {
-                    values.cols()
-                });
-            }
+        if old == (0, 0) && (columns.is_some() || original.is_none()) {
+            infer_assignment_colons(
+                &mut rows,
+                columns.as_mut(),
+                (values.rows(), values.cols()),
+                (
+                    self.colon_subscript(&args[0]),
+                    args.get(1).is_some_and(|a| self.colon_subscript(a)),
+                ),
+            )?;
         }
         let count = if let Some(columns) = &columns {
             Matrix::checked_len(rows.len(), columns.len())?
@@ -374,7 +498,7 @@ impl Engine {
         // Complete replacement can reuse the RHS allocation, including aliases.
         if full && values.len() == len {
             let result = values.reshape(shape.0, shape.1)?;
-            return self.assign_array(name, result, quiet, out);
+            return self.assign_array(name, result.inherit_class(&values), quiet, out);
         }
         let complete = if let Some(columns) = &columns {
             covers(&rows, shape.0) && covers(columns, shape.1)
@@ -400,13 +524,17 @@ impl Engine {
                 })?
             };
             let result = T::from_vec(shape.0, shape.1, data)?;
-            return self.assign_array(name, result, quiet, out);
+            return self.assign_array(name, result.inherit_class(&values), quiet, out);
         }
         if count == 0 && shape == old && original.is_some() {
             if !quiet {
-                let text = T::lookup(self, name)
-                    .expect("existing destination")
-                    .echo(name, &self.display)?;
+                let text = if promoted.is_some() {
+                    self.display_text(name, &self.array(name).expect("existing destination"))?
+                } else {
+                    T::lookup(self, name)
+                        .expect("existing destination")
+                        .echo(name, &self.display)?
+                };
                 self.emit(out, text)?;
             }
             return Ok(());
@@ -422,7 +550,7 @@ impl Engine {
 
         // Short writes commit only after all validation and cancellation checks.
         // The bounded commit has no fallible work or cancellation point inside.
-        if count <= CHUNK && shape == old && original.is_some() {
+        if count <= CHUNK && shape == old && original.is_some() && promoted.is_none() {
             let changes: Vec<_> = if let Some(start) = rows.contiguous()
                 && columns.as_ref().is_none_or(|c| c.len() == 1)
             {
@@ -449,6 +577,7 @@ impl Engine {
             && count <= len / 2
             && count <= 2 * 1024 * 1024
             && shape == old
+            && promoted.is_none()
             && columns.as_ref().is_none_or(|c| c.len() <= 1024)
             && let Some(start) = rows.contiguous()
         {
@@ -483,7 +612,29 @@ impl Engine {
                 return Ok(());
             }
         }
-        let mut data = self.copy_for_write::<T>(name, shape, len)?;
+        let mut data = if let Some(Promotion { source, element }) = promoted {
+            let (rows, cols) = (source.rows(), source.cols());
+            if rows == shape.0 {
+                self.replacement_buffer::<T>(len, |i| {
+                    if i < source.len() {
+                        element(source, i)
+                    } else {
+                        T::Element::default()
+                    }
+                })?
+            } else {
+                self.replacement_buffer::<T>(len, |i| {
+                    let (r, c) = (i % shape.0, i / shape.0);
+                    if r < rows && c < cols {
+                        element(source, r + c * rows)
+                    } else {
+                        T::Element::default()
+                    }
+                })?
+            }
+        } else {
+            self.copy_for_write::<T>(name, shape, len)?
+        };
         if let Some(start) = rows.contiguous() {
             if let Some(columns) = &columns {
                 for c in 0..columns.len() {
@@ -506,7 +657,7 @@ impl Engine {
             }
         }
         let result = T::from_vec(shape.0, shape.1, data)?;
-        self.assign_array(name, result, quiet, out)
+        self.assign_array(name, result.inherit_class(&values), quiet, out)
     }
 
     fn delete_indexed<T: StoredArray>(

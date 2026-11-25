@@ -24,9 +24,17 @@ pub(super) enum Icon {
     Run,
     Table,
     Plot,
-    Tools,
     Layout,
     Undo,
+    Redo,
+    Refresh,
+    Export,
+    Properties,
+    Simulation,
+    Filter,
+    Copy,
+    More,
+    Search,
 }
 
 pub(super) fn active_header(ui: &Ui, active: bool) {

@@ -37,7 +37,7 @@ impl Engine {
         }
         let n = scalar(&args[0])?;
         if !n.is_finite() || n.fract() != 0. || !(1.0..=dsp::MAX_CHEBY1_ORDER as f64).contains(&n) {
-            return Err("cheby1 prototype order must be an integer in 1..20".into());
+            return Err("cheby1 prototype order must be an integer in 1..100".into());
         }
         let ripple = scalar(&args[1])?;
         let edges = match &args[2] {

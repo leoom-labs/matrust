@@ -1,6 +1,7 @@
 //! eig, svd, rank and polyfit on real matrices through nalgebra's dense
 //! decompositions. Systems are solved from a QR factorization, never from an
 //! explicit inverse or the normal equations.
+mod basic_fitting;
 use super::{Engine, Value};
 use crate::{Complex64, ComplexMatrix, Matrix, Result};
 use nalgebra::{
@@ -31,10 +32,20 @@ fn from_dense(m: &DMatrix<f64>) -> Result<Matrix> {
     Matrix::from_column_slice(m.nrows(), m.ncols(), m.as_slice())
 }
 
-/// Spacing of floating point numbers at |x| (MATLAB `eps(x)`).
-fn spacing(x: f64) -> f64 {
-    let x = x.abs();
-    f64::from_bits(x.to_bits() + 1) - x
+/// MATLAB `eps(x)`: the gap from `|x|` up to the next larger double.
+/// At `realmax` that next value is infinite, so the gap is the one below
+/// (`2^971`, MathWorks `eps`, NumPy `np.spacing(np.finfo(float).max)`).
+pub(super) fn eps_of(x: f64) -> f64 {
+    let a = x.abs();
+    if !a.is_finite() {
+        return f64::NAN;
+    }
+    let next = f64::from_bits(a.to_bits() + 1);
+    if next.is_finite() {
+        next - a
+    } else {
+        a - f64::from_bits(a.to_bits() - 1)
+    }
 }
 
 fn iteration_limit(n: usize) -> usize {
@@ -219,11 +230,17 @@ impl Engine {
         if args.is_empty() || args.len() > 2 {
             return Err("svd expects 1 or 2 arguments".into());
         }
+        if count > 3 {
+            return Err(format!("svd does not support {count} outputs; use 1 to 3"));
+        }
+        // [U, S] = svd(A): the first two outputs of the three-output form.
+        if count == 2 {
+            let mut out = self.svd_call(args, 3)?;
+            out.truncate(2);
+            return Ok(out);
+        }
         if matches!(args[0], Value::Complex(_)) {
             return self.cxl_svd_call(args, count);
-        }
-        if count == 2 || count > 3 {
-            return Err(format!("svd does not support {count} outputs; use 1 or 3"));
         }
         let a = self.finite_square_or_matrix("svd", &args[0])?;
         let (m, n) = (a.rows(), a.cols());
@@ -338,7 +355,7 @@ impl Engine {
         self.check_cancel()?;
         let largest = svd.singular_values.iter().copied().fold(0., f64::max);
         let tolerance =
-            tolerance.unwrap_or_else(|| a.rows().max(a.cols()) as f64 * spacing(largest));
+            tolerance.unwrap_or_else(|| a.rows().max(a.cols()) as f64 * eps_of(largest));
         let rank = svd
             .singular_values
             .iter()
@@ -349,7 +366,7 @@ impl Engine {
 
     pub(super) fn polyfit_call(&mut self, args: &[Value], count: usize) -> Result<Vec<Value>> {
         if count > 1 {
-            return Err("polyfit: the [p,S] and [p,S,mu] outputs are not supported yet".into());
+            return basic_fitting::outputs(self, args, count);
         }
         Self::arity_check("polyfit", args, &[3])?;
         let x = self.finite_square_or_matrix("polyfit", &args[0])?;

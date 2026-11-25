@@ -181,20 +181,9 @@ fn bad_arity_types_and_cancellation_preserve_existing_values_and_retry() {
     let before = engine.workspace();
     let figure = engine.figure.clone().unwrap();
     for name in QUERIES {
-        for call in [
-            format!("{name}()"),
-            format!("{name}(A,A)"),
-            format!("{name}(\"unsupported string\")"),
-        ] {
+        for call in [format!("{name}()"), format!("{name}(A,A)")] {
             let error = engine.execute(&format!("result={call};")).unwrap_err();
-            assert!(
-                error.contains(if call.contains("unsupported") {
-                    "MATLAB string arrays are not implemented"
-                } else {
-                    "exactly one array input"
-                }),
-                "{call}: {error}"
-            );
+            assert!(error.contains("exactly one array input"), "{call}: {error}");
             for (key, value) in &before {
                 assert!(
                     engine.array(key).unwrap().same_snapshot(value),
@@ -333,4 +322,13 @@ fn user_functions_variables_help_and_completions_preserve_their_existing_routes(
     let mut bare = Engine::default();
     bare.execute("isscalar(1);").unwrap();
     assert_eq!(bare.logical_variables["ans"].data(), &[1]);
+}
+
+#[test]
+fn string_literals_are_scalar_arrays_for_shape_queries() {
+    let mut engine = Engine::default();
+    for text in ["text", ""] {
+        engine.execute(&queries(&format!("\"{text}\""))).unwrap();
+        assert_results(&engine, [1; 5]);
+    }
 }

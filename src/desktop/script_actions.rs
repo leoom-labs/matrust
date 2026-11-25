@@ -86,6 +86,7 @@ impl Workspace {
         }
         if self.documents[index].dirty {
             self.pending_close = Some(index);
+            self.status.clear();
         } else {
             self.remove_document(index);
         }

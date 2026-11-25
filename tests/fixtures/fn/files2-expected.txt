@@ -2,6 +2,8 @@
 
 x =
 
+  uint8
+
   160   20   30  130
    50  110  100   80
    90   70   60  120
@@ -29,6 +31,8 @@ x =
 
 x =
 
+  uint8
+
   255    0
     1    2
 
@@ -37,6 +41,8 @@ x =
 @@CASE 5|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([0 0.5; 1 0.25; 0.1 0.9], fzf); x = imread(fzf); rmdir(fzd, 's'); x
 
 x =
+
+  uint8
 
     0  128
   255   64
@@ -47,6 +53,8 @@ x =
 @@CASE 6|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite([2 -1; 0.5 NaN], fzf); x = imread(fzf); rmdir(fzd, 's'); x
 
 x =
+
+  uint8
 
   255    0
   128  255
@@ -66,6 +74,8 @@ x =
 
 x =
 
+  uint16
+
       0   1000
   65535    300
 
@@ -74,6 +84,8 @@ x =
 @@CASE 9|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 128; 255 1]), fzf, 'BitDepth', 16); x = imread(fzf); rmdir(fzd, 's'); x
 
 x =
+
+  uint16
 
       0  32896
   65535    257
@@ -84,6 +96,8 @@ x =
 
 x =
 
+  uint8
+
     0  136
   255   17
 
@@ -92,6 +106,8 @@ x =
 @@CASE 11|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([0 128; 255 17]), fzf, 'BitDepth', 2); x = imread(fzf); rmdir(fzd, 's'); x
 
 x =
+
+  uint8
 
     0  170
   255    0
@@ -111,8 +127,10 @@ x =
 
 x =
 
-    0    1
-    2    1
+  uint8
+
+  0  1
+  2  1
 
 @@CLASS uint8 [2 2]
 @@END
@@ -130,8 +148,10 @@ x =
 
 x =
 
-    0    1
-    2    0
+  uint8
+
+  0  1
+  2  0
 
 @@CLASS uint8 [2 2]
 @@END
@@ -148,6 +168,8 @@ x =
 @@CASE 17|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.png'); imwrite(uint8([10 20; 30 40]), fzf, 'Alpha', [0 0.5; 1 0.25]); [~, ~, x] = imread(fzf); rmdir(fzd, 's'); x
 
 x =
+
+  uint8
 
     0  128
   255   64
@@ -166,8 +188,10 @@ x =
 
 x =
 
-   10   20
-   30   40
+  uint8
+
+  10  20
+  30  40
 
 @@CLASS uint8 [2 2]
 @@END
@@ -186,7 +210,9 @@ ERR Expected DATA to be nonempty.
 
 x =
 
-    7
+  uint8
+
+   7
 
 @@CLASS uint8 [1 1]
 @@END
@@ -201,9 +227,11 @@ Instead its type was int8.
 
 x =
 
-    8    1    6
-    3    5    7
-    4    9    2
+  uint8
+
+  8  1  6
+  3  5  7
+  4  9  2
 
 @@CLASS uint8 [3 3]
 @@END
@@ -211,9 +239,11 @@ x =
 
 x =
 
-    8    1    6
-    3    5    7
-    4    9    2
+  uint8
+
+  8  1  6
+  3  5  7
+  4  9  2
 
 @@CLASS uint8 [3 3]
 @@END
@@ -400,12 +430,14 @@ x =
 
 x =
 
-      0
-  16384
- -16384
-   9830
- -32768
-  32767
+  int16
+
+       0
+   16384
+  -16384
+    9830
+  -32768
+   32767
 
 @@CLASS int16 [6 1]
 @@END
@@ -423,10 +455,12 @@ x =
 
 x =
 
- -16384
-   9830
- -32768
-  32767
+  int16
+
+  -16384
+    9830
+  -32768
+   32767
 
 @@CLASS int16 [4 1]
 @@END
@@ -434,7 +468,9 @@ x =
 
 x =
 
-  16384
+  int16
+
+   16384
 
 @@CLASS int16 [1 1]
 @@END
@@ -461,16 +497,20 @@ x =
 
 x =
 
-      0   8192
-  16384  -8192
- -16384  32767
-   4096 -32768
+  int16
+
+       0    8192
+   16384   -8192
+  -16384   32767
+    4096  -32768
 
 @@CLASS int16 [4 2]
 @@END
 @@CASE 61|fzd = fullfile(tempdir, 'mroracle2_files2'); if exist(fzd, 'dir'), rmdir(fzd, 's'); end; mkdir(fzd); fzf = fullfile(fzd, 'a.wav'); fzy = [0; 0.5; -0.5; 0.3; -1; 1]; audiowrite(fzf, fzy, 8000, 'BitsPerSample', 8); x = audioread(fzf, 'native'); rmdir(fzd, 's'); x
 
 x =
+
+  uint8
 
   128
   192
@@ -498,12 +538,14 @@ x =
 
 x =
 
-           0
-  1073741824
- -1073741824
-   644244992
- -2147483648
-  2147483392
+  int32
+
+            0
+   1073741824
+  -1073741824
+    644244992
+  -2147483648
+   2147483392
 
 @@CLASS int32 [6 1]
 @@END
@@ -532,11 +574,13 @@ x =
 
 x =
 
-      0
-    100
-   -100
-  32767
- -32768
+  int16
+
+       0
+     100
+    -100
+   32767
+  -32768
 
 @@CLASS int16 [5 1]
 @@END
@@ -556,7 +600,9 @@ x =
 
 x =
 
- -32768
+  int16
+
+  -32768
       0
   32512
 
@@ -566,9 +612,11 @@ x =
 
 x =
 
-      0
-  16384
-  -8192
+  int16
+
+       0
+   16384
+   -8192
 
 @@CLASS int16 [3 1]
 @@END
@@ -613,12 +661,14 @@ x =
 
 x =
 
-           0
-  1073741824
- -1073741824
-   644244992
- -2147483648
-  2147483392
+  int32
+
+            0
+   1073741824
+  -1073741824
+    644244992
+  -2147483648
+   2147483392
 
 @@CLASS int32 [6 1]
 @@END
@@ -1007,8 +1057,10 @@ x =
 
 x =
 
-   10   20
-   30   40
+  uint8
+
+  10  20
+  30  40
 
 @@CLASS uint8 [2 2]
 @@END

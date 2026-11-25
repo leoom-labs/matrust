@@ -150,8 +150,8 @@ fn appearance_submenu_opens_beside_its_row_and_marks_the_current_theme() {
         let at = |label| output.shapes.iter().rev().find_map(|s| text_position(&s.shape, label));
         let (dark, light) = (at("Dark").expect("Dark"), at("Light").expect("Light"));
         // The Layout menu card is the largest small rect under the row.
-        let menu = *filled_rects_at(&output, row).iter().rfind(|r| r.width() < 400.).unwrap();
-        let sub = *filled_rects_at(&output, light).iter().rfind(|r| r.width() < 400.).unwrap();
+        let menu = *filled_rects_at(&output, row).iter().rfind(|r| r.width() < 400. && r.height() < 600.).unwrap();
+        let sub = *filled_rects_at(&output, light).iter().rfind(|r| r.width() < 400. && r.height() < 600.).unwrap();
         assert!(!sub.intersects(menu.shrink(1.)), "{size:?}: {sub:?} over {menu:?}");
         let gap = if sub.left() >= menu.right() { sub.left() - menu.right() } else { menu.left() - sub.right() };
         assert!((0. ..=8.).contains(&gap), "{size:?}: submenu {sub:?} is {gap} px from {menu:?}");

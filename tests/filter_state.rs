@@ -163,7 +163,9 @@ fn invalid_dimensions_states_and_resource_limits_fail_before_workspace_commit() 
     }
     assert!(dsp::filter_with_state(&[1.], &[1.], &x, Some(&row(&[1.])), None, &cancel).is_err());
     // An empty signal can still request a final-state matrix beyond the bound.
-    let empty = Matrix::filled(0, 1_000_000, 0.).unwrap();
+    // Order 31 by 1_623_602 columns is 50,331,662 elements, just above 48 Mi,
+    // and the empty input allocates nothing.
+    let empty = Matrix::filled(0, 1_623_602, 0.).unwrap();
     assert!(dsp::filter_with_state(&[1.; 32], &[1.], &empty, None, None, &cancel).is_err());
     assert!(
         dsp::filter(&[1.; 32], &[1.], &empty, &cancel)

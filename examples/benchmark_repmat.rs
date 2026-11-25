@@ -81,12 +81,18 @@ fn main() {
                     Array::Complex(a) => {
                         engine.complex_variables.insert("A".into(), a.clone());
                     }
-                    Array::Character(_)
+                    Array::Str(_)
+                    | Array::Character(_)
                     | Array::Cell(_)
                     | Array::Graphics(_)
                     | Array::Struct(_)
                     | Array::Typed(_)
-                    | Array::Handle(_) => {
+                    | Array::Handle(_)
+                    | Array::Datetime(_)
+                    | Array::Duration(_)
+                    | Array::Table(_)
+                    | Array::Categorical(_)
+                    | Array::Sparse(_) => {
                         unreachable!("This benchmark constructs only numeric arrays")
                     }
                 }

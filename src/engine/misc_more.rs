@@ -49,6 +49,60 @@ fn rgb_to_hexcone(r: f64, g: f64, b: f64) -> [f64; 3] {
     [if h < 0. { h + 1. } else { h }, s, v]
 }
 
+/// Vertex count of the truncated icosahedron returned by `bucky`.
+const BUCKY_VERTICES: usize = 60;
+
+/// The truncated icosahedron (soccer ball): a regular icosahedron with every
+/// vertex cut off at one third of each edge. The icosahedron is the public
+/// cyclic-permutation form (0, ±1, ±φ), (±1, ±φ, 0), (±φ, 0, ±1) with edge
+/// length 2 (other vertex pairs are at least 2φ apart). Each directed edge
+/// u→v gives one vertex (2u + v)/3; it joins the vertex of v→u across the
+/// edge, and the vertices of u→w around u for the two w that share a face
+/// with u and v. Vertices are numbered by (u, v) ascending and scaled to the
+/// unit sphere: |2u + v|² = 5|u|² + 4u·v = 10 + 9φ for every directed edge.
+/// Returns the coordinates and the 90 edges (i < j) in ascending order.
+#[allow(clippy::needless_range_loop)]
+fn bucky_graph() -> (Vec<[f64; 3]>, Vec<(usize, usize)>) {
+    let phi = (1. + 5f64.sqrt()) / 2.;
+    let mut ico = Vec::with_capacity(12);
+    for a in [-1., 1.] {
+        for b in [-phi, phi] {
+            ico.extend([[0., a, b], [a, b, 0.], [b, 0., a]]);
+        }
+    }
+    let adjacent = |u: usize, v: usize| {
+        let d2: f64 = (0..3).map(|k| (ico[u][k] - ico[v][k]).powi(2)).sum();
+        // Squared distances are 4 (edges), 4φ² or 4(1 + φ²).
+        u != v && d2 < 6.
+    };
+    let mut index = [[usize::MAX; 12]; 12];
+    let mut directed = Vec::with_capacity(BUCKY_VERTICES);
+    for u in 0..12 {
+        for v in 0..12 {
+            if adjacent(u, v) {
+                index[u][v] = directed.len();
+                directed.push((u, v));
+            }
+        }
+    }
+    let scale = 1. / (10. + 9. * phi).sqrt();
+    let vertices = directed
+        .iter()
+        .map(|&(u, v)| std::array::from_fn(|k| (2. * ico[u][k] + ico[v][k]) * scale))
+        .collect();
+    let mut edges = Vec::with_capacity(3 * BUCKY_VERTICES / 2);
+    for (i, &(u, v)) in directed.iter().enumerate() {
+        let around = (0..12).filter(|&w| adjacent(u, w) && adjacent(v, w));
+        for j in std::iter::once(index[v][u]).chain(around.map(|w| index[u][w])) {
+            if i < j {
+                edges.push((i, j));
+            }
+        }
+    }
+    edges.sort_unstable();
+    (vertices, edges)
+}
+
 impl Engine {
     pub(super) fn msc_call(&mut self, name: &str, args: &[Value]) -> Result<Option<Value>> {
         Ok(Some(match name {
@@ -57,7 +111,7 @@ impl Engine {
             "num2hex" => self.msc_num2hex(args)?,
             "hex2num" => self.msc_hex2num(args)?,
             "flipdim" | "permute" | "ipermute" => self.msc_shape(name, args)?,
-            "shiftdim" | "inpolygon" | "peaks" | "hsv2rgb" | "rgb2hsv" => {
+            "shiftdim" | "inpolygon" | "peaks" | "hsv2rgb" | "rgb2hsv" | "bucky" => {
                 self.msc_outputs(name, args, 1)?.remove(0)
             }
             "filter2" => self.msc_filter2(args)?,
@@ -92,7 +146,7 @@ impl Engine {
     ) -> Result<Vec<Value>> {
         self.check_cancel()?;
         let max = match name {
-            "shiftdim" | "inpolygon" => 2,
+            "shiftdim" | "inpolygon" | "bucky" => 2,
             _ => 3,
         };
         if count == 0 || count > max {
@@ -103,6 +157,7 @@ impl Engine {
             "inpolygon" => self.msc_inpolygon(args, count)?,
             "peaks" => self.msc_peaks(args, count)?,
             "hsv2rgb" | "rgb2hsv" => self.msc_colors(name, args, count)?,
+            "bucky" => self.msc_bucky(args, count)?,
             _ => return Err("Unsupported miscellaneous output form".into()),
         };
         outputs.truncate(count);
@@ -1046,6 +1101,36 @@ impl Engine {
             )?));
         }
         Ok(outputs)
+    }
+
+    /// bucky: the symmetric 60-by-60 sparse double adjacency of the truncated
+    /// icosahedron and, second, its 60-by-3 unit-sphere coordinates
+    /// ([`bucky_graph`]). Fixed size; no inputs.
+    fn msc_bucky(&self, args: &[Value], count: usize) -> Result<Vec<Value>> {
+        self.msc_arity(args, 0, 0)?;
+        self.msc_admit(BUCKY_VERTICES, 3, 2)?;
+        let (vertices, edges) = bucky_graph();
+        let entries: Vec<_> = edges
+            .iter()
+            .flat_map(|&(i, j)| [(i, j, 1.), (j, i, 1.)])
+            .collect();
+        let adjacency = super::sparse_fns::wrap(crate::sparse::SparseMatrix::from_triplets(
+            BUCKY_VERTICES,
+            BUCKY_VERTICES,
+            &entries,
+            false,
+            &self.cancel,
+        )?);
+        if count == 1 {
+            return Ok(vec![adjacency]);
+        }
+        let data = (0..3)
+            .flat_map(|k| vertices.iter().map(move |p| p[k]))
+            .collect();
+        Ok(vec![
+            adjacency,
+            Value::Matrix(Matrix::from_column_vec(BUCKY_VERTICES, 3, data)?),
+        ])
     }
 
     fn msc_peaks(&self, args: &[Value], count: usize) -> Result<Vec<Value>> {

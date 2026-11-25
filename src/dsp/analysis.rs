@@ -97,10 +97,30 @@ pub fn phase_response(response: &[[f64; 2]]) -> Vec<f64> {
 /// and returned as NaN (rather than a misleading zero or an unbounded spike).
 /// Coefficients are scaled before Horner evaluation to avoid scale-dependent overflow.
 pub fn group_delay(b: &[f64], a: &[f64], f: &[f64], cancel: &AtomicBool) -> Result<Vec<f64>> {
+    group_delay_checked(b, a, f, true, cancel)
+}
+/// As [`group_delay`], at any finite normalized frequency (e.g. 0..2 for the whole circle).
+pub fn group_delay_at(b: &[f64], a: &[f64], f: &[f64], cancel: &AtomicBool) -> Result<Vec<f64>> {
+    group_delay_checked(b, a, f, false, cancel)
+}
+fn group_delay_checked(
+    b: &[f64],
+    a: &[f64],
+    f: &[f64],
+    nyquist_range: bool,
+    cancel: &AtomicBool,
+) -> Result<Vec<f64>> {
     Filter::new(b, a)?;
     count(f.len(), 2 * (b.len() + a.len()), cancel)?;
-    if f.iter().any(|v| !v.is_finite() || !(0. ..=1.).contains(v)) {
-        return Err("Response frequencies must be between 0 and 1 (Nyquist)".into());
+    if f.iter()
+        .any(|v| !v.is_finite() || (nyquist_range && !(0. ..=1.).contains(v)))
+    {
+        return Err(if nyquist_range {
+            "Response frequencies must be between 0 and 1 (Nyquist)"
+        } else {
+            "Response frequencies must be finite"
+        }
+        .into());
     }
     let scaled = |c: &[f64]| {
         let scale = c.iter().map(|v| v.abs()).fold(0., f64::max);
@@ -157,11 +177,23 @@ pub fn group_delay(b: &[f64], a: &[f64], f: &[f64], cancel: &AtomicBool) -> Resu
 }
 
 pub fn sos_group_delay(sos: &Matrix, f: &[f64], cancel: &AtomicBool) -> Result<Vec<f64>> {
+    sos_group_delay_checked(sos, f, true, cancel)
+}
+/// As [`sos_group_delay`], at any finite normalized frequency.
+pub fn sos_group_delay_at(sos: &Matrix, f: &[f64], cancel: &AtomicBool) -> Result<Vec<f64>> {
+    sos_group_delay_checked(sos, f, false, cancel)
+}
+fn sos_group_delay_checked(
+    sos: &Matrix,
+    f: &[f64],
+    nyquist_range: bool,
+    cancel: &AtomicBool,
+) -> Result<Vec<f64>> {
     let sections = sos_sections(sos)?;
     count(f.len(), sections.len() * 12, cancel)?;
     let mut output = vec![0.; f.len()];
     for section in sections {
-        let delay = group_delay(&section.b, &section.a, f, cancel)?;
+        let delay = group_delay_checked(&section.b, &section.a, f, nyquist_range, cancel)?;
         for (out, value) in output.iter_mut().zip(delay) {
             *out += value;
         }

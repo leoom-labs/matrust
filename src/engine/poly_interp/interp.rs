@@ -1,5 +1,7 @@
 //! interp1, interp2, spline, pchip.
-use super::{Engine, Value, eps_of, is_vector, matrix_value, real_matrix, scalar_of, text_of};
+use super::{
+    CubicPp, Engine, Value, eps_of, is_vector, matrix_value, real_matrix, scalar_of, text_of,
+};
 use crate::Result;
 use crate::engine::Fma;
 
@@ -269,6 +271,7 @@ enum Method {
     Previous,
     Pchip,
     Spline,
+    Makima,
     V5Cubic,
 }
 #[derive(Clone, Copy)]
@@ -284,6 +287,7 @@ fn method_of(text: &str) -> Result<Method> {
         "previous" => Method::Previous,
         "pchip" | "cubic" => Method::Pchip,
         "spline" => Method::Spline,
+        "makima" => Method::Makima,
         "v5cubic" => Method::V5Cubic,
         _ => return Err(format!("Invalid interpolation method '{text}'.")),
     })
@@ -342,7 +346,7 @@ fn evaluate(
         }
         Method::Next => y[x.partition_point(|&v| v < q).min(n - 1)],
         Method::Previous => y[x.partition_point(|&v| v <= q).saturating_sub(1)],
-        Method::Pchip | Method::Spline => pp.map_or(f64::NAN, |p| p.eval(q)),
+        Method::Pchip | Method::Spline | Method::Makima => pp.map_or(f64::NAN, |p| p.eval(q)),
         Method::V5Cubic => cubic_convolution(x, y, q),
     }
 }
@@ -378,8 +382,37 @@ fn equally_spaced(x: &[f64]) -> bool {
     x.windows(2).all(|w| ((w[1] - w[0]) - h).abs() <= tol)
 }
 
+/// Modified Akima derivatives, matching SciPy's Akima1DInterpolator(method="makima")
+/// and MATLAB's `makima`. The half-sum term keeps flat stretches well-defined.
+fn makima_slopes(x: &[f64], y: &[f64]) -> Vec<f64> {
+    let n = x.len();
+    if n == 2 {
+        let slope = (y[1] - y[0]) / (x[1] - x[0]);
+        return vec![slope; 2];
+    }
+    let mut m = vec![0.; n + 3];
+    for i in 0..n - 1 {
+        m[i + 2] = (y[i + 1] - y[i]) / (x[i + 1] - x[i]);
+    }
+    m[1] = 2. * m[2] - m[3];
+    m[0] = 2. * m[1] - m[2];
+    m[n + 1] = 2. * m[n] - m[n - 1];
+    m[n + 2] = 2. * m[n + 1] - m[n];
+    (0..n)
+        .map(|i| {
+            let w1 = (m[i + 3] - m[i + 2]).abs() + (m[i + 3] + m[i + 2]).abs() * 0.5;
+            let w2 = (m[i + 1] - m[i]).abs() + (m[i + 1] + m[i]).abs() * 0.5;
+            if w1 + w2 == 0. {
+                (m[i + 1] + m[i + 2]) * 0.5
+            } else {
+                (w1 * m[i + 1] + w2 * m[i + 2]) / (w1 + w2)
+            }
+        })
+        .collect()
+}
+
 impl Engine {
-    pub(super) fn polyopt_interp1(&self, args: &[Value]) -> Result<Value> {
+    pub(in crate::engine) fn polyopt_interp1(&self, args: &[Value]) -> Result<Value> {
         let simple = matches!(args.len(), 3..=5)
             && args[..3].iter().all(|a| matches!(a, Value::Matrix(_)))
             && args
@@ -454,8 +487,23 @@ impl Engine {
             (None, double(&args[0])?, double(&args[1])?)
         };
         let vector_v = is_vector(&v);
-        let n = if vector_v { v.len() } else { v.rows() };
-        let columns = if vector_v { 1 } else { v.cols() };
+        // MATLAB's makima treats the last dimension of a matrix as samples;
+        // other interp1 methods retain their column-series convention.
+        let makima_last_dimension = method == Method::Makima && !vector_v;
+        let n = if vector_v {
+            v.len()
+        } else if makima_last_dimension {
+            v.cols()
+        } else {
+            v.rows()
+        };
+        let columns = if vector_v {
+            1
+        } else if makima_last_dimension {
+            v.rows()
+        } else {
+            v.cols()
+        };
         let x: Vec<f64> = match &xv {
             Some(m) => {
                 if !is_vector(m) || m.is_empty() || m.data().iter().any(|v| !v.is_finite()) {
@@ -483,11 +531,13 @@ impl Engine {
         let order = sorted_grid(&x)?;
         let xs: Vec<f64> = order.iter().map(|&i| x[i]).collect();
         // 'spline' and 'pchip' extrapolate unless a fill value is given.
-        let outside = outside.unwrap_or(if matches!(method, Method::Pchip | Method::Spline) {
-            Outside::Extrapolate
-        } else {
-            Outside::Fill(f64::NAN)
-        });
+        let outside = outside.unwrap_or(
+            if matches!(method, Method::Pchip | Method::Spline | Method::Makima) {
+                Outside::Extrapolate
+            } else {
+                Outside::Fill(f64::NAN)
+            },
+        );
         // Reference behavior: 'v5cubic' needs an equally spaced grid and falls back to 'spline'.
         if method == Method::V5Cubic && (n < 3 || !equally_spaced(&xs)) {
             method = Method::Spline;
@@ -495,10 +545,20 @@ impl Engine {
         let mut result = Vec::with_capacity(rows * cols);
         for col in 0..columns {
             self.check_cancel()?;
-            let ys: Vec<f64> = order.iter().map(|&i| v.data()[col * n + i]).collect();
+            let ys: Vec<f64> = order
+                .iter()
+                .map(|&i| {
+                    if makima_last_dimension {
+                        v.data()[i * v.rows() + col]
+                    } else {
+                        v.data()[col * n + i]
+                    }
+                })
+                .collect();
             let pp = match method {
                 Method::Pchip => Some(Pp::from_slopes(&xs, &ys, &pchip_slopes(&xs, &ys))),
                 Method::Spline => Some(spline_pp(&xs, &ys)?),
+                Method::Makima => Some(Pp::from_slopes(&xs, &ys, &makima_slopes(&xs, &ys))),
                 _ => None,
             };
             for (i, &qv) in q.data().iter().enumerate() {
@@ -508,23 +568,84 @@ impl Engine {
                 result.push(evaluate(method, pp.as_ref(), &xs, &ys, qv, outside));
             }
         }
-        matrix_value(rows, cols, result)
+        if makima_last_dimension {
+            let mut transposed = Vec::with_capacity(result.len());
+            let count = q.len();
+            for qi in 0..count {
+                for series in 0..columns {
+                    transposed.push(result[series * count + qi]);
+                }
+            }
+            matrix_value(columns, q.len(), transposed)
+        } else {
+            matrix_value(rows, cols, result)
+        }
+    }
+
+    pub(super) fn polyopt_makima(&self, args: &[Value]) -> Result<Value> {
+        if args.len() == 2 {
+            return self.polyopt_makima_pp(args);
+        }
+        if args.len() != 3 {
+            return Err(if args.len() < 3 {
+                "Not enough input arguments."
+            } else {
+                "Too many input arguments."
+            }
+            .into());
+        }
+        let mut call = args.to_vec();
+        call.push(Value::Text("makima".into()));
+        self.polyopt_interp1(&call)
+    }
+
+    /// makima(x, y): the pp structure, one component per row of a matrix y
+    /// (samples along the last dimension, as in makima(x, y, xq)).
+    fn polyopt_makima_pp(&self, args: &[Value]) -> Result<Value> {
+        let x = real_matrix(&args[0], "makima")?;
+        let y = real_matrix(&args[1], "makima")?;
+        let n = x.len();
+        if !is_vector(&x) || x.data().iter().any(|v| !v.is_finite()) {
+            return Err("makima: x must be a vector of finite values".into());
+        }
+        if n < 2 {
+            return Err("The grid vectors must contain at least 2 points.".into());
+        }
+        let dim = if is_vector(&y) { 1 } else { y.rows() };
+        let samples = if is_vector(&y) { y.len() } else { y.cols() };
+        if samples != n {
+            return Err("makima: x and y must have the same number of samples.".into());
+        }
+        self.polyopt_admit(7 * n * dim)?;
+        let order = sorted_grid(x.data())?;
+        let xs: Vec<f64> = order.iter().map(|&i| x.data()[i]).collect();
+        let mut coefs = vec![[0.; 4]; (n - 1) * dim];
+        for j in 0..dim {
+            self.check_cancel()?;
+            let ys: Vec<f64> = order.iter().map(|&i| y.data()[i * dim + j]).collect();
+            let pp = Pp::from_slopes(&xs, &ys, &makima_slopes(&xs, &ys));
+            for (k, c) in pp.c.into_iter().enumerate() {
+                coefs[k * dim + j] = c;
+            }
+        }
+        CubicPp {
+            breaks: xs,
+            dim,
+            coefs,
+        }
+        .to_value(self)
     }
 
     pub(super) fn polyopt_spline(&self, name: &str, args: &[Value]) -> Result<Value> {
         match args.len() {
             0 | 1 => return Err("Not enough input arguments.".into()),
-            2 => {
-                return Err(format!(
-                    "{name}(x,y) would return a piecewise polynomial structure, which is not supported; call {name}(x,y,xx)"
-                ));
-            }
-            3 => {}
+            2 | 3 => {}
             _ => return Err("Too many input arguments.".into()),
         }
         let x = real_matrix(&args[0], name)?;
         let y = real_matrix(&args[1], name)?;
-        let q = real_matrix(&args[2], name)?;
+        // spline(x, y) and pchip(x, y) return the pp structure.
+        let q = args.get(2).map(|v| real_matrix(v, name)).transpose()?;
         let n = x.len();
         if n < 2 {
             return Err("There should be at least two data points.".into());
@@ -546,7 +667,7 @@ impl Engine {
             return Err(format!("{name}: x must contain finite values"));
         }
         // Sorted copies, slopes and coefficients, plus the result.
-        self.polyopt_admit(q.len() + 7 * n)?;
+        self.polyopt_admit(q.as_ref().map_or(0, |q| q.len()) + 7 * n)?;
         let order = sorted_grid(x.data())?;
         let xs: Vec<f64> = order.iter().map(|&i| x.data()[i]).collect();
         let ys: Vec<f64> = order.iter().map(|&i| y.data()[i]).collect();
@@ -554,6 +675,14 @@ impl Engine {
             spline_pp(&xs, &ys)?
         } else {
             Pp::from_slopes(&xs, &ys, &pchip_slopes(&xs, &ys))
+        };
+        let Some(q) = q else {
+            return CubicPp {
+                breaks: pp.x,
+                dim: 1,
+                coefs: pp.c,
+            }
+            .to_value(self);
         };
         let mut out = Vec::with_capacity(q.len());
         for (i, &t) in q.data().iter().enumerate() {
@@ -565,7 +694,7 @@ impl Engine {
         matrix_value(q.rows(), q.cols(), out)
     }
 
-    pub(super) fn polyopt_interp2(&self, args: &[Value]) -> Result<Value> {
+    pub(in crate::engine) fn polyopt_interp2(&self, args: &[Value]) -> Result<Value> {
         let numeric = args.iter().take_while(|a| text_of(a).is_none()).count();
         if numeric != 3 && numeric != 5 {
             return Err(if numeric < 3 {
@@ -577,6 +706,7 @@ impl Engine {
         }
         let mut nearest = false;
         let mut fill = f64::NAN;
+        let mut extrapolate = false;
         let mut tail = &args[numeric..];
         if let Some(first) = tail.first() {
             match text_of(first).map(str::to_ascii_lowercase).as_deref() {
@@ -591,7 +721,11 @@ impl Engine {
             }
             tail = &tail[1..];
             if let Some(extra) = tail.first() {
-                fill = scalar_of(extra, "interp2", "the extrapolation value")?;
+                if matches!(text_of(extra), Some(t) if t.eq_ignore_ascii_case("extrap")) {
+                    extrapolate = true;
+                } else {
+                    fill = scalar_of(extra, "interp2", "the extrapolation value")?;
+                }
                 tail = &tail[1..];
             }
         }
@@ -676,10 +810,7 @@ impl Engine {
             };
             if qx.is_nan()
                 || qy.is_nan()
-                || qx < xs[0]
-                || qx > xs[n - 1]
-                || qy < ys[0]
-                || qy > ys[m - 1]
+                || (!extrapolate && (qx < xs[0] || qx > xs[n - 1] || qy < ys[0] || qy > ys[m - 1]))
             {
                 out.push(fill);
                 continue;

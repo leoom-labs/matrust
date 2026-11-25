@@ -178,18 +178,9 @@ impl Workspace {
     fn search_allowed(&self, ctx: &egui::Context) -> bool {
         self.search_context_allowed(ctx) && !self.file_action_pending()
     }
-    /// "Search text" in the Files card header.
-    pub(super) fn folder_search_link(&mut self, ui: &mut egui::Ui) {
-        if panels::header_icon_button(
-            ui,
-            panels::Glyph::Search,
-            "Search text",
-            "Find literal text in .mr, .m and .txt files in Current Folder",
-        )
-        .clicked()
-        {
-            self.queue_search_action(ui.ctx(), Action::Show(true));
-        }
+    /// "Find" (Search text) of the Files card header opens the search.
+    pub(super) fn show_folder_search(&mut self, ctx: &egui::Context) {
+        self.queue_search_action(ctx, Action::Show(true));
     }
     fn queue_search_action(&mut self, ctx: &egui::Context, action: Action) {
         self.folder_search.action = Some((
@@ -200,7 +191,7 @@ impl Workspace {
     }
     pub(super) fn folder_search_ui(&mut self, ui: &mut egui::Ui, bottom: f32) -> bool {
         if !self.folder_search.visible {
-            // The Files card header offers "Search text".
+            // The Files card header offers "Find" (Search text).
             return false;
         }
         shell::title(ui, "Search Current Folder");

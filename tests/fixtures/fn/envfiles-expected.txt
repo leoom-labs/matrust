@@ -48,7 +48,7 @@ ERR Too many input arguments.
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -65,7 +65,7 @@ abc
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -74,7 +74,7 @@ x =
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -103,7 +103,7 @@ x =
 
 x =
 
-     1
+     0
 
 @@CLASS logical [1 1]
 @@END
@@ -251,7 +251,7 @@ line two
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]

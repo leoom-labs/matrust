@@ -12,36 +12,54 @@ impl Engine {
             return self.cel_ismember(args, outputs);
         }
         self.check_cancel()?;
-        if args.len() != 2 {
+        if !(2..=3).contains(&args.len()) {
             return Err(
-                "ismember expects two real/logical vector inputs; flags are unsupported".into(),
+                "ismember expects two real/logical array inputs and optional 'rows'".into(),
             );
         }
+        let rows = match args.get(2) {
+            None => false,
+            Some(value) => {
+                let Some(flag) = self.set_flag_text(value)? else {
+                    return Err("ismember option must be 'rows'; string arrays and other options are unsupported".into());
+                };
+                match flag.as_str() {
+                    "rows" => true,
+                    _ => return Err(
+                        "ismember supports only 'rows'; 'legacy' and other flags are unsupported"
+                            .into(),
+                    ),
+                }
+            }
+        };
         let typed = |value: &Value| -> Result<Array> {
             match value {
                 Value::Matrix(a) => Ok(Array::Numeric(a.clone())),
                 Value::Logical(a) => Ok(Array::Logical(a.clone())),
-                _ => Err("ismember supports real double or logical inputs only; complex, text, cell and graphics inputs are unsupported".into()),
+                Value::Container(Array::Typed(a)) => Ok(Array::Typed(a.clone())),
+                _ => Err("ismember supports real numeric or logical inputs only; complex, text, cell and graphics inputs are unsupported".into()),
             }
         };
         let a = typed(&args[0])?;
         let b = typed(&args[1])?;
-        for input in [&a, &b] {
-            if !input.is_empty() && input.rows() != 1 && input.cols() != 1 {
-                return Err(
-                    "ismember supports vectors and shaped empties, not nonempty matrices".into(),
-                );
+        if rows {
+            if a.is_nd() || b.is_nd() {
+                return Err("ismember: 'rows' is not supported for N-D arrays".into());
+            }
+            if a.cols() != b.cols() {
+                return Err("A and B must have the same number of columns.".into());
             }
         }
+        let out_len = if rows { a.rows() } else { a.len() };
         // Count requested logical output conservatively as existing Engine units.
-        if a.len()
+        if out_len
             .checked_mul(usize::from(outputs[0]) + usize::from(outputs[1]))
             .and_then(|units| self.evaluated_elements.checked_add(units))
             .is_none_or(|units| units > 32 * 1024 * 1024)
         {
             return Err("Statement exceeds its 256 MiB evaluation budget; split the calculation into smaller steps".into());
         }
-        let result = a.membership(&b, outputs, &self.cancel)?;
+        let result = a.membership_with_options(&b, rows, outputs, &self.cancel)?;
         let empty = || Matrix::filled(0, 0, 0.).map(Value::Matrix);
         let lia = result
             .membership

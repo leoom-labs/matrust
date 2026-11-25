@@ -131,7 +131,9 @@ fn script_analysis_returns_values_or_plots_without_replacing_ans() {
         .execute("q=max([0 0.2 1],0.1); r=min(q,0.5);")
         .unwrap();
     assert_eq!(engine.variables["r"].data(), &[0.1, 0.2, 0.5]);
-    assert!(engine.execute("h=impz(1,[1 -0.5]);").is_err());
+    // Without n, impz uses the automatic length: floor(log10(5e-5) / log10(0.5)) = 14.
+    engine.execute("h=impz(1,[1 -0.5]);").unwrap();
+    assert_eq!(engine.variables["h"].rows(), 14);
     engine.execute("sos=butter_sos(6,0.2); h=sosimpz(sos,256); g=sosgrpdelay(sos,512); p=sosphasez(sos,512); s=sosstepz(sos,256); m=sosfreqzmag(sos,512);").unwrap();
     close(engine.variables["m"].data()[0], 1.);
 }

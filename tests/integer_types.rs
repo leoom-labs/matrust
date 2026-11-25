@@ -260,30 +260,17 @@ fn finding_03_exact_64_bit_everyday_functions() {
         integers(&e, "m", class, &[h - 1, h, h - 1, h - 1]);
         integers(&e, "n", class, &[h - 1, h - 1, h - 2, h - 1]);
         integers(&e, "c", class, &[h - 2, h - 1, h]);
-        for function in ["sum", "prod"] {
-            let error = e
-                .execute(&format!("x={function}(a,'native');"))
-                .unwrap_err();
-            assert!(
-                error.contains(&format!(
-                    "{function} is not supported for {class} values above 2^53 yet"
-                )),
-                "{error}"
-            );
-        }
-        let error = e
-            .execute(&format!(
-                "x=sum({class}([9007199254740992 1 -9007199254740992]),'native');"
-            ))
-            .unwrap_err();
-        assert!(error.contains("above 2^53 yet"), "{error}");
-        let err = e.execute("x=median(a);").unwrap_err();
-        assert!(
-            err.contains(&format!(
-                "median is not supported for {class} values above 2^53 yet"
-            )),
-            "{err}"
-        );
+        e.execute("r=sum(a,'native'); p=prod(a,'native'); m=median(a,'all');")
+            .unwrap();
+        integers(&e, "r", class, &[h]);
+        integers(&e, "p", class, &[h]);
+        integers(&e, "m", class, &[h - 1]);
+        e.execute(&format!(
+            "x=sum({class}([9007199254740992 1 -9007199254740992]),'native');"
+        ))
+        .unwrap();
+        let exact = if class == "int64" { 1 } else { (1 << 53) + 1 };
+        integers(&e, "x", class, &[exact]);
         e.execute("b=[h h-2;h-1 h-3]; [s,ix]=sort(b,2); [m,mi]=max(b,[],2); c=cumsum(b,3);")
             .unwrap();
         integers(&e, "s", class, &[h - 2, h - 3, h, h - 1]);
@@ -809,7 +796,10 @@ fn save_and_load_commands_keep_classes() {
         ))
         .unwrap();
     let out = engine.execute("c = class(x); d = class(y); z = x").unwrap();
-    assert_eq!(out.output.join("\n"), "\nz =\n\n     9007199254740993\n");
+    assert_eq!(
+        out.output.join("\n"),
+        "\nz =\n\n  int64\n\n   9007199254740993\n"
+    );
     let Some(Array::Character(c)) = engine.array("c") else {
         panic!("class text");
     };
@@ -903,10 +893,13 @@ fn whos_queries_indexing_and_overflow_edges() {
     engine.execute("x = int16([1 2 3; 4 5 6]);").unwrap();
     let whos = text(&mut engine, "whos");
     assert!(whos.contains("12 bytes  int16"), "{whos}");
-    assert_eq!(text(&mut engine, "y = x(2, end)"), "\ny =\n\n      6\n");
+    assert_eq!(
+        text(&mut engine, "y = x(2, end)"),
+        "\ny =\n\n  int16\n\n   6\n"
+    );
     assert_eq!(
         text(&mut engine, "y = x(:, 2)'"),
-        "\ny =\n\n      2      5\n"
+        "\ny =\n\n  int16\n\n  2  5\n"
     );
     assert_eq!(text(&mut engine, "n = numel(x)"), "\nn =\n\n     6\n");
     assert_eq!(
@@ -915,22 +908,31 @@ fn whos_queries_indexing_and_overflow_edges() {
     );
     assert_eq!(
         text(&mut engine, "[m, i] = max(int8([3 9 2]))"),
-        "\nm =\n\n    9\n\n\ni =\n\n     2\n"
+        "\nm =\n\n  int8\n\n   9\n\n\ni =\n\n     2\n"
     );
     // Saturating edges never panic.
     for (source, expected) in [
-        ("y = intmin('int64') / -1", "  9223372036854775807"),
-        ("y = abs(intmin('int64'))", "  9223372036854775807"),
-        ("y = -intmin('int32')", "  2147483647"),
+        (
+            "y = intmin('int64') / -1",
+            "  int64\n\n   9223372036854775807",
+        ),
+        (
+            "y = abs(intmin('int64'))",
+            "  int64\n\n   9223372036854775807",
+        ),
+        ("y = -intmin('int32')", "  int32\n\n   2147483647"),
         (
             "y = intmax('uint64') * intmax('uint64')",
-            " 18446744073709551615",
+            "  uint64\n\n   18446744073709551615",
         ),
         (
             "y = idivide(intmin('int64'), int64(-1))",
-            "  9223372036854775807",
+            "  int64\n\n   9223372036854775807",
         ),
-        ("y = intmax('int64') - 1", "  9223372036854775806"),
+        (
+            "y = intmax('int64') - 1",
+            "  int64\n\n   9223372036854775806",
+        ),
     ] {
         assert_eq!(
             text(&mut engine, source),
@@ -950,16 +952,16 @@ fn whos_queries_indexing_and_overflow_edges() {
     );
     assert_eq!(text(&mut engine, "c = {int8(5)}"), "\nc = \n\n    [5]\n");
     engine.execute("plot(int8([1 5 3]))").unwrap();
-    assert_eq!(text(&mut engine, "disp(int8([1 -2]))"), "    1   -2\n");
+    assert_eq!(text(&mut engine, "disp(int8([1 -2]))"), "   1  -2\n");
     assert_eq!(text(&mut engine, "fprintf('%d|', uint8([7 8]))"), "7|8|");
     assert_eq!(
         text(&mut engine, "y = x(x > 4)'"),
-        "\ny =\n\n      5      6\n"
+        "\ny =\n\n  int16\n\n  5  6\n"
     );
     engine.execute("x(1, :) = [];").unwrap();
     assert_eq!(
         text(&mut engine, "y = x"),
-        "\ny =\n\n      4      5      6\n"
+        "\ny =\n\n  int16\n\n  4  5  6\n"
     );
 }
 
@@ -1279,10 +1281,12 @@ fn mat_v73_roundtrips_native_classes_exact_bits_and_empty_shapes() {
 }
 
 #[test]
-fn int64_writes_at_the_element_limit_copy_or_grow_once_within_the_budget() {
+fn int64_writes_of_half_the_budget_copy_or_grow_once_within_the_budget() {
     use matrust::{NumericClass, Scalar, TypedArray};
-    let n = matrust::matrix::MAX_ELEMENTS;
-    assert_eq!(n, 16_777_216);
+    // 128 MiB of int64: half the default 256 MiB budget (the native element
+    // limit is now 48 Mi, so the budget, not the element limit, binds here).
+    let n = 16_777_216;
+    assert!(n < matrust::matrix::MAX_ELEMENTS);
     let mut e = Engine::default();
     let array: Array = TypedArray::from_ints(
         NumericClass::Int64,
@@ -1369,4 +1373,300 @@ fn full_typed_indexed_replacement_shares_rhs_and_converted_sources_keep_the_clas
         .unwrap();
     integers(&e, "small", "int8", &[97, 98, 99, 1, 0, 1]);
     assert_eq!(rhs.scalar(0, 0).unwrap(), matrust::Scalar::Integer(1));
+}
+
+fn same_x(left: &Engine, right: &Engine, label: &str) {
+    let a = left.array("x").expect(label);
+    let b = right.array("x").expect(label);
+    assert_eq!(a.class(), b.class(), "{label}");
+    match (&a, &b) {
+        (Array::Typed(p), Array::Typed(q)) => {
+            let pv: Vec<i128> = (0..p.len()).map(|i| p.int(i)).collect();
+            let qv: Vec<i128> = (0..q.len()).map(|i| q.int(i)).collect();
+            assert_eq!(pv, qv, "{label}");
+        }
+        (Array::Logical(p), Array::Logical(q)) => assert_eq!(p.data(), q.data(), "{label}"),
+        (Array::Numeric(p), Array::Numeric(q)) => assert_eq!(p.data(), q.data(), "{label}"),
+        _ => panic!("{label}: {} vs {}", a.class(), b.class()),
+    }
+}
+
+fn run_pair(function: &str, operator: &str, a: &str, b: &str) {
+    let mut left = Engine::default();
+    let mut right = Engine::default();
+    let function_stmt = format!("x={function}({a},{b});");
+    let operator_stmt = format!("x={a}{operator}{b};");
+    match (left.execute(&function_stmt), right.execute(&operator_stmt)) {
+        (Ok(_), Ok(_)) => same_x(&left, &right, &function_stmt),
+        (Err(function_error), Err(operator_error)) => {
+            assert_eq!(
+                function_error.to_string(),
+                operator_error.to_string(),
+                "{function_stmt}"
+            )
+        }
+        (Ok(_), Err(error)) => panic!("{function_stmt} succeeded, operator failed: {error}"),
+        (Err(error), Ok(_)) => panic!("{function_stmt} failed, operator succeeded: {error}"),
+    }
+}
+
+/// MathWorks `sum` / `prod`: outtype `'default'` is double for integer input
+/// (https://www.mathworks.com/help/matlab/ref/sum.html,
+/// https://www.mathworks.com/help/matlab/ref/prod.html). `'native'` keeps the
+/// class and saturates. `cumsum` keeps the class and saturates
+/// (https://www.mathworks.com/help/matlab/ref/cumsum.html).
+#[test]
+fn review_d1112_nd_integer_sum_prod_default_double() {
+    let mut e = Engine::default();
+    e.execute(
+        "A=int8(reshape([100 100 -100 50 20 30 1 2],2,2,2)); \
+         s=sum(A,3); d=sum(A,3,'double'); f=sum(A,3,'default'); n=sum(A,3,'native'); \
+         p=prod(A,3); pn=prod(A,3,'native'); c=cumsum(A,3);",
+    )
+    .unwrap();
+    // Column-major pages [100 100 -100 50] and [20 30 1 2].
+    // 100+30 = 130, which is not an int8.
+    for name in ["s", "d", "f"] {
+        assert_eq!(e.array(name).unwrap().class(), "double", "{name}");
+        assert_eq!(
+            e.array(name)
+                .unwrap()
+                .to_numeric(&Default::default())
+                .unwrap()
+                .data(),
+            &[120.0, 130.0, -99.0, 52.0],
+            "{name}"
+        );
+    }
+    integers(&e, "n", "int8", &[120, 127, -99, 52]);
+    assert_eq!(e.array("p").unwrap().class(), "double");
+    assert_eq!(
+        e.array("p")
+            .unwrap()
+            .to_numeric(&Default::default())
+            .unwrap()
+            .data(),
+        &[2000.0, 3000.0, -100.0, 100.0]
+    );
+    integers(&e, "pn", "int8", &[127, 127, -100, 100]);
+    integers(&e, "c", "int8", &[100, 100, -100, 50, 120, 127, -99, 52]);
+    // 2-D integer sum was already double. It must stay that way.
+    e.execute("t=sum(int8([100 30]));").unwrap();
+    assert_eq!(e.array("t").unwrap().class(), "double");
+    assert_eq!(
+        e.array("t")
+            .unwrap()
+            .to_numeric(&Default::default())
+            .unwrap()
+            .data(),
+        &[130.0]
+    );
+}
+
+/// Double `bitshift` / `bitand` already reject a non-integer
+/// (`number_theory.rs`: "Shift counts must be integers." and
+/// "Double inputs must have integer values in the range of ASSUMEDTYPE.").
+/// MathWorks bitshift and bitand require integer values.
+#[test]
+fn review_d1112_integer_bitops_reject_noninteger_doubles() {
+    for (statement, message) in [
+        ("bitshift(int8(1),1.5)", "Shift counts must be integers."),
+        ("bitshift(int8(1),NaN)", "Shift counts must be integers."),
+        ("bitshift(int8(1),Inf)", "Shift counts must be integers."),
+        (
+            "bitshift(1.5,int8(1))",
+            "Double inputs must have integer values in the range of ASSUMEDTYPE.",
+        ),
+        (
+            "bitand(int8(3),1.6)",
+            "Double inputs must have integer values in the range of ASSUMEDTYPE.",
+        ),
+        (
+            "bitor(int8(1),1.5)",
+            "Double inputs must have integer values in the range of ASSUMEDTYPE.",
+        ),
+        (
+            "bitxor(int8(1),NaN)",
+            "Double inputs must have integer values in the range of ASSUMEDTYPE.",
+        ),
+    ] {
+        let error = Engine::default().execute(statement).unwrap_err();
+        assert!(error.contains(message), "{statement}: {error}");
+    }
+    let mut e = Engine::default();
+    e.execute(
+        "s=bitshift(int8(1),1); si=bitshift(int8(1),int8(3)); sr=bitshift(int8(8),-2); \
+         a=bitand(int8(3),1); ai=bitand(int8(3),int8(1)); an=bitand(int8(3),-1);",
+    )
+    .unwrap();
+    integers(&e, "s", "int8", &[2]);
+    integers(&e, "si", "int8", &[8]);
+    integers(&e, "sr", "int8", &[2]);
+    integers(&e, "a", "int8", &[1]);
+    integers(&e, "ai", "int8", &[1]);
+    integers(&e, "an", "int8", &[3]);
+}
+
+/// Python integers: `(2**53+1)*2**9 = 4611686018427388416` and
+/// `2**113 // (2**53+1) = 1152921504606846848` (remainder 128, no half-away
+/// round-up). `2**127 // (2**64-1)` rounds half away to `2**63+1`.
+/// A power-of-two quotient past the class saturates, as the operator does.
+#[test]
+fn review_d1112_int64_power_of_two_division_is_exact() {
+    let mut e = Engine::default();
+    e.execute(
+        "x=int64(9007199254740993)/2^(-9); \
+         y=2^113/int64(9007199254740993); \
+         z=(-int64(9007199254740993))/2^(-9); \
+         w=2^127/uint64(18446744073709551615); \
+         m=int64(9007199254740993)*512; \
+         h=int64(1)/2^(-63); \
+         u=uint64(1)/2^(-63); \
+         p=int64(5)/2; n=int64(-5)/2; t=int64(1)/3;",
+    )
+    .unwrap();
+    integers(&e, "x", "int64", &[4611686018427388416]);
+    integers(&e, "y", "int64", &[1152921504606846848]);
+    integers(&e, "z", "int64", &[-4611686018427388416]);
+    integers(&e, "w", "uint64", &[9223372036854775809]);
+    integers(&e, "m", "int64", &[4611686018427388416]);
+    integers(&e, "h", "int64", &[9223372036854775807]);
+    integers(&e, "u", "uint64", &[9223372036854775808]);
+    integers(&e, "p", "int64", &[3]);
+    integers(&e, "n", "int64", &[-3]);
+    integers(&e, "t", "int64", &[0]);
+}
+
+/// Each operator function returns the operator's value, including saturation.
+/// Anchors: `rdivide(int8(5),int8(2))` is int8 3 (half away from zero),
+/// `power(int8(2),int8(7))` is int8 127, `eq` of `2^53+1` and `2^53` is false,
+/// `plus(int64(2^53+1),1)` is `9007199254740994`.
+#[test]
+fn review_d1112_operator_functions_match_operators() {
+    let samples = [
+        ("int8(100)", "int8(100)"),
+        ("int8(5)", "int8(2)"),
+        ("int8(-128)", "int8(1)"),
+        ("int8(127)", "int8(1)"),
+        ("int64(9007199254740993)", "int64(1)"),
+        ("int64(9007199254740993)", "int64(9007199254740992)"),
+        ("int64(9223372036854775807)", "int64(1)"),
+        ("uint64(18446744073709551615)", "uint64(1)"),
+        ("uint64(9007199254740993)", "uint64(2)"),
+    ];
+    for (a, b) in samples {
+        for (function, operator) in [
+            ("plus", "+"),
+            ("minus", "-"),
+            ("times", ".*"),
+            ("rdivide", "./"),
+            ("mtimes", "*"),
+            ("mrdivide", "/"),
+            ("mldivide", "\\"),
+            ("eq", "=="),
+            ("ne", "~="),
+            ("lt", "<"),
+            ("le", "<="),
+            ("gt", ">"),
+            ("ge", ">="),
+        ] {
+            run_pair(function, operator, a, b);
+        }
+        run_pair_ldivide(a, b);
+    }
+    for (a, b) in [
+        ("int8(2)", "int8(7)"),
+        ("int8(-2)", "int8(3)"),
+        ("int8(100)", "int8(2)"),
+        ("int64(9007199254740993)", "int64(1)"),
+        ("int64(2)", "int64(62)"),
+        ("uint64(2)", "uint64(63)"),
+        ("uint64(18446744073709551615)", "uint64(1)"),
+    ] {
+        for (function, operator) in [("power", ".^"), ("mpower", "^")] {
+            run_pair(function, operator, a, b);
+        }
+    }
+    let mut e = Engine::default();
+    e.execute(
+        "r=rdivide(int8(5),int8(2)); p=power(int8(2),int8(7)); \
+         q=eq(int64(9007199254740993),int64(9007199254740992)); \
+         s=plus(int64(9007199254740993),int64(1)); \
+         u=uminus(intmin('int64')); v=-intmin('int64'); \
+         w=uplus(int64(9007199254740993));",
+    )
+    .unwrap();
+    integers(&e, "r", "int8", &[3]);
+    integers(&e, "p", "int8", &[127]);
+    assert_eq!(e.array("q").unwrap().class(), "logical");
+    assert_eq!(
+        match e.array("q").unwrap() {
+            Array::Logical(v) => v.data().to_vec(),
+            other => panic!("{}", other.class()),
+        },
+        vec![0]
+    );
+    integers(&e, "s", "int64", &[9007199254740994]);
+    integers(&e, "u", "int64", &[9223372036854775807]);
+    integers(&e, "v", "int64", &[9223372036854775807]);
+    integers(&e, "w", "int64", &[9007199254740993]);
+    let matrix = "int8([1 2;3 4])";
+    let mut left = Engine::default();
+    let mut right = Engine::default();
+    let function_error = left
+        .execute(&format!("x=mldivide({matrix},{matrix});"))
+        .unwrap_err();
+    let operator_error = right
+        .execute(&format!("x={matrix}\\{matrix};"))
+        .unwrap_err();
+    assert_eq!(function_error.to_string(), operator_error.to_string());
+    assert!(
+        function_error.contains("Linear algebra is not supported for integer data types"),
+        "{function_error}"
+    );
+}
+
+fn run_pair_ldivide(a: &str, b: &str) {
+    let mut left = Engine::default();
+    let mut right = Engine::default();
+    let function_stmt = format!("x=ldivide({a},{b});");
+    let operator_stmt = format!("x={b}./{a};");
+    left.execute(&function_stmt).expect(&function_stmt);
+    right.execute(&operator_stmt).expect(&operator_stmt);
+    same_x(&left, &right, &function_stmt);
+}
+
+/// Octave 10.3: `int64(1)/2^128` is int64 0. The divisor is `2^52 * 2^76`;
+/// a shift that drops the set bit must not become a zero denominator.
+#[test]
+fn review_s1113_int64_div_2_pow_128_is_zero() {
+    let mut e = Engine::default();
+    e.execute("x=int64(1)/2^128;").unwrap();
+    integers(&e, "x", "int64", &[0]);
+}
+
+/// Octave 10.3: `intmin('int64')/2^-77` saturates at intmin.
+/// `-2^63 * 2^77 = -2^140`, which is below every int64.
+#[test]
+fn review_s1113_intmin_div_2_pow_neg77_saturates() {
+    let mut e = Engine::default();
+    e.execute("x=intmin('int64')/2^(-77);").unwrap();
+    integers(&e, "x", "int64", &[-9223372036854775808]);
+}
+
+/// Octave 10.3: `2^192/int64(1)` saturates at intmax.
+#[test]
+fn review_s1113_2_pow_192_div_int64_one_saturates() {
+    let mut e = Engine::default();
+    e.execute("x=2^192/int64(1);").unwrap();
+    integers(&e, "x", "int64", &[9223372036854775807]);
+}
+
+/// Octave 10.3 keeps `int64(2^53+1)/2^-9` exact: `(2^53+1)*2^9`.
+/// The integer literal is required; `2^53+1` as a double is already `2^53`.
+#[test]
+fn review_s1113_int64_2_pow_53_plus_1_div_2_pow_neg9_stays_exact() {
+    let mut e = Engine::default();
+    e.execute("x=int64(9007199254740993)/2^(-9);").unwrap();
+    integers(&e, "x", "int64", &[4611686018427388416]);
 }

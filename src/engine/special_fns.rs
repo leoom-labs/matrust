@@ -357,7 +357,7 @@ fn jy_real(nu: f64, x: f64) -> (f64, f64) {
 
 /// Exponentially scaled I_nu and K_nu. Temme (1975), sections 2-3,
 /// DLMF 10.33.1 (I ratio) and 10.28.2 (Wronskian normalization).
-fn ik_real(nu: f64, x: f64) -> (f64, f64) {
+pub(in crate::engine) fn ik_real(nu: f64, x: f64) -> (f64, f64) {
     if x >= 32. + 0.5 * nu * nu {
         let terms = hankel_terms(nu, x);
         let mut i = 0.;
@@ -1115,7 +1115,7 @@ fn airy(k: usize, z: C, scaled: bool) -> C {
 
 /// Stirling's correction ln Gamma*(a) = ln Gamma(a) - (a-1/2) ln a + a - ln sqrt(2 pi)
 /// for a >= 10 (DLMF 5.11.1).
-fn stirling_correction(a: f64) -> f64 {
+pub(super) fn stirling_correction(a: f64) -> f64 {
     let a2 = a * a;
     (1. / 12. - (1. / 360. - (1. / 1260. - (1. / 1680. - 1. / (1188. * a2)) / a2) / a2) / a2) / a
 }
@@ -1244,7 +1244,7 @@ fn gamma_upper_small_a(a: f64, x: f64) -> f64 {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-enum Tail {
+pub(super) enum Tail {
     Lower,
     Upper,
     ScaledLower,
@@ -1255,7 +1255,7 @@ enum Tail {
 /// (each is then correct to about one rounding, also far from x = a, where the
 /// exponential of Temme's form magnifies the error of its argument), else
 /// `gamma_prefix`.
-fn power_prefix(a: f64, x: f64) -> f64 {
+pub(super) fn power_prefix(a: f64, x: f64) -> f64 {
     if a <= 170. && x < 700. {
         let (power, gamma) = (libm::pow(x, a), libm::tgamma(a + 1.));
         let direct = power * libm::exp(-x) / gamma;
@@ -1343,7 +1343,7 @@ fn gamma_uniform_scaled(a: f64, x: f64) -> (f64, f64) {
 /// a < 1) and Legendre's continued fraction above it, the finite sum DLMF 8.4.10
 /// for the upper tail of small integer a, and for a < 1 the upper tail without
 /// the cancellation in 1 - P.
-fn gammainc_real(x: f64, a: f64, tail: Tail) -> f64 {
+pub(super) fn gammainc_real(x: f64, a: f64, tail: Tail) -> f64 {
     use Tail::{Lower, ScaledLower, ScaledUpper, Upper};
     if x.is_nan() || a.is_nan() {
         return f64::NAN;
@@ -1588,7 +1588,7 @@ fn tail_root(
 /// x with gammainc(x, a, tail) = y. The start inverts the leading term of the
 /// series for small x, otherwise the leading term of Temme's expansion
 /// Q(a, x) ~ erfc(eta sqrt(a/2))/2 (DLMF 8.12.3, 8.12.1); `tail_root` finishes.
-fn gammaincinv_real(y: f64, a: f64, upper: bool) -> f64 {
+pub(super) fn gammaincinv_real(y: f64, a: f64, upper: bool) -> f64 {
     if y.is_nan() || a.is_nan() {
         return f64::NAN;
     }
@@ -1634,7 +1634,7 @@ fn gammaincinv_real(y: f64, a: f64, upper: bool) -> f64 {
 // ---------- incomplete beta ----------
 
 /// x^a (1-x)^b / B(a, b) for 0 < x < 1.
-fn beta_prefix(x: f64, a: f64, b: f64) -> f64 {
+pub(super) fn beta_prefix(x: f64, a: f64, b: f64) -> f64 {
     if a >= 10. && b >= 10. {
         // Stirling forms of the three gamma functions; the powers are taken of
         // ratios near 1 so large parameters keep full precision.
@@ -1669,7 +1669,7 @@ const BETA_MAXIT: usize = 2_000_000;
 /// I_x(a, b) = x^a (1-x)^b / (a B(a, b)) times it; with d_{2m} =
 /// m(b-m)x/((a+2m-1)(a+2m)) and d_{2m+1} = -(a+m)(a+b+m)x/((a+2m)(a+2m+1)).
 /// Converges quickly for x < (a+1)/(a+b+2).
-fn beta_fraction(a: f64, b: f64, x: f64) -> f64 {
+pub(super) fn beta_fraction(a: f64, b: f64, x: f64) -> f64 {
     1. / lentz(1., BETA_MAXIT, |n| {
         let m = (n / 2.).floor();
         let d = if n % 2. == 0. {
@@ -1685,7 +1685,7 @@ fn beta_fraction(a: f64, b: f64, x: f64) -> f64 {
 /// DLMF 8.17.22 gives whichever tail lies on its fast side, the symmetry
 /// I_x(a, b) = 1 - I_{1-x}(b, a) (DLMF 8.17.4) the other; each tail is computed
 /// directly where it is the small one.
-fn betainc_pair(x: f64, a: f64, b: f64) -> (f64, f64) {
+pub(super) fn betainc_pair(x: f64, a: f64, b: f64) -> (f64, f64) {
     if x.is_nan() || a.is_nan() || b.is_nan() {
         return (f64::NAN, f64::NAN);
     }
@@ -1720,7 +1720,7 @@ fn betainc_pair(x: f64, a: f64, b: f64) -> (f64, f64) {
 /// DLMF 8.17.22 near either end, x^a/(a B(a, b)) or (1-x)^b/(b B(a, b)), or else
 /// takes the normal approximation Abramowitz and Stegun 26.5.22; `tail_root`
 /// finishes.
-fn betaincinv_real(y: f64, a: f64, b: f64, upper: bool) -> f64 {
+pub(super) fn betaincinv_real(y: f64, a: f64, b: f64, upper: bool) -> f64 {
     if y.is_nan() || a.is_nan() || b.is_nan() {
         return f64::NAN;
     }
@@ -1942,7 +1942,7 @@ const BERNOULLI: [f64; 8] = [
 
 /// psi^(n)(x) for x >= 0: recurrence up to x >= 15 + n, then the asymptotic
 /// series (DLMF 5.11.2 and 5.15.8).
-fn polygamma(n: usize, x: f64) -> f64 {
+pub(in crate::engine) fn polygamma(n: usize, x: f64) -> f64 {
     if x.is_nan() {
         return f64::NAN;
     }
@@ -1996,7 +1996,7 @@ fn polygamma(n: usize, x: f64) -> f64 {
 /// e^{x^2} erfc(x): the product for x < 2, the continued fraction
 /// erfc x = e^{-x^2}/sqrt(pi) / (x + (1/2)/(x + 1/(x + (3/2)/(x + ...))))
 /// (DLMF 7.9.2, Lentz) for larger x, and 2 e^{x^2} - erfcx(-x) for x < 0.
-fn erfcx_value(x: f64) -> f64 {
+pub(in crate::engine) fn erfcx_value(x: f64) -> f64 {
     if x.is_nan() {
         return f64::NAN;
     }
@@ -3003,7 +3003,10 @@ impl Engine {
         if m.is_complex() {
             return Err("Input arguments must be real.".into());
         }
-        if m.re.iter().any(|&v| v < 0. || v > 1.) {
+        if m.re
+            .iter()
+            .any(|&v| !v.is_nan() && !(0. ..=1.).contains(&v))
+        {
             return Err("M must be in the range 0 <= M <= 1.".into());
         }
         Ok(m)

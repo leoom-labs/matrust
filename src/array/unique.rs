@@ -80,12 +80,59 @@ struct Groups {
     ids: Option<Vec<u32>>,
 }
 
-fn groups(
+fn reorder_stable_last(
+    first_occ: &mut [u32],
+    last_occ: &[u32],
+    order_idx: &mut [u32],
+    merge_scratch: &mut [u32],
+    ids: &mut Option<Vec<u32>>,
+    parallel: bool,
+    cancel: &AtomicBool,
+) -> Result<()> {
+    for (i, slot) in order_idx.iter_mut().enumerate() {
+        if i.is_multiple_of(CHUNK) {
+            checkpoint(cancel, Phase::Reorder)?;
+        }
+        *slot = i as u32;
+    }
+    sort_lane(
+        order_idx,
+        merge_scratch,
+        parallel,
+        &|a, b| first_occ[a as usize].cmp(&first_occ[b as usize]),
+        cancel,
+    )?;
+    for (rank, &old_group) in order_idx.iter().enumerate() {
+        if rank.is_multiple_of(CHUNK) {
+            checkpoint(cancel, Phase::Reorder)?;
+        }
+        first_occ[rank] = last_occ[old_group as usize];
+    }
+    if let Some(ids) = ids {
+        for (rank, &old_group) in order_idx.iter().enumerate() {
+            if rank.is_multiple_of(CHUNK) {
+                checkpoint(cancel, Phase::Reorder)?;
+            }
+            merge_scratch[old_group as usize] = rank as u32;
+        }
+        for chunk in ids.chunks_mut(CHUNK) {
+            checkpoint(cancel, Phase::Reorder)?;
+            for id in chunk {
+                *id = merge_scratch[*id as usize];
+            }
+        }
+    }
+    Ok(())
+}
+
+fn groups_by(
     n: usize,
     order: UniqueOrder,
+    last: bool,
     want_ids: bool,
     cancel: &AtomicBool,
-    read: impl Fn(usize) -> Key + Sync,
+    cmp_items: &(dyn Fn(usize, usize) -> std::cmp::Ordering + Sync),
+    eq_items: impl Fn(usize, usize) -> bool,
 ) -> Result<Groups> {
     checkpoint(cancel, Phase::Initialize)?;
     let mut first = allocate::<u32>(n, cancel)?;
@@ -102,14 +149,7 @@ fn groups(
         &mut first,
         &mut scratch,
         parallel,
-        &|a, b| {
-            compare(
-                read(a as usize),
-                read(b as usize),
-                SortOrder::Ascend,
-                MissingPlacement::Last,
-            )
-        },
+        &|a, b| cmp_items(a as usize, b as usize),
         cancel,
     )?;
     checkpoint(cancel, Phase::Sort)?;
@@ -119,50 +159,88 @@ fn groups(
         None
     };
     let mut count = 0;
+    let track_last_in_stable = last && order == UniqueOrder::Stable;
     for at in 0..n {
         if at.is_multiple_of(CHUNK) {
             checkpoint(cancel, Phase::Group)?;
         }
         let index = first[at];
         // IEEE numeric equality merges signed zero but deliberately never NaN.
-        // Stable sorting retains the first input index and its exact value bits.
-        if count == 0 || read(first[count - 1] as usize) != read(index as usize) {
+        // Stable sorting retains the first input index and its exact value bits;
+        // 'last' updates the representative within each equal group.
+        if count == 0 || !eq_items(first[count - 1] as usize, index as usize) {
             first[count] = index;
+            if track_last_in_stable {
+                scratch[count] = index;
+            }
             count += 1;
+        } else if track_last_in_stable {
+            scratch[count - 1] = index;
+        } else if last {
+            first[count - 1] = index;
         }
         if let Some(ids) = &mut ids {
             ids[index as usize] = (count - 1) as u32;
         }
     }
     checkpoint(cancel, Phase::Group)?;
-    first.truncate(count);
     if order == UniqueOrder::Stable {
         checkpoint(cancel, Phase::Reorder)?;
-        sort_lane(
-            &mut first,
-            &mut scratch[..count],
-            parallel && count >= PAR_ELEMENTS,
-            &|a, b| a.cmp(&b),
-            cancel,
-        )?;
-        if let Some(ids) = &mut ids {
-            // The old group ID at each representative gives an inverse map.
-            // Reuse dead merge scratch rather than allocate another n-vector.
-            for (rank, &index) in first.iter().enumerate() {
-                if rank.is_multiple_of(CHUNK) {
-                    checkpoint(cancel, Phase::Reorder)?;
-                }
-                scratch[ids[index as usize] as usize] = rank as u32;
+        if last {
+            if count <= n / 2 {
+                let (first_occ, rest_first) = first.split_at_mut(count);
+                let (last_occ, rest_scratch) = scratch.split_at_mut(count);
+                reorder_stable_last(
+                    first_occ,
+                    last_occ,
+                    &mut rest_first[..count],
+                    &mut rest_scratch[..count],
+                    &mut ids,
+                    parallel && count >= PAR_ELEMENTS,
+                    cancel,
+                )?;
+            } else {
+                let mut order_idx = allocate::<u32>(count, cancel)?;
+                let mut merge_scratch = allocate::<u32>(count, cancel)?;
+                reorder_stable_last(
+                    &mut first[..count],
+                    &scratch[..count],
+                    &mut order_idx,
+                    &mut merge_scratch,
+                    &mut ids,
+                    parallel && count >= PAR_ELEMENTS,
+                    cancel,
+                )?;
             }
-            for chunk in ids.chunks_mut(CHUNK) {
-                checkpoint(cancel, Phase::Reorder)?;
-                for id in chunk {
-                    *id = scratch[*id as usize];
+        } else {
+            first.truncate(count);
+            sort_lane(
+                &mut first,
+                &mut scratch[..count],
+                parallel && count >= PAR_ELEMENTS,
+                &|a, b| a.cmp(&b),
+                cancel,
+            )?;
+            if let Some(ids) = &mut ids {
+                // The old group ID at each representative gives an inverse map.
+                // Reuse dead merge scratch rather than allocate another n-vector.
+                for (rank, &index) in first.iter().enumerate() {
+                    if rank.is_multiple_of(CHUNK) {
+                        checkpoint(cancel, Phase::Reorder)?;
+                    }
+                    scratch[ids[index as usize] as usize] = rank as u32;
+                }
+                for chunk in ids.chunks_mut(CHUNK) {
+                    checkpoint(cancel, Phase::Reorder)?;
+                    for id in chunk {
+                        *id = scratch[*id as usize];
+                    }
                 }
             }
         }
         checkpoint(cancel, Phase::Reorder)?;
     }
+    first.truncate(count);
     drop(scratch);
     check(cancel)?;
     Ok(Groups { first, ids })
@@ -188,6 +266,7 @@ fn output<T: Default + Clone>(
 fn logical_unique(
     input: &LogicalMatrix,
     order: UniqueOrder,
+    last: bool,
     outputs: [bool; 3],
     cancel: &AtomicBool,
 ) -> Result<UniqueResult> {
@@ -203,16 +282,34 @@ fn logical_unique(
             break;
         }
     }
+    let picked_indices = if last {
+        let mut last_idx = [usize::MAX; 2];
+        for (rev_at, &value) in input.data().iter().rev().enumerate() {
+            if rev_at.is_multiple_of(CHUNK) {
+                checkpoint(cancel, Phase::Group)?;
+            }
+            let slot = &mut last_idx[usize::from(value)];
+            if *slot == usize::MAX {
+                *slot = input.len() - 1 - rev_at;
+            }
+            if last_idx.iter().all(|&i| i != usize::MAX) {
+                break;
+            }
+        }
+        last_idx
+    } else {
+        first
+    };
     check(cancel)?;
     let mut representatives = [0usize; 2];
     let mut count = 0;
-    for &index in &first {
+    for &index in &picked_indices {
         if index != usize::MAX {
             representatives[count] = index;
             count += 1;
         }
     }
-    if count == 2 && order == UniqueOrder::Stable && representatives[0] > representatives[1] {
+    if count == 2 && order == UniqueOrder::Stable && first[0] > first[1] {
         representatives.swap(0, 1);
     }
     let (rows, cols) = if input.rows() == 1 {
@@ -278,14 +375,29 @@ impl Array {
         outputs: [bool; 3],
         cancel: &AtomicBool,
     ) -> Result<UniqueResult> {
+        self.unique_with_options(order, false, false, outputs, cancel)
+    }
+
+    /// Unique values or unique rows with optional 'stable'/'sorted' and 'first'/'last'.
+    pub fn unique_with_options(
+        &self,
+        order: UniqueOrder,
+        rows_mode: bool,
+        last: bool,
+        outputs: [bool; 3],
+        cancel: &AtomicBool,
+    ) -> Result<UniqueResult> {
         check(cancel)?;
         if !matches!(self, Self::Numeric(_) | Self::Logical(_) | Self::Typed(_)) {
             return Err("unique supports real double or logical arrays only".into());
         }
+        if rows_mode && self.is_nd() {
+            return Err("unique: 'rows' is not supported for N-D arrays".into());
+        }
         let n = preflight(
             self.rows(),
             self.cols(),
-            !matches!(self, Self::Logical(_)),
+            rows_mode || !matches!(self, Self::Logical(_)),
             outputs,
         )?;
         if !outputs.iter().any(|&x| x) {
@@ -295,30 +407,162 @@ impl Array {
                 group_indices: None,
             });
         }
-        if let Self::Logical(input) = self {
-            return logical_unique(input, order, outputs, cancel);
+        if !rows_mode {
+            if let Self::Logical(input) = self {
+                return logical_unique(input, order, last, outputs, cancel);
+            }
+            let key_at = |i: usize| -> Key {
+                match self {
+                    Self::Numeric(a) => a.data()[i].into(),
+                    Self::Typed(a) => typed_key(a, i),
+                    _ => unreachable!(),
+                }
+            };
+            let grouped = groups_by(
+                n,
+                order,
+                last,
+                outputs[2],
+                cancel,
+                &|a, b| {
+                    compare(
+                        key_at(a),
+                        key_at(b),
+                        SortOrder::Ascend,
+                        MissingPlacement::Last,
+                    )
+                },
+                |a, b| key_at(a) == key_at(b),
+            )?;
+            let k = grouped.first.len();
+            let (rows, cols) = if self.rows() == 1 { (1, k) } else { (k, 1) };
+            let values = if outputs[0] {
+                Some(match self {
+                    Self::Typed(a) => a
+                        .select_with_cancel(
+                            rows,
+                            cols,
+                            &build(k, cancel, |i| Ok(grouped.first[i] as usize))?,
+                            cancel,
+                        )?
+                        .into(),
+                    Self::Numeric(a) => Matrix::from_column_vec(
+                        rows,
+                        cols,
+                        output(k, cancel, |i| a.data()[grouped.first[i] as usize])?,
+                    )?
+                    .into(),
+                    _ => unreachable!(),
+                })
+            } else {
+                None
+            };
+            let first_indices = if outputs[1] {
+                Some(Matrix::from_column_vec(
+                    k,
+                    1,
+                    output(k, cancel, |i| f64::from(grouped.first[i]) + 1.)?,
+                )?)
+            } else {
+                None
+            };
+            let group_indices = if outputs[2] {
+                let ids = grouped.ids.as_ref().unwrap();
+                Some(Matrix::from_column_vec(
+                    n,
+                    1,
+                    output(n, cancel, |i| f64::from(ids[i]) + 1.)?,
+                )?)
+            } else {
+                None
+            };
+            check(cancel)?;
+            return Ok(UniqueResult {
+                values,
+                first_indices,
+                group_indices,
+            });
         }
-        let grouped = match self {
-            Self::Numeric(a) => groups(n, order, outputs[2], cancel, |i| a.data()[i].into())?,
-            Self::Typed(a) => groups(n, order, outputs[2], cancel, |i| typed_key(a, i))?,
-            _ => unreachable!(),
+
+        let (r, c) = (self.rows(), self.cols());
+        let key_at = |row: usize, col: usize| -> Key {
+            let idx = col * r + row;
+            match self {
+                Self::Numeric(a) => a.data()[idx].into(),
+                Self::Logical(a) => f64::from(a.data()[idx]).into(),
+                Self::Typed(a) => typed_key(a, idx),
+                _ => unreachable!(),
+            }
+        };
+        let grouped = if r == 0 {
+            Groups {
+                first: Vec::new(),
+                ids: outputs[2].then(Vec::new),
+            }
+        } else if c == 0 {
+            let picked = if last { r - 1 } else { 0 } as u32;
+            Groups {
+                first: vec![picked],
+                ids: outputs[2].then(|| vec![0; r]),
+            }
+        } else {
+            groups_by(
+                r,
+                order,
+                last,
+                outputs[2],
+                cancel,
+                &|a, b| {
+                    for col in 0..c {
+                        let ord = compare(
+                            key_at(a, col),
+                            key_at(b, col),
+                            SortOrder::Ascend,
+                            MissingPlacement::Last,
+                        );
+                        if ord != std::cmp::Ordering::Equal {
+                            return ord;
+                        }
+                    }
+                    std::cmp::Ordering::Equal
+                },
+                |a, b| (0..c).all(|col| key_at(a, col) == key_at(b, col)),
+            )?
         };
         let k = grouped.first.len();
-        let (rows, cols) = if self.rows() == 1 { (1, k) } else { (k, 1) };
         let values = if outputs[0] {
             Some(match self {
                 Self::Typed(a) => a
                     .select_with_cancel(
-                        rows,
-                        cols,
-                        &build(k, cancel, |i| Ok(grouped.first[i] as usize))?,
+                        k,
+                        c,
+                        &build(k * c, cancel, |idx| {
+                            let col = idx / k;
+                            let row = grouped.first[idx % k] as usize;
+                            Ok(col * r + row)
+                        })?,
                         cancel,
                     )?
                     .into(),
                 Self::Numeric(a) => Matrix::from_column_vec(
-                    rows,
-                    cols,
-                    output(k, cancel, |i| a.data()[grouped.first[i] as usize])?,
+                    k,
+                    c,
+                    output(k * c, cancel, |idx| {
+                        let col = idx / k;
+                        let row = grouped.first[idx % k] as usize;
+                        a.data()[col * r + row]
+                    })?,
+                )?
+                .into(),
+                Self::Logical(a) => LogicalMatrix::from_column_vec(
+                    k,
+                    c,
+                    output(k * c, cancel, |idx| {
+                        let col = idx / k;
+                        let row = grouped.first[idx % k] as usize;
+                        a.data()[col * r + row]
+                    })?,
+                    cancel,
                 )?
                 .into(),
                 _ => unreachable!(),
@@ -338,9 +582,9 @@ impl Array {
         let group_indices = if outputs[2] {
             let ids = grouped.ids.as_ref().unwrap();
             Some(Matrix::from_column_vec(
-                n,
+                r,
                 1,
-                output(n, cancel, |i| f64::from(ids[i]) + 1.)?,
+                output(r, cancel, |i| f64::from(ids[i]) + 1.)?,
             )?)
         } else {
             None
@@ -424,7 +668,10 @@ mod tests {
             assert!(!cancel.load(Ordering::Relaxed));
             CANCEL.with(|slot| slot.set(None));
         }
-        assert!(preflight(crate::matrix::MAX_ELEMENTS, 1, true, [true; 3]).is_ok());
+        // 16 Mi values with every output fit the fixed 512 MiB private budget
+        // (the native element limit is larger; the budget binds first there).
+        assert!(preflight(16 * 1024 * 1024, 1, true, [true; 3]).is_ok());
+        assert!(preflight(48 * 1024 * 1024, 1, true, [true; 3]).is_err());
         assert!(preflight(crate::matrix::MAX_ELEMENTS + 1, 1, true, [false; 3]).is_err());
     }
     #[test]

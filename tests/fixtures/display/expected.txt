@@ -150,7 +150,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-3
+  0×3 empty double matrix
 
 @@END
 @@CASE 23|x = [1 2 3]
@@ -378,7 +378,7 @@ cd
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@END
@@ -417,14 +417,18 @@ x =
 
 x =
 
-    5
+  int8
+
+   5
 
 @@END
 @@CASE 56|x = uint8([1 2 3])
 
 x =
 
-    1    2    3
+  uint8
+
+  1  2  3
 
 @@END
 @@CASE 57|x = single(pi)

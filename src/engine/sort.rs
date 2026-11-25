@@ -89,11 +89,17 @@ impl Engine {
                 Array::Logical(a) => Value::Logical(a),
                 Array::Complex(a) => Value::Complex(a),
                 Array::Typed(a) => Value::Container(Array::Typed(a)),
-                Array::Character(_)
+                Array::Str(_)
+                | Array::Character(_)
                 | Array::Cell(_)
                 | Array::Graphics(_)
                 | Array::Struct(_)
-                | Array::Handle(_) => {
+                | Array::Handle(_)
+                | Array::Categorical(_)
+                | Array::Datetime(_)
+                | Array::Duration(_)
+                | Array::Table(_)
+                | Array::Sparse(_) => {
                     return Err("Sorting character, cell, struct, function handle or graphics handle arrays is not implemented".into());
                 }
             },

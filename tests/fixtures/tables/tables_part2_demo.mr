@@ -1,0 +1,17 @@
+% Tables part 2 demo (wrapper: tool/demo/tables_part2.mr). Output must equal
+% tables_part2_demo.expected (pandas: tool/refs/tables/tables_part2_ref.py).
+% run() works in the script folder, so the CSV names below are relative to it.
+T = readtable('tables-part2-sales.csv');
+T.region = categorical(T.region);
+T.units = fillmissing(T.units, 'previous');
+T.price = fillmissing(T.price, 'constant', 0);
+fprintf('categories: %s\n', strjoin(categories(T.region)', ' '));
+fprintf('countcats:'); fprintf(' %d', countcats(T.region)); fprintf('\n');
+S = groupsummary(T, 'region', {'mean', 'sum'}, 'units');
+M = readtable('tables-part2-regions.csv');
+M.region = categorical(M.region);
+J = innerjoin(S, M);
+for i = 1:height(J)
+    fprintf('%s %s %d %.4f %g\n', char(J.region(i)), J.manager{i}, J.GroupCount(i), J.mean_units(i), J.sum_units(i));
+end
+fprintf('revenue: %g\n', sum(T.units .* T.price));

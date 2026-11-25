@@ -238,14 +238,13 @@ fn complex_meshgrid_follows_the_real_form() {
     e.execute("[X,Y]=meshgrid([1 2;3 4i]);d=max(abs(X(1,:)-[1 3 2 4i]));")
         .unwrap();
     assert_eq!(scalar(&e, "d"), 0.);
-    assert_eq!(
-        error_of("[X,Y,Z]=meshgrid([1i 2],[3 4],[5 6]);"),
-        error_of("[X,Y,Z]=meshgrid([1 2],[3 4],[5 6]);")
-    );
-    assert_eq!(
-        error_of("[X,Y,Z]=meshgrid([1i 2]);"),
-        error_of("[X,Y,Z]=meshgrid([1 2]);")
-    );
+    // Three-output (3-D) meshgrid: real inputs work since N-D part 2; complex
+    // inputs give a clear "not supported yet" error.
+    e.execute("[X,Y,Z]=meshgrid([1 2],[3 4],[5 6]);s=double(isequal(size(Z),[2 2 2]));")
+        .unwrap();
+    assert_eq!(scalar(&e, "s"), 1.);
+    assert!(error_of("[X,Y,Z]=meshgrid([1i 2],[3 4],[5 6]);").contains("not supported"));
+    assert!(error_of("[X,Y,Z]=meshgrid([1i 2]);").contains("not supported"));
 }
 
 #[test]

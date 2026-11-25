@@ -133,13 +133,8 @@ fn selected_routing_controls_and_graph_fit_are_visible_wide_and_compact() {
             let original = tools.model.clone();
             let ctx = egui::Context::default();
             let output = settle(&ctx, &mut tools, size);
-            for label in [
-                "Sample time (s)",
-                "New model",
-                "Save model",
-                "Add block",
-                "Delete selected block",
-            ] {
+            // New/Open/Save model sit in the Apps action row (model_files_tests).
+            for label in ["Sample time (s)", "Add block", "Delete selected block"] {
                 visible(&output, size, label);
             }
             if switch {

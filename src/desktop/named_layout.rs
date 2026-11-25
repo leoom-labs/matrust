@@ -334,6 +334,9 @@ impl Workspace {
         layout.tools = self.toolkits.tab_layout();
         self.layout = layout;
         self.toolkits.deselect_tool();
+        // A restored layout leaves the Apps launcher; Command-only is not saved.
+        self.apps_home = false;
+        self.command_only = false;
         self.compact_figure = preset.compact_figure();
         self.navigation = navigation::State::from_panels(layout.panels);
         self.set_named_editor_split(preset.split_editor());

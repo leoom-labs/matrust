@@ -37,7 +37,8 @@ fn folder_browser_filter_refresh_and_clear_preserve_open_work() {
     assert_eq!(app.entries.len(), 3);
     assert!(app.folder_browser.filter.is_empty());
     std::fs::write(dir.path().join("new.m"), "").unwrap();
-    folder_navigation_key(&mut app, &ctx, egui::Modifiers::NONE, egui::Key::F5);
+    app.refresh_folder();
+    finish_folder(&mut app);
     assert_eq!(app.entries.len(), 4);
 }
 #[test]

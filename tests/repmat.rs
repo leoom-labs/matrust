@@ -115,11 +115,10 @@ fn script_repetition_shapes_negative_factors_aliases_and_atomic_errors() {
         "repmat(A,[])",
         "repmat(A,[2;3])",
         "repmat(A,[],2)",
-        "repmat(A,2,3,2)",
         "repmat(A,-0.5,2)",
         "repmat(A,Inf,0)",
         "repmat(A,NaN,1)",
-        "repmat(A,16777217,0)",
+        "repmat(A,50331649,0)",
         "repmat(A,4096,4096)",
         "repmat(zeros(0,4),1,16777216)",
         "repmat(complex(1),4096,4096)",
@@ -131,6 +130,13 @@ fn script_repetition_shapes_negative_factors_aliases_and_atomic_errors() {
         );
         assert_eq!(e.variables["saved"].data(), &[9.]);
     }
+    // A third factor builds an N-D array since the legacy N-D work.
+    e.execute("P=repmat(A,2,3,2); Q=repmat(A,[2 3 2]);")
+        .unwrap();
+    let (rows, cols) = (e.variables["A"].rows(), e.variables["A"].cols());
+    let p = e.array("P").unwrap();
+    assert_eq!(p.dims().as_ref(), &[2 * rows, 3 * cols, 2]);
+    assert_eq!(e.array("Q").unwrap().dims(), p.dims());
 }
 
 #[test]

@@ -1,0 +1,6 @@
+name,qty,price,note
+bolt,4,0.25,"steel, zinc"
+nut,,1e-3,
+"say ""hi""",-Inf,NaN,  padded  
+
+washer,7

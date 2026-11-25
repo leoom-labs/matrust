@@ -9,3 +9,6 @@
 *.bmp binary
 *.tif binary
 *.tiff binary
+# Tracked files keep CRLF where they have it: a CR before LF is not trailing whitespace for git diff --check.
+* whitespace=cr-at-eol
+*.patch -whitespace

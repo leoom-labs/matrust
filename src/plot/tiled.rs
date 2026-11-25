@@ -101,10 +101,14 @@ impl Figure {
         Ok(Self {
             identity: crate::ObjectIdentity::default(),
             textboxes: Vec::new(),
+            annotations: Vec::new(),
             name: String::new(),
             color: [255; 3],
             appearance: Some(super::FigureAppearance::default()),
             invert_hardcopy: None,
+            alphamap: None,
+            slice_viewers: Vec::new(),
+            orthoslice_viewers: Vec::new(),
             axes: Axes {
                 palette_cycle: Some(super::PaletteCycle::new(
                     super::PaletteVersion::MatRustModern1,
@@ -112,11 +116,10 @@ impl Figure {
                 ..Axes::default()
             },
             layout: Some(Layout {
-                active: grid.position(1, [1, 1]).unwrap(),
-                others: Vec::new(),
                 tiled: Some(grid),
-                title: String::new(),
+                ..Layout::plain(grid.position(1, [1, 1]).unwrap())
             }),
+            ..Self::default()
         })
     }
     pub fn empty_layout(&self) -> bool {
@@ -136,12 +139,7 @@ impl Figure {
             return Err("Shared figure title exceeds 4096 bytes".into());
         }
         self.layout
-            .get_or_insert_with(|| Layout {
-                active: Position::default(),
-                others: Vec::new(),
-                tiled: None,
-                title: String::new(),
-            })
+            .get_or_insert_with(|| Layout::plain(Position::default()))
             .title = title;
         Ok(())
     }
@@ -175,6 +173,12 @@ impl Figure {
         candidate.color = self.color;
         candidate.appearance = self.appearance;
         candidate.invert_hardcopy = self.invert_hardcopy;
+        candidate.position = self.position;
+        candidate.units = self.units;
+        candidate.number_title = self.number_title;
+        candidate.visible = self.visible;
+        candidate.resize = self.resize;
+        candidate.window_state = self.window_state;
         if candidate.empty_layout() {
             candidate.axes = candidate.fresh_axes();
         }

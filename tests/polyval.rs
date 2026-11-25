@@ -108,7 +108,7 @@ fn typed_engine_rejection_csl_aliases_and_atomic_destination() {
     for call in [
         "polyval(p)",
         "polyval(p,x,[])",
-        "polyval(p,x,[],[0 1])",
+        "polyval(p,x,[],[0 0])",
         "polyval([],x)",
         "polyval([1 2;3 4],x)",
         "polyval([1 Inf],x)",
@@ -361,4 +361,16 @@ fn automatic_large_route_retains_ieee_bits_validation_and_pre_cancel() {
             .unwrap_err()
             .contains("work limit")
     );
+}
+
+#[test]
+fn centered_scaled_evaluation_preserves_input_storage_and_shape() {
+    let mut e = Engine::default();
+    e.execute("p=[3 2 1];x=[10 12;11 13];pa=p;xa=x;y=polyval(p,x,[],[10 2]);")
+        .unwrap();
+    assert_eq!(e.variables["y"].data(), &[1., 2.75, 6., 10.75]);
+    assert_eq!((e.variables["y"].rows(), e.variables["y"].cols()), (2, 2));
+    for (a, b) in [("p", "pa"), ("x", "xa")] {
+        assert!(e.array(a).unwrap().same_snapshot(&e.array(b).unwrap()));
+    }
 }

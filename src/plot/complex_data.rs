@@ -1,5 +1,5 @@
 //! Borrowed complex plotting coordinates. Only final real XY buffers are owned.
-use super::{MAX_POINTS, MAX_SERIES, PlotKind, Series};
+use super::{MAX_PLOT_SERIES, MAX_POINTS, PlotKind, Series};
 use crate::{ComplexMatrix, Matrix, Result};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -56,7 +56,7 @@ pub fn series_from_plot_data(
     y: PlotData<'_>,
     cancel: &AtomicBool,
 ) -> Result<Vec<Series>> {
-    series_from_plot_data_with_budget(x, y, cancel, MAX_SERIES, MAX_POINTS)
+    series_from_plot_data_with_budget(x, y, cancel, MAX_PLOT_SERIES, MAX_POINTS)
 }
 
 pub(crate) fn series_from_plot_data_with_budget(
@@ -103,9 +103,9 @@ pub(crate) fn series_from_plot_data_with_budget(
         (count, len)
     };
     if count.saturating_mul(len) > remaining_points.min(MAX_POINTS)
-        || count > remaining_series.min(MAX_SERIES)
+        || count > remaining_series.min(MAX_PLOT_SERIES)
     {
-        return Err("Plot exceeds 64 series or 1000000 points".into());
+        return Err("Plot exceeds series storage or point budget".into());
     }
     let build = |column: usize| -> Result<Series> {
         check(cancel)?;

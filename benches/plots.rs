@@ -8,13 +8,15 @@ fn main() {
             .build()
             .unwrap();
         pool.install(|| {
-            for rows in [1000, 100000] {
+            for (rows, columns) in [(1000, 8), (100000, 8), (3, 70), (3000, 70)] {
                 let x = Matrix::from_column_vec(rows, 1, (0..rows).map(|i| i as f64).collect())
                     .unwrap();
                 let y = Matrix::from_column_vec(
                     rows,
-                    8,
-                    (0..rows * 8).map(|i| (i as f64 * 0.01).sin()).collect(),
+                    columns,
+                    (0..rows * columns)
+                        .map(|i| (i as f64 * 0.01).sin())
+                        .collect(),
                 )
                 .unwrap();
                 let figure = Figure::new(&x, &y).unwrap();
@@ -26,18 +28,22 @@ fn main() {
                 }
                 for kind in [
                     "build",
+                    "validate",
                     "display",
                     "log_display",
                     "hidden_view",
                     "share",
                     "svg",
                 ] {
-                    if kind == "svg" && rows > 1000 {
+                    if kind == "svg" && rows * columns > 8000 {
                         continue;
                     }
                     let run = || match kind {
                         "build" => {
                             black_box(Figure::new(black_box(&x), black_box(&y)).unwrap());
+                        }
+                        "validate" => {
+                            black_box(&figure).validate().unwrap();
                         }
                         "display" => {
                             black_box(
@@ -82,7 +88,7 @@ fn main() {
                         run();
                     }
                     println!(
-                        "{kind},{rows},8,{threads},20,{:.4}",
+                        "{kind},{rows},{columns},{threads},20,{:.4}",
                         start.elapsed().as_secs_f64() * 50.
                     );
                 }

@@ -90,17 +90,62 @@ fn save(
 // recursive graph; checked encoded accounting additionally includes every tag.
 fn encoded_len(name: &str, a: &Array, cancel: &AtomicBool, depth: usize) -> Result<usize> {
     check_cancel(cancel)?;
+    if matches!(a, Array::Str(_)) {
+        return Err("string arrays cannot be saved to MAT files yet; use cellstr(...)".into());
+    }
+    if matches!(a, Array::Table(_)) {
+        return Err("save: table variables cannot be saved yet".into());
+    }
+    if matches!(a, Array::Categorical(_)) {
+        return Err("categorical is not supported by save yet".into());
+    }
+    if matches!(a, Array::Datetime(_) | Array::Duration(_)) {
+        return Err("datetime/duration variables cannot be saved yet".into());
+    }
     if matches!(a, Array::Graphics(_)) {
         return Err("MAT persistence of graphics handles is not implemented".into());
-    }
-    if matches!(a, Array::Struct(_)) {
-        return Err("MAT persistence of struct values is not supported yet".into());
     }
     if matches!(a, Array::Handle(_)) {
         return Err("save: function handles are not supported yet".into());
     }
-    let mut len = 8 + 16 + 16 + 8 + name.len().next_multiple_of(8);
-    if let Array::Cell(cell) = a {
+    let dimension_element = 8 + (a.dims().len() * 4).next_multiple_of(8);
+    let mut len = 8 + 16 + dimension_element + 8 + name.len().next_multiple_of(8);
+    if let Array::Sparse(s) = a {
+        let fits = |n: usize| n <= i32::MAX as usize;
+        if !fits(s.rows()) || !fits(s.cols()) || !fits(s.nnz()) {
+            return Err(format!(
+                "save: sparse variable '{name}' has dimensions or a nonzero count that do not fit the MAT file's int32 indices"
+            ));
+        }
+        let element = |bytes: usize| 8 + bytes.next_multiple_of(8);
+        let value_bytes = if s.is_logical() { s.nnz() } else { 8 * s.nnz() };
+        len = len
+            .checked_add(element(4 * s.nnz()) + element(4 * (s.cols() + 1)) + element(value_bytes))
+            .ok_or("MAT encoded size overflow")?;
+    } else if let Array::Struct(st) = a {
+        if depth > 16 {
+            return Err("Struct nesting exceeds 16 levels".into());
+        }
+        let width = st
+            .field_names()
+            .iter()
+            .map(|n| n.len() + 1)
+            .max()
+            .unwrap_or(1);
+        len += 16 + 8 + (width * st.field_count()).next_multiple_of(8);
+        for index in 0..st.slot_count() {
+            let field = &st.field_names()[index % st.field_count()];
+            len = len
+                .checked_add(
+                    encoded_len("", st.slot(index)?, cancel, depth + 1)
+                        .map_err(|e| format!("{field}: {e}"))?,
+                )
+                .ok_or("MAT encoded size overflow")?;
+            if len > MAX_MAT_BYTES {
+                return Err("MAT encoded struct exceeds 272 MiB".into());
+            }
+        }
+    } else if let Array::Cell(cell) = a {
         if depth > 16 {
             return Err("Cell nesting exceeds 16 levels".into());
         }
@@ -118,9 +163,15 @@ fn encoded_len(name: &str, a: &Array, cancel: &AtomicBool, depth: usize) -> Resu
                 return Err("MAT encoded cell exceeds 272 MiB".into());
             }
         }
+    } else if let Array::Complex(matrix) = a {
+        let width = if matrix.is_single() { 4 } else { 8 };
+        let component = 8 + (matrix.len() * width).next_multiple_of(8);
+        len = len
+            .checked_add(2 * component)
+            .ok_or("MAT encoded size overflow")?;
     } else {
         len = len
-            .checked_add(8 + a.bytes().next_multiple_of(8) + if a.is_complex() { 8 } else { 0 })
+            .checked_add(8 + a.bytes().next_multiple_of(8))
             .ok_or("MAT encoded size overflow")?;
     }
     if len > MAX_MAT_BYTES {
@@ -140,18 +191,86 @@ fn write_complex(
     let mut scratch = [0u8; 65536];
     for imaginary in [false, true] {
         check_cancel(cancel)?;
-        tag(out, 9, matrix.len() * 8)?;
+        let width = if matrix.is_single() { 4 } else { 8 };
+        tag(
+            out,
+            if matrix.is_single() { 7 } else { 9 },
+            matrix.len() * width,
+        )?;
         for chunk in matrix.data().chunks(8192) {
             check_cancel(cancel)?;
-            for (value, bytes) in chunk.iter().zip(scratch.as_chunks_mut::<8>().0.iter_mut()) {
-                bytes.copy_from_slice(&(if imaginary { value.im } else { value.re }).to_le_bytes());
+            for (value, bytes) in chunk.iter().zip(scratch.chunks_exact_mut(width)) {
+                let component = if imaginary { value.im } else { value.re };
+                if matrix.is_single() {
+                    bytes.copy_from_slice(&(component as f32).to_le_bytes());
+                } else {
+                    bytes.copy_from_slice(&component.to_le_bytes());
+                }
             }
-            put(out, &scratch[..chunk.len() * 8])?;
+            put(out, &scratch[..chunk.len() * width])?;
+        }
+        padding(out, matrix.len() * width)?;
+    }
+    check_cancel(cancel)
+}
+fn write_int32(out: &mut impl Write, values: &[usize], cancel: &AtomicBool) -> Result<()> {
+    tag(out, 5, values.len() * 4)?;
+    let mut buffer = Vec::with_capacity(8192 * 4);
+    for chunk in values.chunks(8192) {
+        check_cancel(cancel)?;
+        buffer.clear();
+        for &v in chunk {
+            buffer.extend_from_slice(&(v as i32).to_le_bytes());
+        }
+        put(out, &buffer)?;
+    }
+    padding(out, values.len() * 4)
+}
+/// mxSPARSE payload: 0-based int32 row indices (ir), int32 column pointers
+/// (jc), then double values (uint8 for a logical sparse array).
+fn write_sparse(
+    out: &mut impl Write,
+    s: &crate::sparse::SparseMatrix,
+    cancel: &AtomicBool,
+) -> Result<()> {
+    write_int32(out, s.rowidx(), cancel)?;
+    write_int32(out, s.colptr(), cancel)?;
+    match s.values() {
+        crate::sparse::SparseValues::Double(values) => {
+            tag(out, 9, values.len() * 8)?;
+            for chunk in values.chunks(8192) {
+                check_cancel(cancel)?;
+                for v in chunk {
+                    put(out, &v.to_le_bytes())?;
+                }
+            }
+            padding(out, values.len() * 8)?;
+        }
+        crate::sparse::SparseValues::Logical(values) => {
+            tag(out, 2, values.len())?;
+            for chunk in values.chunks(65536) {
+                check_cancel(cancel)?;
+                let bytes: Vec<u8> = chunk.iter().map(|&v| u8::from(v)).collect();
+                put(out, &bytes)?;
+            }
+            padding(out, values.len())?;
         }
     }
     check_cancel(cancel)
 }
 fn write_array(out: &mut impl Write, name: &str, a: &Array, cancel: &AtomicBool) -> Result<()> {
+    if matches!(a, Array::Str(_)) {
+        return Err("string arrays cannot be saved to MAT files yet; use cellstr(...)".into());
+    }
+    if matches!(a, Array::Table(_)) {
+        return Err("save: table variables cannot be saved yet".into());
+    }
+    if matches!(a, Array::Categorical(_)) {
+        return Err("categorical is not supported by save yet".into());
+    }
+    if matches!(a, Array::Datetime(_) | Array::Duration(_)) {
+        return Err("datetime/duration variables cannot be saved yet".into());
+    }
     if matches!(a, Array::Graphics(_)) {
         return Err("MAT persistence of graphics handles is not implemented".into());
     }
@@ -162,14 +281,22 @@ fn write_array(out: &mut impl Write, name: &str, a: &Array, cancel: &AtomicBool)
     tag(out, 14, len)?;
     let mut flags = [0u8; 8];
     flags[..4].copy_from_slice(
-        &(if matches!(a, Array::Cell(_)) {
+        &(if let Array::Sparse(s) = a {
+            if s.is_logical() { 0x205u32 } else { 5u32 }
+        } else if matches!(a, Array::Cell(_)) {
             1u32
+        } else if matches!(a, Array::Struct(_)) {
+            2u32
         } else if matches!(a, Array::Character(_)) {
             4u32
         } else if a.is_logical() {
             0x209u32
-        } else if a.is_complex() {
-            0x806u32
+        } else if let Array::Complex(matrix) = a {
+            if matrix.is_single() {
+                0x807u32
+            } else {
+                0x806u32
+            }
         } else if let Array::Typed(t) = a {
             super::mat_typed::mx_class(t.class())
         } else {
@@ -177,12 +304,37 @@ fn write_array(out: &mut impl Write, name: &str, a: &Array, cancel: &AtomicBool)
         })
         .to_le_bytes(),
     );
+    if let Array::Sparse(s) = a {
+        // Second flags word of a sparse array: its capacity (nzmax).
+        flags[4..].copy_from_slice(&(s.nnz() as u32).to_le_bytes());
+    }
     element(out, 6, &flags)?;
-    let mut dims = [0u8; 8];
-    dims[..4].copy_from_slice(&(a.rows() as i32).to_le_bytes());
-    dims[4..].copy_from_slice(&(a.cols() as i32).to_le_bytes());
+    let dims = a
+        .dims()
+        .iter()
+        .flat_map(|&d| (d as i32).to_le_bytes())
+        .collect::<Vec<_>>();
     element(out, 5, &dims)?;
     element(out, 1, name.as_bytes())?;
+    if let Array::Struct(st) = a {
+        let width = st
+            .field_names()
+            .iter()
+            .map(|n| n.len() + 1)
+            .max()
+            .unwrap_or(1);
+        element(out, 5, &(width as i32).to_le_bytes())?;
+        let mut names = vec![0u8; width * st.field_count()];
+        for (field, target) in st.field_names().iter().zip(names.chunks_mut(width)) {
+            target[..field.len()].copy_from_slice(field.as_bytes());
+        }
+        element(out, 1, &names)?;
+        for index in 0..st.slot_count() {
+            check_cancel(cancel)?;
+            write_array(out, "", st.slot(index)?, cancel)?;
+        }
+        return check_cancel(cancel);
+    }
     if let Array::Cell(cell) = a {
         for index in 0..cell.len() {
             check_cancel(cancel)?;
@@ -206,6 +358,9 @@ fn write_array(out: &mut impl Write, name: &str, a: &Array, cancel: &AtomicBool)
     if let Array::Complex(matrix) = a {
         return write_complex(out, matrix, cancel);
     }
+    if let Array::Sparse(s) = a {
+        return write_sparse(out, s, cancel);
+    }
     if let Array::Typed(t) = a {
         check_cancel(cancel)?;
         element(out, super::mat_typed::mi_type(t.class()), &t.to_le_bytes())?;
@@ -214,12 +369,18 @@ fn write_array(out: &mut impl Write, name: &str, a: &Array, cancel: &AtomicBool)
     tag(out, if a.is_logical() { 2 } else { 9 }, a.bytes())?;
     match a {
         Array::Complex(_) => unreachable!("complex data handled above"),
-        Array::Character(_)
+        Array::Str(_)
+        | Array::Character(_)
         | Array::Cell(_)
         | Array::Graphics(_)
         | Array::Struct(_)
         | Array::Typed(_)
-        | Array::Handle(_) => {
+        | Array::Handle(_)
+        | Array::Categorical(_)
+        | Array::Datetime(_)
+        | Array::Duration(_)
+        | Array::Table(_)
+        | Array::Sparse(_) => {
             unreachable!("containers handled above")
         }
         Array::Numeric(m) => {
@@ -247,12 +408,18 @@ pub fn write_array_csv(path: &Path, a: &Array, cancel: &AtomicBool) -> Result<()
     // as bytes, while numeric export retains its specialized f64 formatter.
     match a {
         Array::Complex(_) => Err("Complex file export is not implemented".into()),
-        Array::Character(_)
+        Array::Str(_)
+        | Array::Character(_)
         | Array::Cell(_)
         | Array::Graphics(_)
         | Array::Struct(_)
         | Array::Typed(_)
-        | Array::Handle(_) => Err("CSV export requires real/logical numeric data".into()),
+        | Array::Handle(_)
+        | Array::Categorical(_)
+        | Array::Datetime(_)
+        | Array::Duration(_)
+        | Array::Table(_)
+        | Array::Sparse(_) => Err("CSV export requires real/logical numeric data".into()),
         Array::Numeric(m) => write_csv_values(path, m.rows(), m.cols(), |r, c| m.get(r, c), cancel),
         Array::Logical(m) => write_csv_values(
             path,

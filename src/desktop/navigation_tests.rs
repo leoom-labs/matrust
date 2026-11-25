@@ -16,7 +16,7 @@ fn history_menu_fills_the_input_and_keeps_documents_and_workspace() {
         let prefs = app.layout;
         // No rails: the three cards are painted without any toggle.
         let output = frame_at(&mut app, &ctx, size, vec![]);
-        for label in ["Files", "Workspace", "Command Window"] {
+        for label in ["FILES", "WORKSPACE", "COMMAND WINDOW"] {
             assert!(
                 output.shapes.iter().any(|s| text_position(&s.shape, label).is_some()),
                 "{label} card"
@@ -55,7 +55,7 @@ fn reset_layout_retains_theme_and_panels_are_always_shown() {
     app.layout.theme = Some(session::DesktopTheme::Dark);
     app.reset_layout(&ctx);
     assert_eq!(app.layout.theme, Some(session::DesktopTheme::Dark));
-    assert!(app.workspace_on_left());
+    assert!(!app.workspace_on_left());
     assert_eq!(app.navigation.left, Some(navigation::Left::Files));
     assert!(app.navigation.workspace && app.navigation.command);
 }
@@ -250,4 +250,19 @@ fn sessions_saved_with_hidden_panels_restore_the_always_visible_cards() {
     assert_eq!(restored.navigation.left, Some(navigation::Left::Files));
     assert!(restored.navigation.workspace && restored.navigation.command);
     assert_eq!(restored.variables["a"].as_numeric().unwrap().data(), data.as_numeric().unwrap().data());
+}
+
+#[test]
+fn reset_and_restored_layouts_leave_the_apps_launcher() {
+    let ctx = egui::Context::default();
+    let mut app = legacy_sample_desktop(ctx.clone(), true);
+    app.set_mode(super::modes::Mode::Apps);
+    assert_eq!(app.mode(), super::modes::Mode::Apps);
+    app.reset_layout(&ctx);
+    assert_ne!(app.mode(), super::modes::Mode::Apps);
+    let mut presets = session::LayoutPresets::default();
+    presets.save("Fresh", session::DesktopLayout::fresh_desktop(), false, false, false).unwrap();
+    app.set_mode(super::modes::Mode::Apps);
+    app.restore_named_layout(&ctx, presets.get("Fresh").unwrap());
+    assert_ne!(app.mode(), super::modes::Mode::Apps);
 }

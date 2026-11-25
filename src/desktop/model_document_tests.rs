@@ -8,8 +8,7 @@ fn model_document_click_label_at(app: &mut Workspace, ctx: &egui::Context, size:
     }
     let point = position.unwrap_or_else(|| panic!("Missing {label}"));
     if label == "File" {
-        let (tab, _) = app.toolkits.model_document_region().unwrap();
-        assert!(!tab.contains(point), "File must be outside the model tab");
+        assert!(ctx.content_rect().contains(point), "File menu on screen");
     }
     for pressed in [true, false] { pointer_frame(app, ctx, size, point, pressed); }
     if label == "File" {
@@ -334,7 +333,7 @@ fn model_document_documents_tab_takes_save_back_from_retained_model_focus() {
     assert_eq!(ctx.memory(|memory| memory.focused()),
         Some(egui::Id::new("model_diagram_keyboard")));
     // Legacy layout: one documents tab sits before the tool tabs.
-    click_label_at(&mut app, &ctx, size, "Editor and figure");
+    click_label_at(&mut app, &ctx, size, "Figures");
     assert!(app.toolkits.selected_tool().is_none() && app.toolkits.model_open);
     frame_at(&mut app, &ctx, size, vec![]);
     assert!(app.toolkits.model_document_region().is_none());
@@ -364,7 +363,7 @@ fn model_and_designer_tabs_leave_actual_toolbar_file_menu_accessible() {
                 click_label_at(&mut app,&ctx,size,"Menu");
                 let point=document_save_heading(&mut app,&ctx,size,"File");
                 let tab=if designer {app.toolkits.designer_region()} else {app.toolkits.model_document_region().map(|(rect,_)|rect)}.unwrap();
-                assert!(!tab.contains(point) && ctx.content_rect().contains_rect(tab));
+                assert!(ctx.content_rect().contains(point) && ctx.content_rect().contains_rect(tab));
                 assert!(ctx.memory(|m|m.area_rect(egui::Id::new(if designer {"Filter Designer"} else {"block_simulation"}))).is_none());
                 assert_eq!(app.generic_save_target(),expected);
                 for pressed in [true,false] {pointer_frame(&mut app,&ctx,size,point,pressed);}

@@ -16,6 +16,16 @@ fn same_number(a: Scalar, b: Scalar) -> bool {
 
 fn same_value(subject: &Array, case: &Array) -> bool {
     match (subject, case) {
+        (Array::Str(a), Array::Str(b)) => {
+            a.len() == 1 && b.len() == 1 && a.data()[0].is_some() && a.data()[0] == b.data()[0]
+        }
+        (Array::Str(s), Array::Character(c)) | (Array::Character(c), Array::Str(s)) => {
+            s.len() == 1
+                && c.rows() <= 1
+                && s.data()[0]
+                    .as_ref()
+                    .is_some_and(|s| s.encode_utf16().eq(c.units().iter().copied()))
+        }
         (Array::Character(a), Array::Character(b)) => {
             a.rows() == b.rows() && a.cols() == b.cols() && a.units() == b.units()
         }
@@ -49,6 +59,7 @@ impl Engine {
         let subject = self.eval(subject, None, out)?.array(&self.cancel)?;
         let valid = match &subject {
             Array::Character(text) => text.rows() <= 1,
+            Array::Str(s) => s.len() == 1,
             other => other.is_numeric_array() && other.len() == 1,
         };
         if !valid {

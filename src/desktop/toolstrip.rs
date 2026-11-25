@@ -13,7 +13,7 @@ pub(super) enum Action {
     LoadWorkspace,
     SaveWorkspace,
     SaveWorkspaceV73,
-    ImportCsv,
+    ImportData,
     InspectVariable,
     NewFigure,
     PlotData,
@@ -41,6 +41,8 @@ pub(super) enum Action {
     LayoutMenu,
     /// Opens the example scripts menu; not a command of its own.
     ExamplesMenu,
+    /// A built framework app; listed after `ALL` from `AppKind::built()`.
+    App(apps::AppKind),
 }
 impl Action {
     pub(super) const ALL: [Self; 34] = [
@@ -54,7 +56,7 @@ impl Action {
         Self::LoadWorkspace,
         Self::SaveWorkspace,
         Self::SaveWorkspaceV73,
-        Self::ImportCsv,
+        Self::ImportData,
         Self::InspectVariable,
         Self::NewFigure,
         Self::PlotData,
@@ -91,7 +93,7 @@ impl Action {
             Self::LoadWorkspace => "Load workspace",
             Self::SaveWorkspace => "Save workspace",
             Self::SaveWorkspaceV73 => "MATLAB v7.3 (HDF5)",
-            Self::ImportCsv => "Import CSV",
+            Self::ImportData => "Import data",
             Self::InspectVariable => "Inspect variable",
             Self::NewFigure => "New figure",
             Self::PlotData => "Plot workspace data",
@@ -117,6 +119,7 @@ impl Action {
             Self::CommandOnly => "Command Window only",
             Self::LayoutMenu => "Layout",
             Self::ExamplesMenu => "Examples",
+            Self::App(kind) => kind.label(),
         }
     }
     /// Toolstrip tile caption: short, never wrapped or cut.
@@ -127,7 +130,6 @@ impl Action {
             Self::RunScript => "Run",
             Self::RunSelection => "Run section",
             Self::PlotData => "Plot",
-            Self::ImportCsv => "Import data",
             other => other.label(),
         }
     }
@@ -145,13 +147,18 @@ impl Action {
             | Self::SaveScriptAs
             | Self::SaveWorkspace
             | Self::SaveWorkspaceV73
-            | Self::SaveFigure
-            | Self::ExportFigure => Icon::Save,
+            | Self::SaveFigure => Icon::Save,
+            Self::ExportFigure => Icon::Export,
             Self::RunScript | Self::RunSelection => Icon::Run,
-            Self::ImportCsv | Self::InspectVariable => Icon::Table,
-            Self::NewFigure | Self::PlotData | Self::CopyFigure => Icon::Plot,
-            Self::Undo | Self::Redo | Self::ReloadFigure | Self::ReloadScript => Icon::Undo,
-            Self::Properties | Self::FilterDesigner | Self::Simulation => Icon::Tools,
+            Self::ImportData | Self::InspectVariable => Icon::Table,
+            Self::NewFigure | Self::PlotData => Icon::Plot,
+            Self::CopyFigure => Icon::Copy,
+            Self::Undo => Icon::Undo,
+            Self::Redo => Icon::Redo,
+            Self::ReloadFigure | Self::ReloadScript => Icon::Refresh,
+            Self::Properties => Icon::Properties,
+            Self::FilterDesigner => Icon::Filter,
+            Self::Simulation | Self::App(_) => Icon::Simulation,
             Self::Grid
             | Self::Vertical
             | Self::Split
@@ -169,9 +176,11 @@ impl Action {
         self.enabled_with_pending(w, w.file_action_pending_without_global_search())
     }
     fn enabled_with_pending(self, w: &Workspace, pending: bool) -> bool {
-        if w.busy {
-            return false;
-        }
+        !w.busy && self.enabled_when_idle(w, pending)
+    }
+    /// Whether the action is enabled once running work ends; the action row
+    /// keeps these in place (disabled) while a script runs.
+    fn enabled_when_idle(self, w: &Workspace, pending: bool) -> bool {
         match self {
             Self::SaveScript | Self::SaveScriptAs | Self::ReloadScript => {
                 w.layout.center.is_none_or(|c| c.editor_revealed)
@@ -235,7 +244,7 @@ impl Action {
             Self::SaveWorkspace | Self::SaveWorkspaceV73 => {
                 w.queue_workspace_mat_save(ctx, self);
             }
-            Self::ImportCsv => w.request_csv_import_files(ctx),
+            Self::ImportData => w.request_import_data(),
             Self::InspectVariable => {
                 if let Some(name) = w.selected.clone() {
                     w.inspect_variable(name);
@@ -281,11 +290,12 @@ impl Action {
             }
             Self::FilterDesigner => w.toolkits.open_tool(toolkits::Tool::Designer),
             Self::Simulation => w.show_model_document(),
+            Self::App(kind) => w.toolkits.open_tool(toolkits::Tool::App(kind)),
             Self::FilteringExample => {
                 w.new_document(include_str!("../../examples/streaming_filter.m"))
             }
             Self::PlottingExample => w.new_document(include_str!("../../examples/tiled_layout.m")),
-            Self::CommandOnly => w.show_command_center(),
+            Self::CommandOnly => w.set_mode(modes::Mode::Command),
             Self::Split => w.select_document_layout(layout::PaneMode::Split),
             Self::EditorOnly => {
                 w.select_document_layout(layout::PaneMode::Editor);
@@ -301,13 +311,22 @@ impl Action {
         }
     }
 }
+/// Editor mode's action row (plan section 5): New, Open, Save, Run section;
+/// Run is the top-bar primary and Find sits in the editor pane header (Ctrl+F).
+const EDITOR_GROUPS: &[(&str, &[Action])] = &[
+    (
+        "SCRIPTS",
+        &[Action::NewScript, Action::OpenScript, Action::SaveScript],
+    ),
+    ("EXECUTION", &[Action::RunSelection]),
+];
 fn groups(tab: ToolstripTab) -> &'static [(&'static str, &'static [Action])] {
     use Action::*;
     match tab {
         ToolstripTab::Home => &[
             ("SCRIPTS", &[NewScript, OpenScript, SaveScript]),
             ("EXECUTION", &[RunSelection]),
-            ("WORKSPACE", &[PlotData, ImportCsv, SaveWorkspace]),
+            ("WORKSPACE", &[PlotData, ImportData, SaveWorkspace]),
             ("DESKTOP", &[LayoutMenu]),
         ],
         ToolstripTab::Plots => &[
@@ -344,7 +363,7 @@ impl Workspace {
 
     pub(super) fn show_plot_pane(&mut self) {
         if self.layout.center.is_some() {
-            if self.toolkits.selected_tool().is_none()
+            if self.docked_tool().is_none()
                 && (self.central_command() || self.layout.mode == layout::PaneMode::Editor)
             {
                 // The figure takes its own right column; the work stays put.
@@ -406,9 +425,19 @@ impl Workspace {
             .num_columns(2)
             .show(ui, |ui| {
                 for (i, action) in actions.iter().enumerate() {
+                    // Labels sit at the left like any menu; submenus show their arrow.
+                    let submenu = matches!(
+                        action,
+                        Action::SaveWorkspace | Action::LayoutMenu | Action::ExamplesMenu
+                    );
                     let button =
                         egui::Button::new(RichText::new(action.label()).size(tokens::BODY))
-                            .min_size(egui::vec2(112., 24.));
+                            .min_size(egui::vec2(112., 24.))
+                            .right_text(if submenu {
+                                egui::containers::menu::SubMenuButton::RIGHT_ARROW
+                            } else {
+                                ""
+                            });
                     if matches!(action, Action::SaveWorkspace) {
                         ui.add_enabled_ui(self.action_enabled(*action), |ui| {
                             egui::containers::menu::SubMenuButton::from_button(button)
@@ -441,25 +470,36 @@ impl Workspace {
         tab: ToolstripTab,
         popup: bool,
     ) {
+        let row_groups = if tab == ToolstripTab::Home && self.mode() == modes::Mode::Editor {
+            EDITOR_GROUPS
+        } else {
+            groups(tab)
+        };
         if popup {
-            for (index, (name, actions)) in groups(tab).iter().enumerate() {
+            for (index, (name, actions)) in row_groups.iter().enumerate() {
                 if index > 0 {
                     ui.separator();
                 }
-                ui.strong(*name);
+                ui.label(RichText::new(*name).size(tokens::CAPTION).weak());
                 self.toolstrip_menu_actions(ui, ctx, index, actions);
             }
             return;
         }
         // Actions that do nothing now are hidden, not greyed; Save stays.
-        let shown: Vec<(usize, Vec<Action>)> = groups(tab)
+        // While a script runs the row stays fixed: idle actions grey out.
+        let pending = self.file_action_pending();
+        let shown: Vec<(usize, Vec<Action>)> = row_groups
             .iter()
             .enumerate()
             .map(|(index, (_, actions))| {
                 let visible = actions
                     .iter()
                     .copied()
-                    .filter(|a| *a == Action::SaveScript || a.enabled(self))
+                    .filter(|a| {
+                        *a == Action::SaveScript
+                            || a.enabled(self)
+                            || (self.busy && a.enabled_when_idle(self, pending))
+                    })
                     .collect::<Vec<_>>();
                 (index, visible)
             })
@@ -508,13 +548,17 @@ impl Workspace {
                     if split > 0 {
                         panels::strip_divider(ui);
                     }
-                    let more = panels::strip_action(ui, "More", shell::Icon::Tools, false);
+                    let more = panels::strip_action(ui, "More", shell::Icon::More, false);
                     egui::Popup::menu(&more).show(|ui| {
                         for (k, (index, actions)) in shown[split..].iter().enumerate() {
                             if k > 0 {
                                 ui.separator();
                             }
-                            ui.strong(groups(tab)[*index].0);
+                            ui.label(
+                                RichText::new(row_groups[*index].0)
+                                    .size(tokens::CAPTION)
+                                    .weak(),
+                            );
                             self.toolstrip_menu_actions(ui, ctx, *index, actions);
                         }
                     });
@@ -526,7 +570,7 @@ impl Workspace {
     /// The preset whose panes are the ones shown now; `None` when a tool tab
     /// owns the main area or the panes match no preset.
     pub(super) fn current_layout_preset(&self) -> Option<Option<layout::PaneMode>> {
-        if self.toolkits.selected_tool().is_some() {
+        if self.docked_tool().is_some() {
             return None;
         }
         if !self.central_command() {
@@ -548,12 +592,12 @@ impl Workspace {
                 (false, false) => None,
             };
         }
-        // Around the Command Window an open editor and figure column add panes.
+        // Above the Command Window an open editor adds its pane; the figure
+        // only previews in the Inspector.
         match (self.editor_above_command(), self.figure_column()) {
-            (false, false) => Some(None),
+            (false, _) => Some(None),
             (true, true) => Some(Some(layout::PaneMode::Split)),
             (true, false) => Some(Some(layout::PaneMode::Editor)),
-            (false, true) => Some(Some(layout::PaneMode::Figure)),
         }
     }
 
@@ -564,7 +608,7 @@ impl Workspace {
             .selectable_label(current == Some(None), "Command Window only")
             .clicked()
         {
-            self.show_command_center();
+            self.set_mode(modes::Mode::Command);
             ui.close();
         }
         for (mode, name) in [
@@ -589,54 +633,7 @@ impl Workspace {
 
     /// Example scripts (the former Examples rail pane).
     pub(super) fn examples_menu(&mut self, ui: &mut egui::Ui) {
-        for (label, source) in [
-            ("Damped oscillation", DEMO),
-            (
-                "Linear system",
-                include_str!("../../examples/linear_system.m"),
-            ),
-            (
-                "Digital filtering",
-                include_str!("../../examples/filter_design.m"),
-            ),
-            (
-                "Streaming filter",
-                include_str!("../../examples/streaming_filter.m"),
-            ),
-            (
-                "Logical selection",
-                include_str!("../../examples/logical_selection.m"),
-            ),
-            (
-                "Loops and filtering",
-                include_str!("../../examples/control_flow_filtering.m"),
-            ),
-            (
-                "User functions",
-                include_str!("../../examples/user_functions.m"),
-            ),
-            (
-                "Multiple figures",
-                include_str!("../../examples/multiple_plots.m"),
-            ),
-            ("Subplots", include_str!("../../examples/subplots.m")),
-            (
-                "Positioned axes / FIG",
-                include_str!("../../examples/fig_layouts.m"),
-            ),
-            (
-                "Tiled layouts",
-                include_str!("../../examples/tiled_layout.m"),
-            ),
-            (
-                "Discrete signals",
-                include_str!("../../examples/discrete_plots.m"),
-            ),
-            (
-                "Logarithmic plots",
-                include_str!("../../examples/log_plots.m"),
-            ),
-        ] {
+        for (label, source) in modes::EXAMPLES {
             if ui.button(label).clicked() {
                 self.new_document(source);
                 ui.close();
@@ -654,6 +651,18 @@ impl Workspace {
                 if ui.button("Open…").clicked() {
                     self.queue_root_open(ctx, open_files::PickerKind::Supported);
                     ui.close();
+                }
+                for (label, kind) in [
+                    ("Open figure…", open_files::PickerKind::Figure),
+                    ("Open plot image…", open_files::PickerKind::Image),
+                ] {
+                    if ui
+                        .add_enabled(!self.busy, egui::Button::new(label))
+                        .clicked()
+                    {
+                        self.queue_root_open(ctx, kind);
+                        ui.close();
+                    }
                 }
                 if ui
                     .add_enabled(!self.busy, egui::Button::new("Load workspace…"))
@@ -761,8 +770,8 @@ impl Workspace {
                 ui.separator();
                 ui.add_enabled_ui(!self.busy, |ui| {
                     ui.menu_button("Save workspace", |ui| self.workspace_save_formats(ui, ctx));
-                    if ui.button("Import CSV\u{2026}").clicked() {
-                        self.request_csv_import_files(ui.ctx());
+                    if ui.button("Import data\u{2026}").clicked() {
+                        self.request_import_data();
                         ui.close();
                     }
                 });
@@ -775,6 +784,12 @@ impl Workspace {
                 if ui.button("Block Simulation").clicked() {
                     self.show_model_document();
                     ui.close();
+                }
+                for kind in apps::AppKind::built() {
+                    if ui.button(kind.label()).clicked() {
+                        self.toolkits.open_tool(toolkits::Tool::App(kind));
+                        ui.close();
+                    }
                 }
             });
             ui.menu_button("Layout", |ui| {
@@ -799,104 +814,77 @@ impl Workspace {
                     self.layout.toolstrip_collapsed = !self.layout.toolstrip_collapsed;
                     ui.close();
                 }
+                if workspace_dock::inspector::uses_sheet(self, ctx)
+                    && ui
+                        .selectable_label(self.navigation.inspector_open, "Workspace Inspector")
+                        .clicked()
+                {
+                    self.navigation.inspector_open = !self.navigation.inspector_open;
+                    ui.close();
+                }
             });
         });
     }
 
+    /// Top bar (40 px, surface 3: brand, mode switcher, search, Menu, Help)
+    /// and the 36 px action row of the current mode (surface 2).
     pub(super) fn desktop_toolbar(&mut self, root: &mut egui::Ui, pending: bool) {
         let ctx = &root.ctx().clone();
-        let compact = tokens::compact(ctx);
-        // A tool tab brings its own toolbars: below 760 px the toolstrip card
-        // yields its height to the diagram, and the tabs become menus.
-        let tool_room =
-            self.toolkits.selected_tool().is_some() && ctx.content_rect().height() < 760.;
-        let expanded = !self.layout.toolstrip_collapsed && !tokens::short(ctx) && !tool_room;
-        // The top bar, menu row and folder row sit on the canvas; the
-        // toolstrip is the first card.
-        let frame = egui::Frame::new()
-            .fill(tokens::palette(ctx).canvas)
-            .inner_margin(egui::Margin::ZERO);
+        let expanded = !self.layout.toolstrip_collapsed && !tokens::short(ctx);
+        let p = tokens::palette(ctx);
+        // The search palette floats over the chrome without dimming or
+        // disabling it: a click on a tab or action closes the palette.
+        let pending = pending
+            && (!self.global_search.is_open() || self.file_action_pending_without_global_search());
+        // Over the action row the top bar's edge is a hairline; without the
+        // row it borders the panes.
         egui::Panel::top("toolbar")
-            .show_separator_line(false)
-            .frame(frame)
-            .show(root, |ui| {
-                let palette = tokens::palette(ctx);
-                if compact {
-                    tokens::dense(ui);
-                }
+            .frame(egui::Frame::new().fill(p.canvas))
+            .exact_size(tokens::TOP_BAR)
+            .show_edge(root, !expanded, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.;
-                // The search palette floats over the chrome without dimming or
-                // disabling it: a click on a tab or action closes the palette.
-                let pending = pending
-                    && (!self.global_search.is_open()
-                        || self.file_action_pending_without_global_search());
-                // Chrome on the canvas uses ghost buttons: no fill or outline
-                // until hovered.
+                // Chrome uses ghost buttons: no fill or outline until hovered.
                 let widgets = &mut ui.visuals_mut().widgets;
                 widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
                 widgets.inactive.bg_stroke = egui::Stroke::NONE;
-                let bar = egui::vec2(
-                    ui.available_width(),
-                    if compact {
-                        tokens::TOP_BAR - tokens::S
-                    } else {
-                        tokens::TOP_BAR
-                    },
-                );
+                let bar = egui::vec2(ui.available_width(), tokens::TOP_BAR);
                 ui.allocate_ui_with_layout(
                     bar,
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.set_min_size(bar);
-                        ui.spacing_mut().item_spacing.x = tokens::XS;
-                        ui.add_space(tokens::S);
+                        ui.spacing_mut().item_spacing.x = 0.;
+                        ui.add_space(tokens::M);
                         panels::brand(ui);
-                        ui.add_space(tokens::S);
+                        ui.add_space(tokens::XL);
                         ui.add_enabled_ui(!pending, |ui| {
-                            for (tab, label) in [
-                                (ToolstripTab::Home, "Home"),
-                                (ToolstripTab::Plots, "Plots"),
-                                (ToolstripTab::Apps, "Apps"),
-                            ] {
-                                let selected = self.layout.toolstrip == tab;
-                                if expanded {
-                                    if panels::ghost_tab(ui, selected, label).clicked() {
-                                        self.close_search_for_chrome(ctx);
-                                        self.layout.toolstrip = tab;
-                                    }
-                                } else {
-                                    // A collapsed toolstrip opens each tab as a menu.
-                                    let text = RichText::new(label)
-                                        .font(panels::semibold_font(ui, tokens::BODY))
-                                        .color(if selected {
-                                            palette.text
-                                        } else {
-                                            palette.text_muted
-                                        });
-                                    let menu = ui.menu_button(text, |ui| {
-                                        ui.set_min_width(280.);
-                                        self.toolstrip_actions(ui, ctx, tab, true);
-                                    });
-                                    if menu.response.clicked() {
-                                        self.layout.toolstrip = tab;
-                                    }
-                                }
-                            }
+                            self.mode_switcher(ui, tokens::TOP_BAR);
                         });
                         ui.add_space(tokens::S);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.spacing_mut().item_spacing.x = tokens::S;
-                            // Menu and Help keep the same type size as the tabs.
+                            ui.add_space(tokens::XS);
                             ui.style_mut().override_text_style = None;
-                            let enabled = !self.busy && !self.has_startup_placeholder();
-                            // The one filled primary action in the chrome.
-                            if panels::primary_button(ui, "Run", "Ctrl Enter", enabled).clicked() {
-                                self.request_script_run(ctx, false);
-                            }
                             self.help_menu(ui);
                             self.app_menu(ui, ctx, expanded);
                             self.global_search_launcher(ui);
-                            if (self.busy
+                            // Without the action row the open app's commands live in a menu.
+                            if !expanded && let Some(tool) = self.docked_tool() {
+                                let busy = self.busy;
+                                ui.add_enabled_ui(!pending, |ui| {
+                                    ui.menu_button("App commands", |ui| {
+                                        self.toolkits.app_commands(ui, tool, busy);
+                                    });
+                                });
+                            }
+                            // Command and Editor show Stop in Run's slot.
+                            // Without the action row (tools hidden, short window) Stop stays here.
+                            let stop_in_row = expanded
+                                && matches!(
+                                    self.mode(),
+                                    modes::Mode::Command | modes::Mode::Editor
+                                );
+                            if ((self.busy && !stop_in_row)
                                 || self.folder_browser.navigating()
                                 || !self.open_queue.is_empty())
                                 && ui.button("Stop").clicked()
@@ -909,33 +897,200 @@ impl Workspace {
                                     self.open_queue.len()
                                 ));
                             }
-                            if ctx.content_rect().width() >= tokens::SEARCH_ICON_WIDTH {
-                                ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        let crumb = panels::crumb(ui, &self.folder);
-                                        if crumb.clicked() && self.folder_browse_context(ctx) {
-                                            self.queue_folder_browse(ctx);
-                                        }
-                                    },
-                                );
-                            }
                         });
                     },
                 );
-                if expanded {
-                    ui.add_space(tokens::XS);
-                    tokens::card(ctx)
-                        .inner_margin(egui::Margin::symmetric(tokens::S as i8, 3))
-                        .show(ui, |ui| {
-                            ui.set_min_width(ui.available_width());
-                            ui.add_enabled_ui(!pending, |ui| {
-                                self.toolstrip_actions(ui, ctx, self.layout.toolstrip, false)
-                            });
-                        });
-                }
-                ui.add_space(tokens::XS);
             });
+        if !expanded {
+            return;
+        }
+        egui::Panel::top("action_row")
+            .frame(
+                egui::Frame::new()
+                    .fill(p.surface_sunken)
+                    .inner_margin(egui::Margin::symmetric(tokens::S as i8, 0)),
+            )
+            .exact_size(tokens::ACTION_ROW)
+            .show_pane(root, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.;
+                let widgets = &mut ui.visuals_mut().widgets;
+                widgets.inactive.weak_bg_fill = egui::Color32::TRANSPARENT;
+                widgets.inactive.bg_stroke = egui::Stroke::NONE;
+                let bar = egui::vec2(ui.available_width(), tokens::ACTION_ROW);
+                ui.allocate_ui_with_layout(
+                    bar,
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_size(bar);
+                        // Run and the folder claim the right end first.
+                        let right = ui
+                            .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.spacing_mut().item_spacing.x = tokens::S;
+                                if self.mode() != modes::Mode::Command
+                                    && tokens::toggle(
+                                        ui,
+                                        !self.navigation.drawer_collapsed,
+                                        "Command drawer",
+                                    )
+                                    .clicked()
+                                {
+                                    self.navigation.drawer_collapsed =
+                                        !self.navigation.drawer_collapsed;
+                                    ctx.data_mut(|d| {
+                                        d.remove::<egui::containers::panel::PanelState>(
+                                            egui::Id::new("console"),
+                                        )
+                                    });
+                                }
+                                if self.mode() == modes::Mode::Figures && tokens::compact(ctx) {
+                                    let key = egui::Id::new("figure_inspector_open");
+                                    let open =
+                                        ctx.data(|d| d.get_temp::<bool>(key).unwrap_or(false));
+                                    if tokens::toggle(ui, open, "Inspector").clicked() {
+                                        ctx.data_mut(|d| d.insert_temp(key, !open));
+                                    }
+                                }
+                                // Lit only while the sheet is on screen: the Variable
+                                // Editor and file prompts hide it but keep the intent.
+                                let sheet_shown = self.navigation.inspector_open
+                                    && self.editing_variable.is_none()
+                                    && !self.file_action_pending();
+                                if workspace_dock::inspector::uses_sheet(self, ctx)
+                                    && tokens::toggle(ui, sheet_shown, "Workspace")
+                                        .on_hover_text("Inspector: Workspace and figure preview · Ctrl+F6 to focus Workspace")
+                                        .clicked()
+                                {
+                                    self.navigation.inspector_open = !self.navigation.inspector_open;
+                                }
+                                // An empty script has nothing to run: no accent, no click.
+                                let blank = self
+                                    .documents
+                                    .get(self.active)
+                                    .is_none_or(|d| d.text.trim().is_empty());
+                                let enabled =
+                                    !self.busy && !self.has_startup_placeholder() && !blank;
+                                // The one filled primary action of the screen;
+                                // while a script runs Stop takes its slot.
+                                let run_slot =
+                                    matches!(self.mode(), modes::Mode::Command | modes::Mode::Editor);
+                                if run_slot && self.busy {
+                                    if ui
+                                        .add(
+                                            // A bordered button in a ghost row.
+                                            egui::Button::new("Stop")
+                                                .fill(tokens::palette(ctx).surface)
+                                                .stroke(egui::Stroke::new(
+                                                    1.,
+                                                    tokens::palette(ctx).border,
+                                                ))
+                                                .min_size(egui::vec2(0., tokens::CONTROL)),
+                                        )
+                                        .on_hover_text("Stop the running script")
+                                        .clicked()
+                                    {
+                                        self.stop_work();
+                                    }
+                                } else if run_slot
+                                    && panels::primary_button(ui, "Run", "F5", enabled).clicked()
+                                {
+                                    self.request_script_run(ctx, false);
+                                }
+                                if self.mode() != modes::Mode::Apps
+                                    && ctx.content_rect().width() >= tokens::SEARCH_ICON_WIDTH
+                                {
+                                    let crumb = panels::crumb(ui, &self.folder);
+                                    if crumb.clicked() && self.folder_browse_context(ctx) {
+                                        self.queue_folder_browse(ctx);
+                                    }
+                                }
+                                ui.min_rect().width()
+                            })
+                            .inner;
+                        let left = egui::Rect::from_min_max(
+                            ui.max_rect().min,
+                            egui::pos2(
+                                ui.max_rect().right() - right - tokens::L,
+                                ui.max_rect().bottom(),
+                            ),
+                        );
+                        ui.scope_builder(
+                            egui::UiBuilder::new()
+                                .max_rect(left)
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                            |ui| {
+                                ui.add_enabled_ui(!pending, |ui| self.mode_actions(ui, ctx));
+                            },
+                        );
+                    },
+                );
+            });
+    }
+
+    /// The action row of the current mode; groups that do not fit move into
+    /// "More". Apps shows the open app's name and commands.
+    fn mode_actions(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let tab = match self.mode() {
+            modes::Mode::Command | modes::Mode::Editor => ToolstripTab::Home,
+            modes::Mode::Figures => ToolstripTab::Plots,
+            modes::Mode::Apps => {
+                let tool = self.docked_tool();
+                let name = tool.map_or("Apps".to_owned(), |tool| self.toolkits.tab_label(tool));
+                ui.add_space(tokens::XS);
+                ui.label(
+                    RichText::new(name)
+                        .font(panels::semibold_font(ui, tokens::HEADING))
+                        .color(tokens::palette(ctx).text),
+                );
+                ui.add_space(tokens::S);
+                let commands = tool.is_some();
+                if let Some(tool) = tool.filter(|_| commands) {
+                    let busy = self.busy;
+                    // "More" keeps its place at the right end of the commands.
+                    let more = panels::strip_action_width(ui, "More") + tokens::S;
+                    let rect = ui.available_rect_before_wrap();
+                    let rect = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2((rect.right() - more).max(rect.left()), rect.bottom()),
+                    );
+                    ui.scope_builder(
+                        egui::UiBuilder::new()
+                            .max_rect(rect)
+                            .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        |ui| {
+                            ui.set_clip_rect(ui.clip_rect().intersect(rect));
+                            self.toolkits.app_commands(ui, tool, busy);
+                        },
+                    );
+                } else {
+                    ui.menu_button("Examples", |ui| self.examples_menu(ui));
+                }
+                ui.menu_button("More", |ui| {
+                    // Commands clipped by a narrow row stay reachable here.
+                    if let Some(tool) = tool {
+                        let busy = self.busy;
+                        ui.menu_button("App commands", |ui| {
+                            self.toolkits.app_commands(ui, tool, busy);
+                        });
+                    }
+                    if commands {
+                        ui.menu_button("Examples", |ui| self.examples_menu(ui));
+                    }
+                    // Built apps join the two tools; unbuilt ones stay hidden.
+                    let actions: Vec<Action> = [Action::FilterDesigner, Action::Simulation]
+                        .into_iter()
+                        .chain(apps::AppKind::built().map(Action::App))
+                        .chain([
+                            Action::FilteringExample,
+                            Action::PlottingExample,
+                            Action::ExamplesMenu,
+                        ])
+                        .collect();
+                    self.toolstrip_menu_actions(ui, ctx, 0, &actions);
+                });
+                return;
+            }
+        };
+        self.toolstrip_actions(ui, ctx, tab, false);
     }
 }
 

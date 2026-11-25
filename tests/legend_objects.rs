@@ -1,6 +1,6 @@
 use matrust::{
     Array, Engine, files,
-    plot::{LegendState, PlotKind, Series},
+    plot::{LegendState, MAX_PLOT_SERIES, PlotKind, Series},
 };
 use std::sync::atomic::AtomicBool;
 const SETUP: &str = "f=figure(1);a=gca;h=plot(a,[0 1],[1 2],[0 1],[2 3],[0 1],[3 4]);hold(a,'on');";
@@ -94,11 +94,10 @@ fn legend_invalid_members_properties_and_labels_fail_without_publication() {
     for script in [
         "legend(a,[h(1) q],{'x','y'},'Interpreter','none');",
         "legend(a,[h(1) h(1)],{'x','y'},'Interpreter','none');",
-        "legend(a,h(1),{'x','y'},'Interpreter','none');",
         "legend(a,h(1),{1},'Interpreter','none');",
-        "set(lg,'Visible','off','Interpreter','tex');",
+        "set(lg,'Visible','off','Interpreter','invalid');",
         "set(lg,'String',{'changed'},'Visible','off');",
-        "set(lg,'Box','off');",
+        "set(lg,'Box','maybe');",
     ] {
         assert!(e.execute(script).is_err(), "{script}");
         assert_eq!(e.current_figure, 2);
@@ -182,7 +181,7 @@ fn legend_metadata_bounds_duplicates_and_empty_subset_are_explicit() {
         members: vec![id.clone(); 65],
         auto_update: false,
     });
-    assert!(f.validate().unwrap_err().contains("64"));
+    assert!(f.validate().unwrap_err().contains("axes membership"));
     f.legend_state.as_mut().unwrap().members = vec![id.clone(), id];
     assert!(f.validate().unwrap_err().contains("duplicate"));
     f.legend_state.as_mut().unwrap().members = vec![matrust::ObjectIdentity::default()];
@@ -202,9 +201,8 @@ fn automatic_legend_membership_is_bounded_at_maximum_and_samples_stay_shared() {
         s.points = shared.clone();
         s
     };
-    for _ in 0..63 {
-        axes.add(vec![make()]).unwrap();
-    }
+    axes.add((1..MAX_PLOT_SERIES).map(|_| make()).collect())
+        .unwrap();
     axes.legend_state = Some(LegendState {
         identity: matrust::ObjectIdentity::default(),
         members: axes.series.iter().map(|s| s.identity.clone()).collect(),
@@ -212,9 +210,9 @@ fn automatic_legend_membership_is_bounded_at_maximum_and_samples_stay_shared() {
     });
     axes.add(vec![make()]).unwrap();
     axes.validate().unwrap();
-    assert_eq!(axes.legend_members().count(), 64);
+    assert_eq!(axes.legend_members().count(), MAX_PLOT_SERIES);
     assert!(axes.add(vec![base]).is_err());
-    assert_eq!(axes.legend_members().count(), 64);
+    assert_eq!(axes.legend_members().count(), MAX_PLOT_SERIES);
     for s in &axes.series {
         assert!((shared).same_storage(&s.points));
     }

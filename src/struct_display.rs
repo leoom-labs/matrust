@@ -45,6 +45,7 @@ fn summary(a: &Array, room: usize, st: &Style) -> String {
         return text;
     }
     match a {
+        Array::Str(s) => s.preview(max_elements),
         Array::Complex(m) if m.len() == 1 => match m.get(0, 0) {
             Ok(z) => complex_scalar_text(z, st),
             Err(_) => "[1x1 double]".into(),
@@ -91,9 +92,11 @@ fn array_header(s: &StructArray, fmt: &DisplayFormat, out: &mut String) {
     if !fmt.compact {
         out.push('\n');
     }
-    let width = s.field_names().iter().map(String::len).max().unwrap_or(0);
+    // A struct array lists its field names left-aligned four spaces in (unlike
+    // the right-aligned `name: value` lines of a scalar struct): the reference
+    // envfiles corpus cases 41 and 47 (`dir` results) print `    name`/`    datenum`.
     for name in s.field_names() {
-        out.push_str(&" ".repeat(4 + width - name.len()));
+        out.push_str("    ");
         out.push_str(name);
         out.push('\n');
     }

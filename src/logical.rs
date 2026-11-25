@@ -2,7 +2,7 @@
 //!
 //! Storage is immutable, shared, column-major, and uses one byte per element.
 //! Numeric inputs are borrowed; comparisons never materialize numeric copies of masks.
-use crate::{Matrix, Result};
+use crate::{ComplexMatrix, Matrix, Result, broadcast2::Broadcast2};
 use rayon::prelude::*;
 use std::sync::{
     Arc,
@@ -20,6 +20,7 @@ pub struct LogicalMatrix {
     pub(crate) data: Arc<Vec<u8>>,
     rows: usize,
     cols: usize,
+    nd: Option<Arc<Vec<usize>>>,
 }
 
 /// Borrow either storage type without converting it or acquiring another Arc.
@@ -39,6 +40,20 @@ pub enum Comparison {
     GreaterEqual,
 }
 
+impl Comparison {
+    pub(crate) fn matches(self, order: Option<std::cmp::Ordering>) -> bool {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+        match self {
+            Self::Equal => order == Some(Equal),
+            Self::NotEqual => order != Some(Equal),
+            Self::Less => order == Some(Less),
+            Self::LessEqual => matches!(order, Some(Less | Equal)),
+            Self::Greater => order == Some(Greater),
+            Self::GreaterEqual => matches!(order, Some(Greater | Equal)),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Predicate {
     IsNan,
@@ -51,6 +66,16 @@ pub enum BooleanOp {
     And,
     Or,
     Xor,
+}
+
+impl BooleanOp {
+    fn apply(self, a: u8, b: u8) -> u8 {
+        match self {
+            Self::And => a & b,
+            Self::Or => a | b,
+            Self::Xor => a ^ b,
+        }
+    }
 }
 
 fn check(cancel: &AtomicBool) -> Result<()> {
@@ -235,15 +260,12 @@ impl ArrayRef<'_> {
     pub fn is_empty(self) -> bool {
         self.len() == 0
     }
-}
 
-fn expanded_shape(left: ArrayRef<'_>, right: ArrayRef<'_>) -> Result<(usize, usize)> {
-    if left.len() == 1 {
-        Ok(right.shape())
-    } else if right.len() == 1 || left.shape() == right.shape() {
-        Ok(left.shape())
-    } else {
-        Err("Array dimensions must agree (only scalar expansion is supported)".into())
+    pub(crate) fn value(self, i: usize) -> f64 {
+        match self {
+            Self::Numeric(a) => a.data()[i],
+            Self::Logical(a) => f64::from(a.data()[i]),
+        }
     }
 }
 
@@ -355,6 +377,7 @@ impl LogicalMatrix {
             data: Arc::new(data),
             rows,
             cols,
+            nd: None,
         }
     }
     pub fn from_column_vec(
@@ -392,6 +415,29 @@ impl LogicalMatrix {
     pub fn cols(&self) -> usize {
         self.cols
     }
+    pub fn dims(&self) -> std::borrow::Cow<'_, [usize]> {
+        self.nd.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(vec![self.rows, self.cols]),
+            |dims| std::borrow::Cow::Borrowed(dims.as_slice()),
+        )
+    }
+    pub fn ndims(&self) -> usize {
+        self.nd.as_ref().map_or(2, |dims| dims.len())
+    }
+    pub fn is_nd(&self) -> bool {
+        self.nd.is_some()
+    }
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        let dims = crate::array::normalize_dims(dims)?;
+        if dims[0] != self.rows
+            || dims[1..].iter().try_fold(1usize, |n, &d| n.checked_mul(d)) != Some(self.cols)
+        {
+            return Err("reshape dimensions do not match folded logical storage".into());
+        }
+        let mut result = self.clone();
+        result.nd = (dims.len() > 2).then(|| Arc::new(dims));
+        Ok(result)
+    }
     pub fn len(&self) -> usize {
         self.data.len()
     }
@@ -424,6 +470,7 @@ impl LogicalMatrix {
             data: self.data.clone(),
             rows,
             cols,
+            nd: None,
         })
     }
     /// Convert real doubles to logicals; MATLAB rejects NaN conversions.
@@ -453,22 +500,51 @@ impl LogicalMatrix {
         })?;
         Matrix::from_column_vec(self.rows, self.cols, data)
     }
+    pub(crate) fn from_complex(source: &ComplexMatrix, cancel: &AtomicBool) -> Result<Self> {
+        let data = build(source.len(), PAR_ELEMENTS, cancel, |first, out| {
+            let n = out.len();
+            for (dst, z) in out.iter_mut().zip(&source.data()[first..first + n]) {
+                if z.re.is_nan() || z.im.is_nan() {
+                    return Err("NaN cannot be converted to logical".into());
+                }
+                *dst = u8::from(z.re != 0. || z.im != 0.);
+            }
+            Ok(())
+        })?;
+        Ok(Self::owned(source.rows(), source.cols(), data))
+    }
+
     pub fn compare(
         left: ArrayRef<'_>,
         right: ArrayRef<'_>,
         op: Comparison,
         cancel: &AtomicBool,
     ) -> Result<Self> {
-        let (rows, cols) = expanded_shape(left, right)?;
-        let len = Matrix::checked_len(rows, cols)?;
+        let shape = Broadcast2::new(left.shape(), right.shape())?;
+        let len = shape.len();
         use ArrayRef::{Logical as L, Numeric as N};
-        let data = match (left, right) {
-            (N(a), N(b)) => compared(a.data(), b.data(), len, op, cancel)?,
-            (N(a), L(b)) => compared(a.data(), b.data(), len, op, cancel)?,
-            (L(a), N(b)) => compared(a.data(), b.data(), len, op, cancel)?,
-            (L(a), L(b)) => compared_bytes(a.data(), b.data(), op, cancel)?,
+        let data = if shape.needs_expansion() {
+            let threshold = if matches!((left, right), (L(_), L(_))) {
+                PAR_BYTES
+            } else {
+                PAR_ELEMENTS
+            };
+            build(len, threshold, cancel, |first, out| {
+                for (i, dst) in out.iter_mut().enumerate() {
+                    let (a, b) = shape.indices(first + i);
+                    *dst = u8::from(op.matches(left.value(a).partial_cmp(&right.value(b))));
+                }
+                Ok(())
+            })?
+        } else {
+            match (left, right) {
+                (N(a), N(b)) => compared(a.data(), b.data(), len, op, cancel)?,
+                (N(a), L(b)) => compared(a.data(), b.data(), len, op, cancel)?,
+                (L(a), N(b)) => compared(a.data(), b.data(), len, op, cancel)?,
+                (L(a), L(b)) => compared_bytes(a.data(), b.data(), op, cancel)?,
+            }
         };
-        Ok(Self::owned(rows, cols, data))
+        Ok(Self::owned(shape.rows, shape.cols, data))
     }
     pub fn predicate(source: ArrayRef<'_>, op: Predicate, cancel: &AtomicBool) -> Result<Self> {
         let (rows, cols) = source.shape();
@@ -493,7 +569,8 @@ impl LogicalMatrix {
         Ok(Self::owned(self.rows, self.cols, data))
     }
     pub fn combine(&self, right: &Self, op: BooleanOp, cancel: &AtomicBool) -> Result<Self> {
-        let (rows, cols) = expanded_shape(ArrayRef::Logical(self), ArrayRef::Logical(right))?;
+        let shape = Broadcast2::new((self.rows, self.cols), (right.rows, right.cols))?;
+        let (rows, cols) = (shape.rows, shape.cols);
         // Both arrays are already logical: scalar identities can share the result.
         check(cancel)?;
         let scalar = if self.len() == 1 {
@@ -513,10 +590,20 @@ impl LogicalMatrix {
                 (BooleanOp::Or, true) => Self::filled(rows, cols, true, cancel),
             };
         }
-        let data = match op {
-            BooleanOp::And => boolean_binary(self.data(), right.data(), cancel, |a, b| a & b)?,
-            BooleanOp::Or => boolean_binary(self.data(), right.data(), cancel, |a, b| a | b)?,
-            BooleanOp::Xor => boolean_binary(self.data(), right.data(), cancel, |a, b| a ^ b)?,
+        let data = if shape.needs_expansion() {
+            build(shape.len(), PAR_BYTES, cancel, |first, out| {
+                for (i, dst) in out.iter_mut().enumerate() {
+                    let (a, b) = shape.indices(first + i);
+                    *dst = op.apply(self.data[a], right.data[b]);
+                }
+                Ok(())
+            })?
+        } else {
+            match op {
+                BooleanOp::And => boolean_binary(self.data(), right.data(), cancel, |a, b| a & b)?,
+                BooleanOp::Or => boolean_binary(self.data(), right.data(), cancel, |a, b| a | b)?,
+                BooleanOp::Xor => boolean_binary(self.data(), right.data(), cancel, |a, b| a ^ b)?,
+            }
         };
         Ok(Self::owned(rows, cols, data))
     }

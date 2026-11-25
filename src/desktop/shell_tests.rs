@@ -14,7 +14,7 @@ fn native_shell_empty_editor_and_docked_panels_fit_wide_and_compact() {
         assert!(toolbar.height()<=tokens::TOP_BAR + panels::STRIP_TILE + 3. * tokens::S,"{toolbar:?}");
         assert!(egui::containers::panel::PanelState::load(&ctx,egui::Id::new("editor_split")).is_none());
         let find=|label|output.shapes.iter().rev().find_map(|s|text_position(&s.shape,label));
-        assert!(find("Editor").is_some());assert!(find("Workspace").is_some());assert!(find("Files").is_some());
+        assert!(find("Editor").is_some());assert!(find("WORKSPACE").is_some());assert!(find("FILES").is_some());
         assert!(find("Figure").is_none());assert!(find("Damped oscillation").is_none());
         assert_eq!(app.layout,legacy_sample_layout());
     }
@@ -109,7 +109,7 @@ fn right_workspace_drag_persists_independently_and_viewport_clamps_without_rewri
     // Same-context viewport changes must clamp display size, not saved intent.
     for _ in 0..3 { frame_at(&mut reopened, &new_ctx, compact, vec![]); }
     let small = panel(&new_ctx, "workspace_variables");
-    let maximum = (compact.x * 0.25).max(workspace_tools::minimum_dock_width(&new_ctx));
+    let maximum = (compact.x * 0.3).max(workspace_tools::minimum_dock_width(&new_ctx));
     assert!(small.width() <= maximum + 1., "{small:?}");
     assert!(small.width() < width - 30.);
     assert_eq!(reopened.layout, expected);

@@ -58,13 +58,13 @@ pub(super) fn encode(axes: &Axes) -> Result<Vec<NativeBaseline>> {
         })
         .collect()
 }
-/// Runs before native sample allocations. The containing JSON uses the existing 64-KiB ordinary / 320-KiB descriptor-capable cap.
+/// Runs before native sample allocations, after the axes JSON byte limit.
 pub(super) fn preflight(records: &[NativeBaseline], series: &[SeriesMetadata]) -> Result<()> {
     if records.len() > MAX_BASELINES {
         return Err("Native baseline count exceeds 64".into());
     }
     let mut total = 0usize;
-    let mut seen = [false; crate::plot::MAX_SERIES];
+    let mut seen = std::collections::HashSet::new();
     for record in records {
         total = total
             .checked_add(record.members.len())
@@ -74,11 +74,8 @@ pub(super) fn preflight(records: &[NativeBaseline], series: &[SeriesMetadata]) -
         }
         Baseline::new(record.value(), record.style(), Vec::new())?;
         for &index in &record.members {
-            let s = series
-                .get(index)
-                .filter(|_| index < seen.len())
-                .ok_or("Invalid native baseline member")?;
-            if !matches!(s.kind, PlotKind::Bar | PlotKind::Stem) || seen[index] {
+            let s = series.get(index).ok_or("Invalid native baseline member")?;
+            if !matches!(s.kind, PlotKind::Bar | PlotKind::Stem) || !seen.insert(index) {
                 return Err("Invalid or duplicate native baseline membership".into());
             }
             if s.base_value
@@ -86,7 +83,6 @@ pub(super) fn preflight(records: &[NativeBaseline], series: &[SeriesMetadata]) -
             {
                 return Err("Native baseline conflicts with series BaseValue".into());
             }
-            seen[index] = true;
         }
     }
     Ok(())
@@ -113,8 +109,7 @@ pub(super) fn decode(records: Vec<NativeBaseline>, series: &[Series]) -> Result<
 // This optional P/Q field records identity equivalence, not process addresses.
 // Slots 0..records.len() name decoded explicit records. Subsequent slots are
 // first-use ordered fresh identities; 255 means a non-chart series. At most
-// 64 records + 64 series identities exist. The surrounding ordinary 64-KiB JSON cap
-// or descriptor-capable 320-KiB cap bounds serde staging; preflight precedes point allocations.
+// 64 records and 64 chart-series identities can occupy slots.
 const NO_LATENT_BASELINE: u8 = u8::MAX;
 fn chart(kind: PlotKind) -> bool {
     matches!(kind, PlotKind::Bar | PlotKind::Stem)
@@ -167,7 +162,7 @@ pub(super) fn encode_latent(axes: &Axes) -> Option<Vec<u8>> {
             identities.push(&series.baseline_identity);
             index
         };
-        // Validated axes have <=64 records and <=64 series, below the sentinel.
+        // Validated axes have <=64 records and <=64 chart series, below the sentinel.
         result.push(u8::try_from(index).expect("bounded native baseline identity index"));
     }
     Some(result)
@@ -177,7 +172,13 @@ pub(super) fn preflight_latent(
     records: &[NativeBaseline],
     series: &[SeriesMetadata],
 ) -> Result<()> {
-    if series.len() > crate::plot::MAX_SERIES || links.is_some_and(|v| v.len() != series.len()) {
+    if series
+        .iter()
+        .filter(|s| chart(s.kind))
+        .nth(crate::plot::MAX_SERIES)
+        .is_some()
+        || links.is_some_and(|v| v.len() != series.len())
+    {
         return Err("Invalid native latent baseline extent".into());
     }
     // Legacy absence joins all Bars; P/Q links can preserve separate groups.
@@ -202,10 +203,7 @@ pub(super) fn preflight_latent(
     let Some(links) = links else {
         return Ok(());
     };
-    if records.len() > MAX_BASELINES
-        || series.len() > crate::plot::MAX_SERIES
-        || links.len() != series.len()
-    {
+    if records.len() > MAX_BASELINES {
         return Err("Invalid native latent baseline extent".into());
     }
     let mut next = records.len();

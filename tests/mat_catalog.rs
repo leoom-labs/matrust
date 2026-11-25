@@ -1,4 +1,4 @@
-use matrust::{Matrix, files};
+use matrust::{Array, Matrix, files};
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{Read, Write},
@@ -41,11 +41,55 @@ fn matlab_numeric_types_selected_among_unsupported_arrays_match_reference() {
         )
         .unwrap();
         assert_eq!(catalog.variables().len(), 21);
-        for name in ["struct_data", "sparse_data", "three_d"] {
-            let var = catalog.variables().find(|v| v.name == name).unwrap();
-            assert!(var.unavailable.is_some(), "{name}");
-            assert!(files::load_selected_workspace(&catalog, &names(&[name]), &cancel).is_err());
-        }
+        // N-D arrays load since the legacy N-D work (SciPy: double, 2x3x4, 1..24 column-major).
+        let nd = catalog.variables().find(|v| v.name == "three_d").unwrap();
+        assert!(nd.unavailable.is_none());
+        let loaded = files::load_selected_arrays(&catalog, &names(&["three_d"]), &cancel).unwrap();
+        let Array::Numeric(nd) = &loaded["three_d"] else {
+            panic!("three_d class lost")
+        };
+        assert_eq!(nd.dims().as_ref(), &[2, 3, 4]);
+        assert_eq!(
+            nd.data(),
+            (1..=24).map(f64::from).collect::<Vec<_>>().as_slice()
+        );
+        let var = catalog
+            .variables()
+            .find(|v| v.name == "struct_data")
+            .unwrap();
+        assert!(
+            var.unavailable.is_none(),
+            "struct_data: {:?}",
+            var.unavailable
+        );
+        let loaded =
+            files::load_selected_arrays(&catalog, &names(&["struct_data"]), &cancel).unwrap();
+        assert!(matches!(loaded["struct_data"], Array::Struct(_)));
+        assert!(
+            files::load_selected_workspace(&catalog, &names(&["struct_data"]), &cancel).is_err()
+        );
+        // Class 5 loads since the sparse work: a 3x3 sparse identity (GNU Octave 10.3 reads the same).
+        let var = catalog
+            .variables()
+            .find(|v| v.name == "sparse_data")
+            .unwrap();
+        assert!(var.unavailable.is_none(), "sparse_data");
+        assert_eq!(var.decoded_bytes, Some(16 * 3 + 8 * 4));
+        let loaded =
+            files::load_selected_arrays(&catalog, &names(&["sparse_data"]), &cancel).unwrap();
+        let Array::Sparse(s) = &loaded["sparse_data"] else {
+            panic!("sparse_data class lost")
+        };
+        assert_eq!(
+            s.entries().collect::<Vec<_>>(),
+            vec![(0, 0, 1.), (1, 1, 1.), (2, 2, 1.)]
+        );
+        let full =
+            files::load_selected_workspace(&catalog, &names(&["sparse_data"]), &cancel).unwrap();
+        assert_eq!(
+            full["sparse_data"].data(),
+            &[1., 0., 0., 0., 1., 0., 0., 0., 1.]
+        );
         for name in ["cell_data", "text_data"] {
             assert!(
                 catalog

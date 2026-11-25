@@ -1,7 +1,8 @@
 //! Function handles: creation, calls, func2str/str2func/feval, arrayfun/cellfun.
 //! Handles are immutable `Array::Handle` values; anonymous handles snapshot the
 //! workspace variables their body references when they are created.
-use super::{Engine, Execution, Value};
+use super::user_functions::nested;
+use super::{Engine, Execution, Value, user_functions::HandleScope};
 use crate::{
     Array, CellArray, CharacterRow, Complex64, ComplexMatrix, FunctionHandle, LogicalMatrix,
     Matrix, Result, StructArray,
@@ -27,60 +28,88 @@ const LEGACY_CELLFUN: &[&str] = &[
 ];
 
 /// Variable names an anonymous body reads from the enclosing workspace.
-fn free_names(expr: &Expr, bound: &mut Vec<String>, names: &mut BTreeSet<String>) {
-    let mut mention = |name: &String, bound: &[String]| {
-        if name != "end" && !bound.contains(name) {
-            names.insert(name.clone());
+pub(super) fn free_names(expr: &Expr, bound: &mut Vec<String>, names: &mut BTreeSet<String>) {
+    visit_names(expr, bound, &mut |name, usage| {
+        if usage != NameUse::Handle {
+            names.insert(name.to_owned());
         }
-    };
+    });
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum NameUse {
+    Value,
+    CallOrIndex,
+    Handle,
+}
+
+/// Bare names can denote variables or calls. A literal handle target is
+/// always a function, even when a parameter has the same spelling.
+pub(super) fn visit_names(
+    expr: &Expr,
+    bound: &mut Vec<String>,
+    visit: &mut impl FnMut(&str, NameUse),
+) {
     match expr {
         Expr::Number(_)
         | Expr::Imaginary(_)
+        | Expr::NameValue(_)
         | Expr::String(_)
         | Expr::DoubleQuoted(_)
-        | Expr::All
-        | Expr::FunctionHandle(_) => {}
-        Expr::Name(name) => mention(name, bound),
+        | Expr::All => {}
+        Expr::FunctionHandle(name) => visit(name, NameUse::Handle),
+        Expr::Name(name) => {
+            if name != "end" && !bound.contains(name) {
+                visit(name, NameUse::Value);
+            }
+        }
         Expr::Unary(_, e) | Expr::Not(e) | Expr::Transpose(e) | Expr::NonConjugateTranspose(e) => {
-            free_names(e, bound, names)
+            visit_names(e, bound, visit)
         }
         Expr::Binary(_, a, b) => {
-            free_names(a, bound, names);
-            free_names(b, bound, names);
+            visit_names(a, bound, visit);
+            visit_names(b, bound, visit);
         }
         Expr::Range(a, step, b) => {
-            free_names(a, bound, names);
+            visit_names(a, bound, visit);
             if let Some(step) = step {
-                free_names(step, bound, names);
+                visit_names(step, bound, visit);
             }
-            free_names(b, bound, names);
+            visit_names(b, bound, visit);
         }
         Expr::Call(name, args) | Expr::CellContents(name, args) => {
-            mention(name, bound);
+            if !bound.contains(name) {
+                let usage = if matches!(expr, Expr::Call(..)) {
+                    NameUse::CallOrIndex
+                } else {
+                    NameUse::Value
+                };
+                visit(name, usage);
+            }
             for arg in args {
-                free_names(arg, bound, names);
+                visit_names(arg, bound, visit);
             }
         }
-        Expr::Field(base, _) => free_names(base, bound, names),
+        Expr::Field(base, _) => visit_names(base, bound, visit),
         Expr::DynamicField(base, field) => {
-            free_names(base, bound, names);
-            free_names(field, bound, names);
+            visit_names(base, bound, visit);
+            visit_names(field, bound, visit);
         }
         Expr::Apply(base, args) | Expr::Index(base, args) | Expr::Brace(base, args) => {
-            free_names(base, bound, names);
+            visit_names(base, bound, visit);
             for arg in args {
-                free_names(arg, bound, names);
+                visit_names(arg, bound, visit);
             }
         }
         Expr::Matrix(rows) | Expr::CellLiteral(rows) => {
             for e in rows.iter().flatten() {
-                free_names(e, bound, names);
+                visit_names(e, bound, visit);
             }
         }
         Expr::Anonymous(inner) => {
             let outer = bound.len();
             bound.extend(inner.params.iter().cloned());
-            free_names(&inner.body, bound, names);
+            visit_names(&inner.body, bound, visit);
             bound.truncate(outer);
         }
     }
@@ -98,6 +127,10 @@ enum Column {
     Logical(Vec<u8>),
     Complex(Vec<Complex64>),
     Char(Vec<u16>),
+    Str {
+        values: Vec<Option<Arc<str>>>,
+        bytes: usize,
+    },
     /// The contents of 1x1 cell results, collected into one cell array.
     Cell(Vec<Arc<Array>>),
     Struct {
@@ -112,6 +145,7 @@ impl Column {
             Self::Real(_) | Self::Complex(_) => "double",
             Self::Logical(_) => "logical",
             Self::Char(_) => "char",
+            Self::Str { .. } => "string",
             Self::Cell(_) => "cell",
             Self::Struct { .. } => "struct",
         }
@@ -155,30 +189,65 @@ impl Engine {
         Ok(Value::Container(FunctionHandle::named(name).into()))
     }
     fn validate_handle_name(name: &str) -> Result<()> {
-        if crate::files::valid_name(name) {
+        // `@name`, or `@a.b.name` for a function of a package.
+        if crate::files::valid_name(name) || super::user_functions::pkg_name(name) {
             Ok(())
         } else {
             Err(format!("Invalid function handle name '{name}'"))
         }
     }
-    /// `@(params) body`: snapshot referenced variables unless `capture` is off.
+    /// `@(params) body`: snapshot referenced variables unless `capture` is
+    /// off. A captured handle also keeps where it was made (the running
+    /// file and import list), so its body looks names up as there wherever
+    /// it is called. Without `capture` (handles the engine builds from
+    /// text) names are looked up where the handle is called.
     pub(super) fn anonymous_handle(
         &mut self,
         function: &Arc<AnonymousFunction>,
         capture: bool,
     ) -> Result<Value> {
+        self.anf_handle(function, capture, None)
+    }
+    fn anf_handle(
+        &mut self,
+        function: &Arc<AnonymousFunction>,
+        capture: bool,
+        scope: Option<crate::function_handle::Scope>,
+    ) -> Result<Value> {
         let mut captured = Vec::new();
+        let mut scope = scope;
+        let mut frame_bytes = 0;
         if capture {
             let mut names = BTreeSet::new();
-            free_names(&function.body, &mut function.params.clone(), &mut names);
+            let mut nested_lookup = false;
+            visit_names(
+                &function.body,
+                &mut function.params.clone(),
+                &mut |name, usage| {
+                    if usage == NameUse::Handle {
+                        nested_lookup |= nested::resolve(&self.functions, name).is_some();
+                    } else {
+                        names.insert(name.to_owned());
+                    }
+                },
+            );
             for name in names {
                 self.check_cancel()?;
                 if let Some(array) = self.array(&name) {
                     captured.push((name, array.without_coordinate_facts(&self.cancel)?));
+                } else {
+                    nested_lookup |= nested::resolve(&self.functions, &name).is_some();
                 }
             }
+            let parent = if nested_lookup {
+                nested::lookup_frame(&self.functions).cloned()
+            } else {
+                None
+            };
+            frame_bytes = parent.as_ref().map_or(0, |f| f.bytes);
+            scope = Some(self.ctx_handle_scope(true, parent));
         }
-        let handle = FunctionHandle::anonymous(function.clone(), captured);
+        let handle = FunctionHandle::anonymous_in(function.clone(), captured, scope, frame_bytes);
         if handle.depth() > MAX_CAPTURE_DEPTH {
             return Err(format!(
                 "Function handles capturing function handles are limited to {MAX_CAPTURE_DEPTH} levels"
@@ -291,17 +360,76 @@ impl Engine {
             return Err("Combined expression/function evaluation exceeds 128 levels".into());
         }
         self.evaluation_depth += 1;
-        let result = match handle.anonymous_parts() {
-            Some((function, captured)) => {
-                self.call_anonymous(function, captured, args, requested, targets, out)
+        let scope = handle
+            .scope()
+            .and_then(|scope| scope.downcast_ref::<HandleScope>());
+        let result = if let Some((app, callback, requires_event)) = handle.app_callback_parts() {
+            let app_val = Value::Container(app.clone());
+            let mut call_args = Vec::with_capacity(if requires_event { 2 } else { 1 });
+            call_args.push(app_val);
+            if requires_event {
+                let event = args
+                    .get(1)
+                    .cloned()
+                    .unwrap_or_else(|| Value::Matrix(Matrix::filled(0, 0, 0.).expect("empty")));
+                call_args.push(event);
             }
-            None => self.call_named(handle.func2str(), args, requested, targets, out),
+            let class_name = super::classdef::object_class(app);
+            self.cls_with_privilege(class_name, |engine| {
+                engine.call_handle(callback, call_args, requested, targets, out)
+            })
+        } else {
+            match handle.anonymous_parts() {
+                Some((function, captured)) => {
+                    if self.profiler.enabled {
+                        super::profiler::anonymous(self, handle.func2str(), |engine| {
+                            engine.call_anonymous(
+                                function, captured, scope, args, requested, targets, out,
+                            )
+                        })
+                    } else {
+                        self.call_anonymous(
+                            function, captured, scope, args, requested, targets, out,
+                        )
+                    }
+                }
+                None => {
+                    let name = handle.func2str();
+                    // A handle made by running code was bound when it was made:
+                    // to a private file, to a function of its own source, or to
+                    // none of those. It never picks up a local, imported or
+                    // private function of the code that calls it.
+                    if let Some(function) = nested::bound(handle) {
+                        self.call_user(function.clone(), args, requested, targets, out)
+                    } else if let Some(file) = handle.private_file() {
+                        self.prv_call_bound(name, file, args, requested, targets, out)
+                    } else if let Some(file) = handle.bound_source() {
+                        // A local function of a file that no longer runs: the
+                        // one the handle kept when it was made.
+                        let kept = || scope?.ctx_function(name, file?);
+                        match self.ctx_source_function(name, file).or_else(kept) {
+                            Some(function) => {
+                                self.call_user(function, args, requested, targets, out)
+                            }
+                            None => self.call_unscoped(name, args, requested, targets, true, out),
+                        }
+                    } else if handle.is_global() {
+                        self.call_unscoped(name, args, requested, targets, true, out)
+                    } else {
+                        self.call_named(name, args, requested, targets, out)
+                    }
+                }
+            }
         };
         self.evaluation_depth -= 1;
         let values = result?;
         self.charge_function_outputs(&values)?;
         Ok(values)
     }
+    /// A function given by name (`feval('name')`, `cellfun('name')`, a name
+    /// a builtin was handed): looked up where the call is made, in the order
+    /// of a plain call there. The functions of the calling code (imported,
+    /// local, private) come first, then `call_unscoped`.
     fn call_named(
         &mut self,
         name: &str,
@@ -310,17 +438,68 @@ impl Engine {
         targets: Option<&[Option<String>]>,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
-        if let Some(function) = self.resolve_function(name)? {
-            if args.len() > function.input_count() {
-                return Err("Too many input arguments.".into());
+        if let Some(function) = self.ctx_scoped_function(name)? {
+            return self.call_user(function, args, requested, targets, out);
+        }
+        let shield = nested::resolve(&self.functions, name).is_some();
+        self.call_unscoped(name, args, requested, targets, shield, out)
+    }
+    /// The part of a call by name that is the same wherever it is made
+    /// (reference precedence): the method of an object argument, then the
+    /// current folder and the search path (the package file for a qualified
+    /// name), then the builtin. `shield`: a handle bound to none of the
+    /// functions of the code that made it; the builtin then runs even when
+    /// the calling code has a local, imported or private function of that
+    /// name.
+    fn call_unscoped(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        requested: usize,
+        targets: Option<&[Option<String>]>,
+        shield: bool,
+        out: &mut Execution,
+    ) -> Result<Vec<Value>> {
+        // The class dispatch of a plain call (`Engine::call`), with the
+        // output count of this call.
+        if !name.as_bytes().contains(&b'.')
+            && args.first().is_some_and(super::classdef::is_object_value)
+            && let Some(mut values) = self.cls_call(name, &args, requested, targets, out)?
+        {
+            if requested <= 1 && matches!(values.as_slice(), [Value::Void]) {
+                values.clear();
             }
-            // A function without outputs is called for effect, as with nargout=0.
-            let requested = if requested == 1 && function.output_count() == 0 {
-                0
-            } else {
-                requested
-            };
-            return self.invoke_function(function, args, requested, targets, out);
+            return Ok(values);
+        }
+        if let Some(function) = self.ctx_path_function(name)? {
+            return self.call_user(function, args, requested, targets, out);
+        }
+        if shield {
+            return self.lg3_shielded(name, |engine| {
+                engine.call_builtin(name, args, requested, targets, out)
+            });
+        }
+        self.call_builtin(name, args, requested, targets, out)
+    }
+    fn call_builtin(
+        &mut self,
+        name: &str,
+        args: Vec<Value>,
+        requested: usize,
+        targets: Option<&[Option<String>]>,
+        out: &mut Execution,
+    ) -> Result<Vec<Value>> {
+        if let Some(launch) = super::app_launchers::Launch::for_name(name) {
+            super::profiler::dispatch(self, name, |_| launch.open(name, args.len(), requested))?;
+            return Ok(Vec::new());
+        }
+        super::nd::guard(name, &args)?;
+        super::string_class::guard(name, &args)?;
+        if super::control_design::cds_handles(name) {
+            return super::control_design::cds_call(self, name, &args, requested, out);
+        }
+        if super::volume::iso::handles(name) {
+            return super::volume::iso::call(self, name, &args, requested, out);
         }
         if name == "hist" && requested == 0 {
             return self.statsx_outputs(name, &args, requested);
@@ -332,10 +511,49 @@ impl Engine {
             self.langx_eval(&args, false, out)?;
             return Ok(Vec::new());
         }
+        if name == "warning" && requested == 0 {
+            let args = match super::sparse_fns::call(self, name, args, out)? {
+                Ok(_) => return Ok(Vec::new()),
+                Err(args) => args,
+            };
+            if let Err(args) = self.typed_call(name, args, out)? {
+                self.langx_warning(&args, false, out)?;
+            }
+            return Ok(Vec::new());
+        }
+        if super::pde::handles(name) {
+            return super::pde::call(self, name, &args, requested, out);
+        }
+        if super::pde_geometry::handles(name) {
+            return super::pde_geometry::call(self, name, &args, requested, out);
+        }
+        if super::pde_model::handles(name) {
+            return super::pde_model::call(self, name, &args, requested, out);
+        }
+        if matches!(name, "title" | "subtitle") {
+            return super::graphics_handles::heading_call(self, name, &args, requested);
+        }
         if requested > 1 {
-            return Err(format!(
-                "{name}: multiple outputs through a function handle are not supported yet"
-            ));
+            // These calls execute code in the caller's workspace.
+            if name == "evalc" {
+                return self.lng_outputs(name, &args, requested, out);
+            }
+            if matches!(name, "feval" | "arrayfun" | "cellfun") {
+                return self.handle_builtin(name, &args, requested, targets, out);
+            }
+            // Use ordinary multi-output dispatch with the evaluated arguments in
+            // a fresh frame. A caller variable named after the builtin (including
+            // the handle itself) must not shadow the already-resolved function.
+            let params: Vec<_> = (0..args.len()).map(|i| format!("arg{}", i + 1)).collect();
+            let call = AnonymousFunction {
+                body: Expr::Call(
+                    name.to_owned(),
+                    params.iter().cloned().map(Expr::Name).collect(),
+                ),
+                params,
+                text: String::new(),
+            };
+            return self.call_anonymous(&call, &[], None, args, requested, targets, out);
         }
         if args.is_empty()
             && let Some(value) = self.builtin_constant(name)?
@@ -351,6 +569,44 @@ impl Engine {
             }
         })
     }
+    /// A handle bound to a private file: the function of that file runs,
+    /// whatever folder or file the caller is in.
+    fn prv_call_bound(
+        &mut self,
+        name: &str,
+        file: &std::path::Path,
+        args: Vec<Value>,
+        requested: usize,
+        targets: Option<&[Option<String>]>,
+        out: &mut Execution,
+    ) -> Result<Vec<Value>> {
+        match self.prv_bound_function(name, file)? {
+            Some(function) => self.call_user(function, args, requested, targets, out),
+            None => Err(format!("Undefined function or variable '{name}'.")),
+        }
+    }
+    pub(super) fn call_user(
+        &mut self,
+        function: super::user_functions::ResolvedFunction,
+        args: Vec<Value>,
+        requested: usize,
+        targets: Option<&[Option<String>]>,
+        out: &mut Execution,
+    ) -> Result<Vec<Value>> {
+        if args.len() > function.input_count()
+            && !function.variadic()
+            && !function.has_nv_or_repeating()
+        {
+            return Err("Too many input arguments.".into());
+        }
+        // A function without outputs is called for effect, as with nargout=0.
+        let requested = if requested == 1 && function.output_count() == 0 {
+            0
+        } else {
+            requested
+        };
+        self.invoke_function(function, args, requested, targets, out)
+    }
     /// `@pi` and friends name the builtin, so workspace variables never shadow it.
     fn builtin_constant(&self, name: &str) -> Result<Option<Value>> {
         Ok(Some(match name {
@@ -364,10 +620,12 @@ impl Engine {
             _ => return Ok(None),
         }))
     }
+    #[allow(clippy::too_many_arguments)]
     fn call_anonymous(
         &mut self,
         function: &AnonymousFunction,
         captured: &[(String, Array)],
+        made_in: Option<&HandleScope>,
         args: Vec<Value>,
         requested: usize,
         targets: Option<&[Option<String>]>,
@@ -435,7 +693,10 @@ impl Engine {
             }
         }
         // Frames parked on the Rust stack count against the retained budget.
-        let retained = self.evaluated_elements.saturating_mul(8);
+        let mut retained = self.evaluated_elements.saturating_mul(8);
+        if self.functions.lng.nested_frame().is_some() {
+            retained = retained.saturating_add(self.obj_workspace_frame_bytes());
+        }
         if self.functions.retained_bytes.saturating_add(retained) > MAX_RETAINED_BYTES {
             return Err(
                 "Retained function caller workspaces/evaluation estimates exceed 256 MiB".into(),
@@ -447,6 +708,7 @@ impl Engine {
         let caller_logical = std::mem::replace(&mut self.logical_variables, logical);
         let caller_complex = std::mem::replace(&mut self.complex_variables, complex);
         let caller_containers = std::mem::replace(&mut self.container_variables, containers);
+        let before_park = self.nested.bytes;
         self.lng_enter(
             super::lang_more::LngWorkspace {
                 numeric: caller_numeric,
@@ -457,8 +719,12 @@ impl Engine {
             "::<anonymous>".into(),
             Vec::new(),
         );
+        let retained = retained - (self.nested.bytes - before_park);
         let caller_arguments = self.functions.arguments.take();
         let caller_current = self.functions.current.take();
+        // Names in the body are looked up where the handle was made. Entered
+        // after the caller's workspace was parked with its own context.
+        let caller_lookup = made_in.map(|scope| self.ctx_enter_handle(scope));
         let caller_evaluated = self.evaluated_elements;
         self.functions.retained_bytes += retained;
         let result = if requested >= 2 {
@@ -471,6 +737,8 @@ impl Engine {
                 }
             };
             self.eval_outputs(&function.body, targets, out)
+        } else if requested == 0 {
+            eval_anonymous_zero_out(self, &function.body, out)
         } else {
             self.eval(&function.body, None, out).map(|value| {
                 if matches!(value, Value::Void) {
@@ -486,6 +754,9 @@ impl Engine {
         self.logical_variables = caller.logical;
         self.complex_variables = caller.complex;
         self.container_variables = caller.containers;
+        if let Some(lookup) = caller_lookup {
+            self.ctx_leave_handle(lookup);
+        }
         self.functions.arguments = caller_arguments;
         self.functions.current = caller_current;
         self.evaluated_elements = caller_evaluated;
@@ -549,6 +820,8 @@ impl Engine {
         targets: Option<&[Option<String>]>,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        super::nd::guard(name, args)?;
+        super::string_class::guard(name, args)?;
         match name {
             "func2str" => {
                 let [Value::Container(Array::Handle(handle))] = args else {
@@ -576,21 +849,73 @@ impl Engine {
     fn str2func(&mut self, text: &str) -> Result<Vec<Value>> {
         if text.starts_with('@') {
             return Ok(vec![match syntax::parse_expression(text)? {
-                Expr::Anonymous(function) => self.anonymous_handle(&function, false)?,
-                Expr::FunctionHandle(name) => self.named_handle(&name)?,
+                // Text of an anonymous function sees no local or private
+                // function of the code that made it, wherever it is called.
+                Expr::Anonymous(function) => {
+                    let scope = self.ctx_handle_scope(false, None);
+                    self.anf_handle(&function, false, Some(scope))?
+                }
+                Expr::FunctionHandle(name) => self.lg3_named_handle(&name)?,
                 _ => return Err("str2func: expected @name or @(args) expression".into()),
             }]);
         }
-        if !crate::files::valid_name(text) {
+        if !crate::files::valid_name(text) && !super::user_functions::pkg_name(text) {
             return Err(format!("str2func: invalid function name '{text}'"));
         }
-        Ok(vec![self.named_handle(text)?])
+        Ok(vec![self.lg3_named_handle(text)?])
+    }
+    /// Bind a named handle once lexical nested functions have been checked.
+    /// An imported name: the package-qualified name. A
+    /// function of the running source: that source (a local function with
+    /// its file, so `functions` reports it; the main function of a private
+    /// or package file as that private file or qualified name, so the
+    /// handle outlasts the call). A private function of the running file's
+    /// folder: the private file. Anything else: none of those, wherever the
+    /// handle is called later (`FunctionHandle::global`).
+    pub(super) fn prv_named_handle(&mut self, name: &str) -> Result<Value> {
+        Self::validate_handle_name(name)?;
+        let handle = if let Some(qualified) = self.imp_qualified(name)? {
+            FunctionHandle::global(&qualified)
+        } else if let Some(file) = self.lg3_local_file(name) {
+            FunctionHandle::local_in(name, &file, self.ctx_handle_scope(true, None))
+        } else if let Some(file) = self.ctx_own_source(name) {
+            // The folders above the file, innermost first.
+            let folders = || {
+                file.iter()
+                    .flat_map(|file| file.ancestors().skip(1))
+                    .map_while(|folder| folder.file_name()?.to_str())
+            };
+            let packages: Vec<&str> = folders()
+                .map_while(|folder| folder.strip_prefix('+'))
+                .collect();
+            match &file {
+                Some(file) if folders().next() == Some("private") => {
+                    FunctionHandle::private(name, file)
+                }
+                Some(_) if !packages.is_empty() => {
+                    let mut qualified: Vec<&str> = packages.into_iter().rev().collect();
+                    qualified.push(name);
+                    FunctionHandle::global(&qualified.join("."))
+                }
+                _ => FunctionHandle::source(name, file.as_deref()),
+            }
+        } else if let Some(handle) = self.prv_handle(name)? {
+            handle
+        } else {
+            FunctionHandle::global(name)
+        };
+        Ok(Value::Container(handle.into()))
     }
     fn callee(name: &str, value: &Value) -> Result<Callee> {
         match value {
             Value::Container(Array::Handle(handle)) => Ok(Callee::Handle(handle.clone())),
             other => match text_of(other) {
-                Some(text) if crate::files::valid_name(&text) => Ok(Callee::Name(text)),
+                Some(text)
+                    if crate::files::valid_name(&text)
+                        || super::user_functions::pkg_name(&text) =>
+                {
+                    Ok(Callee::Name(text))
+                }
                 _ => Err(format!(
                     "{name}: the first argument must be a function handle or function name"
                 )),
@@ -810,10 +1135,27 @@ impl Engine {
                         .into(),
                 )
             }
+            Array::Str(s) => super::string_class::value(crate::StringArray::new(
+                1,
+                1,
+                vec![s.data()[index].clone()],
+            )?),
             Array::Handle(_) => Value::Container(array.clone()),
             Array::Typed(t) => Value::Container(t.select(1, 1, &[index])?.into()),
+            Array::Categorical(t) => Value::Container(t.select(1, 1, &[index])?.into()),
+            Array::Datetime(t) => Value::Container(t.select(1, 1, &[index])?.into()),
+            Array::Duration(t) => Value::Container(t.select(1, 1, &[index])?.into()),
             Array::Struct(s) => Value::Container(s.select(1, 1, &[index], &self.cancel)?.into()),
             Array::Graphics(_) => return Err("graphics handle arrays are not supported yet".into()),
+            Array::Table(_) => {
+                return Err(
+                    "table: arrayfun and cellfun over a table are not supported yet".into(),
+                );
+            }
+            Array::Sparse(s) => {
+                let rows = s.rows().max(1);
+                Value::Matrix(Matrix::scalar(s.get(index % rows, index / rows)))
+            }
         })
     }
     fn push_uniform(
@@ -848,6 +1190,19 @@ impl Engine {
             )
         };
         match (column.as_mut(), &array) {
+            (None, Array::Str(s)) => {
+                *column = Some(Column::Str {
+                    values: vec![s.data()[0].clone()],
+                    bytes: s.data()[0].as_ref().map_or(0, |v| v.len()),
+                })
+            }
+            (Some(Column::Str { values, bytes }), Array::Str(s)) => {
+                super::string_class::str_charge_text(
+                    bytes,
+                    s.data()[0].as_ref().map_or(0, |v| v.len()),
+                )?;
+                values.push(s.data()[0].clone());
+            }
             (None, Array::Numeric(m)) => *column = Some(Column::Real(vec![m.data()[0]])),
             (None, Array::Logical(m)) => *column = Some(Column::Logical(vec![m.data()[0]])),
             (None, Array::Complex(m)) => *column = Some(Column::Complex(vec![m.data()[0]])),
@@ -909,6 +1264,9 @@ impl Engine {
     }
     fn finish_column(&self, column: Option<Column>, rows: usize, cols: usize) -> Result<Value> {
         Ok(match column {
+            Some(Column::Str { values, .. }) => {
+                super::string_class::value(crate::StringArray::new(rows, cols, values)?)
+            }
             None => Value::Matrix(Matrix::from_column_vec(rows, cols, Vec::new())?),
             Some(Column::Real(v)) => Value::Matrix(Matrix::from_column_vec(rows, cols, v)?),
             Some(Column::Logical(v)) => {
@@ -954,10 +1312,15 @@ impl Engine {
             let item = cells.get_linear(i)?;
             match name {
                 "isempty" => flags.push(u8::from(item.is_empty())),
-                // Characters and logicals are real; complex storage, cells and handles are not.
+                // Real numeric storage (double, integer, single, real sparse),
+                // char and logical are real. Complex storage, cells and handles are not.
                 "isreal" => flags.push(u8::from(matches!(
                     item.as_ref(),
-                    Array::Numeric(_) | Array::Logical(_) | Array::Character(_)
+                    Array::Numeric(_)
+                        | Array::Logical(_)
+                        | Array::Character(_)
+                        | Array::Typed(_)
+                        | Array::Sparse(_)
                 ))),
                 "islogical" => flags.push(u8::from(item.is_logical())),
                 "length" => numbers.push(if item.is_empty() {
@@ -981,4 +1344,100 @@ impl Engine {
             Ok(Value::Matrix(Matrix::from_column_vec(rows, cols, numbers)?))
         }
     }
+}
+
+/// Evaluate an anonymous function body with `nargout == 0` (MATLAB callback /
+/// statement semantics). A parenthesized call (`Expr::Call` or `Expr::Apply`)
+/// of a zero-output function, function handle, `feval`, or `eval` runs with 0
+/// requested outputs. A bare name is a value: a function-handle variable is
+/// returned, not called.
+fn eval_anonymous_statement(
+    engine: &mut Engine,
+    body: &Expr,
+    out: &mut Execution,
+) -> Result<Vec<Value>> {
+    let statement = crate::syntax::Evaluation {
+        targets: Vec::new(),
+        indexed_target: None,
+        cell_content_target: false,
+        path_target: None,
+        list_target: None,
+        expr: body.clone(),
+        quiet: true,
+    };
+    let saved_ans = engine.array("ans");
+    engine.remove_array("ans");
+    let result = (|| {
+        if !engine.lng_statement(&statement, out)? && !engine.lg3_statement(&statement, out)? {
+            engine.execute_evaluation(&statement, out)?;
+        }
+        Ok(())
+    })();
+    let value = engine.array("ans");
+    engine.remove_array("ans");
+    if let Some(saved) = saved_ans {
+        engine.insert_array("ans", saved)?;
+    }
+    result.map(|()| value.map(Value::from).into_iter().collect())
+}
+
+fn eval_anonymous_zero_out(
+    engine: &mut Engine,
+    body: &Expr,
+    out: &mut Execution,
+) -> Result<Vec<Value>> {
+    if let Expr::Apply(base, args) = body {
+        let base = engine.eval(base, None, out)?;
+        return match base {
+            Value::Container(Array::Handle(handle)) => {
+                let values = engine.function_arguments(args, None, out)?;
+                engine.call_handle(&handle, values, 0, None, out)
+            }
+            _ => Err(
+                "Indexing the result of a call is not supported yet; assign it to a variable first"
+                    .into(),
+            ),
+        };
+    }
+    if let Expr::Call(name, args) = body {
+        let name = name.as_str();
+        if let Some(handle) = engine.handle_variable(name) {
+            let values = engine.function_arguments(args, None, out)?;
+            return engine.call_handle(&handle, values, 0, None, out);
+        }
+        if !engine.contains_array(name) {
+            if let Some(function) = engine.resolve_function(name)? {
+                let values = engine.function_arguments(args, None, out)?;
+                engine.lng_note_inputs(args, values.len());
+                return engine.invoke_function(function, values, 0, None, out);
+            }
+            if name == "feval" {
+                let values = engine.function_arguments(args, None, out)?;
+                if let Some(value) = engine.lg3_feval(&values, out)? {
+                    return Ok(if matches!(value, Value::Void) {
+                        Vec::new()
+                    } else {
+                        vec![value]
+                    });
+                }
+                return engine.handle_builtin(name, &values, 0, None, out);
+            }
+            if name == "eval" {
+                let values = super::string_class::arguments(engine, name, args, out)?;
+                engine.langx_eval(&values, false, out)?;
+                return Ok(Vec::new());
+            }
+            // Builtins run as a quiet statement, so zero-output commands
+            // (delete, uiwait, save, disp, ...) work as callbacks; a value the
+            // statement leaves in `ans` is still returned.
+            return eval_anonymous_statement(engine, body, out);
+        }
+    }
+    engine.eval(body, None, out).map(|value| {
+        if matches!(value, Value::Void) {
+            Vec::new()
+        } else {
+            vec![value]
+        }
+    })
 }

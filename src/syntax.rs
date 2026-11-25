@@ -1,6 +1,12 @@
 use crate::Result;
+mod class_decl;
+mod command_syntax;
 mod file_commands;
 mod function_decl;
+pub use class_decl::{
+    Access, ClassDefinition, ClassFileError, EnumMember, MethodAttributes, MethodBlock, Property,
+    PropertyAttributes, PropertyBlock, is_class_file, parse_class_file,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
@@ -17,6 +23,7 @@ pub enum Token {
     Power,
     DotStar,
     DotSlash,
+    DotBackslash,
     DotPower,
     Transpose,
     NonConjugateTranspose,
@@ -58,6 +65,9 @@ pub enum Expr {
     Number(f64),
     Imaginary(f64),
     Name(String),
+    /// A `Name=Value` argument. It becomes the text name only when a call is
+    /// evaluated; indexing must reject it rather than treating it as text.
+    NameValue(String),
     String(String),
     DoubleQuoted(String),
     All,
@@ -138,6 +148,11 @@ pub enum StatementKind {
         values: Expr,
         body: Vec<Statement>,
     },
+    /// Serial execution of parfor/spmd after evaluating their worker arguments.
+    SerialBlock {
+        arguments: Vec<Expr>,
+        body: Vec<Statement>,
+    },
     Try {
         body: Vec<Statement>,
         /// `catch err` identifier, if any.
@@ -159,11 +174,46 @@ pub struct SwitchCase {
     pub body: Vec<Statement>,
     pub byte: usize,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArgumentsKind {
+    Input,
+    Output,
+    Repeating,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ArgDim {
+    Fixed(usize),
+    Colon,
+}
+#[derive(Clone, Debug)]
+pub struct ArgValidator {
+    pub name: String,
+    pub args: Vec<Expr>,
+    pub byte: usize,
+}
+#[derive(Clone, Debug)]
+pub struct ArgumentSpec {
+    /// For name-value arguments (`opts.Name`), `group` is `Some("opts")` and `name` is `"Name"`.
+    pub group: Option<String>,
+    pub name: String,
+    pub dims: Option<Vec<ArgDim>>,
+    pub class_name: Option<String>,
+    pub validators: Vec<ArgValidator>,
+    pub default: Option<Expr>,
+    pub byte: usize,
+}
+#[derive(Clone, Debug)]
+pub struct ArgumentsBlock {
+    pub kind: ArgumentsKind,
+    pub specs: Vec<ArgumentSpec>,
+    pub byte: usize,
+}
 #[derive(Clone, Debug)]
 pub struct FunctionDefinition {
     pub name: String,
     pub inputs: Vec<Option<String>>,
     pub outputs: Vec<String>,
+    pub arguments: Vec<ArgumentsBlock>,
     pub body: Vec<Statement>,
     pub explicit_end: bool,
 }
@@ -273,13 +323,88 @@ impl std::fmt::Display for Diagnostic {
     }
 }
 
+/// The byte where the line holding `at` breaks (or the end of input).
+fn line_end(b: &[u8], mut at: usize) -> usize {
+    while at < b.len() && line_break_len(b, at) == 0 {
+        at += 1;
+    }
+    at
+}
+/// The line around `at` holds only blanks besides `marker` (`%{` or `%}`),
+/// which starts at `at`.
+fn lone_marker(b: &[u8], at: usize, marker: &[u8]) -> bool {
+    let blank = |c: &u8| matches!(c, b' ' | b'\t');
+    let line_start = b[..at]
+        .iter()
+        .rposition(|c| !blank(c))
+        .is_none_or(|before| matches!(b[before], b'\n' | b'\r'));
+    let end = line_end(b, at);
+    line_start && b[at..end].starts_with(marker) && b[at + marker.len()..end].iter().all(blank)
+}
+/// A `%{` alone on its line (blanks allowed) opens a block comment; with any
+/// other text on the line it is an ordinary `%` comment.
+fn block_comment_opens(b: &[u8], at: usize) -> bool {
+    lone_marker(b, at, b"%{")
+}
+/// For a block comment opening at `at`: the byte after the matching `%}`
+/// (before its line break) and whether it closed. Block comments nest: each
+/// inner lone `%{` line needs its own lone `%}` line. Unclosed, the comment
+/// runs to the end of input.
+fn block_comment_end(b: &[u8], at: usize) -> (usize, bool) {
+    let mut depth = 1usize;
+    let mut i = line_end(b, at);
+    while i < b.len() {
+        i += line_break_len(b, i);
+        let start = i + b[i..]
+            .iter()
+            .take_while(|c| matches!(c, b' ' | b'\t'))
+            .count();
+        i = line_end(b, i);
+        if lone_marker(b, start, b"%{") {
+            depth += 1;
+        } else if lone_marker(b, start, b"%}") {
+            depth -= 1;
+            if depth == 0 {
+                return (i, true);
+            }
+        }
+    }
+    (b.len(), false)
+}
+
 fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
+    lex_in(source, error_byte, command_syntax::Scope::new(true, None))
+}
+/// Lex with command syntax decided by `scope` (see `command_syntax`).
+fn lex_in(
+    source: &str,
+    error_byte: &mut usize,
+    mut scope: command_syntax::Scope,
+) -> Result<Vec<Spanned>> {
+    let first = lex_scoped_tokens(source, error_byte, &mut scope);
+    if let Some(mut nested) = scope.nested_pass(first.is_err()) {
+        let first_byte = *error_byte;
+        let result = lex_scoped_tokens(source, error_byte, &mut nested);
+        if first.is_ok() || nested.ends_balanced() {
+            return result;
+        }
+        *error_byte = first_byte;
+    }
+    first
+}
+
+fn lex_scoped_tokens(
+    source: &str,
+    error_byte: &mut usize,
+    scope: &mut command_syntax::Scope,
+) -> Result<Vec<Spanned>> {
     let b = source.as_bytes();
     let mut i = 0;
     let mut tokens = Vec::new();
     let mut delimiters = Vec::new();
     let mut anonymous_params = Vec::new();
     let mut after_anonymous_params = false;
+    let mut condition_header = false;
     while i < b.len() {
         let start = i;
         *error_byte = start;
@@ -288,9 +413,11 @@ fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
             continue;
         }
         if b[i] == b'%' {
-            while i < b.len() && line_break_len(b, i) == 0 {
-                i += 1;
-            }
+            i = if block_comment_opens(b, i) {
+                block_comment_end(b, i).0
+            } else {
+                line_end(b, i)
+            };
             continue;
         }
         if b[i..].starts_with(b"...") {
@@ -307,7 +434,7 @@ fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
             while i < b.len() && b[i].is_ascii_digit() {
                 i += 1;
             }
-            if b.get(i) == Some(&b'.') && !b.get(i + 1).is_some_and(|v| b"*/^'".contains(v)) {
+            if b.get(i) == Some(&b'.') && !b.get(i + 1).is_some_and(|v| b"*/\\^'".contains(v)) {
                 i += 1;
                 while i < b.len() && b[i].is_ascii_digit() {
                     i += 1;
@@ -455,6 +582,7 @@ fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
                         match next {
                             b'*' => Token::DotStar,
                             b'/' => Token::DotSlash,
+                            b'\\' => Token::DotBackslash,
                             b'^' => Token::DotPower,
                             b'\'' => Token::NonConjugateTranspose,
                             _ => {
@@ -466,14 +594,38 @@ fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
                 _ => return Err("Unsupported character".into()),
             }
         };
-        let file_command = delimiters.is_empty()
-            && tokens
-                .last()
-                .is_none_or(|t| matches!(t.token, Token::Newline | Token::Semi | Token::Comma))
-            && matches!(&token, Token::Name(name) if matches!(name.as_str(), "save" | "load" | "savefig" | "openfig" | "clear" | "help" | "doc" | "who" | "cd" | "dir" | "ls" | "mkdir" | "rmdir" | "copyfile" | "movefile" | "delete" | "pause" | "ver" | "clearvars" | "diary" | "which" | "what"))
-            && (file_commands::arguments(source, i)
-                || matches!(&token, Token::Name(name) if matches!(name.as_str(), "dir" | "ls" | "delete" | "copyfile" | "movefile"))
-                    && file_commands::envx_wildcard_argument(source, i));
+        let after_separator = tokens.last().is_none_or(|t| is_separator(&t.token));
+        // The lexer only needs the unambiguous starts that affect command syntax
+        // or assignment targets. The parser consumes the full condition first.
+        let after_condition = condition_header
+            && delimiters.is_empty()
+            && !after_anonymous_params
+            && tokens.last().is_some_and(|t| t.token == Token::RParen)
+            && (matches!(&token, Token::Name(name) if !ends_block(name))
+                || token == Token::LBracket);
+        let file_command = !scope.in_declaration_block()
+            && delimiters.is_empty()
+            && (after_separator || after_condition)
+            && matches!(&token, Token::Name(name) if file_commands::is_command_name(name)
+                && !scope.is_variable(name)
+                && (name != "print" || file_commands::print_arguments(source, i))
+                && (file_commands::arguments(name, source, i)
+                    || matches!(name.as_str(), "dir" | "ls" | "delete" | "copyfile" | "movefile")
+                        && file_commands::envx_wildcard_argument(source, i)));
+        // A statement can also follow `try`, `catch`, `else` or `otherwise`.
+        let statement_start = delimiters.is_empty()
+            && (after_separator
+                || after_condition
+                || tokens.last().is_some_and(|t| matches!(&t.token, Token::Name(n) if matches!(n.as_str(), "try" | "catch" | "else" | "otherwise"))));
+        if statement_start || delimiters.is_empty() && is_separator(&token) {
+            condition_header = statement_start
+                && matches!(&token, Token::Name(name) if matches!(name.as_str(), "if" | "elseif" | "while"));
+        }
+        // Any other name: MATLAB command syntax (`format long g`, `myfn a b`).
+        let command = !file_command
+            && statement_start
+            && matches!(&token, Token::Name(name) if !file_commands::is_command_name(name) && scope.command(source, name, i));
+        let raw_command = command && matches!(&token, Token::Name(name) if name == "disp");
         after_anonymous_params = false;
         match &token {
             Token::LParen => {
@@ -504,8 +656,11 @@ fn lex(source: &str, error_byte: &mut usize) -> Result<Vec<Spanned>> {
             start,
             end: i,
         });
+        scope.observe(&tokens, statement_start, &delimiters, source, i);
         if file_command {
             file_commands::lex(source, &mut i, &mut tokens, error_byte)?;
+        } else if command {
+            command_syntax::lex(source, &mut i, &mut tokens, error_byte, raw_command)?;
         }
         if tokens.len() > 100_000 {
             return Err("Script exceeds 100000 tokens".into());
@@ -537,7 +692,11 @@ impl Parser {
     /// `int64(9007199254740993)`: the reference keeps an integer literal above 2^53
     /// exact inside `int64`/`uint64`, so the digits go to a hidden constructor.
     fn exact_integer_literal(&mut self, name: &str) -> Option<Expr> {
-        if !matches!(name, "int64" | "uint64") || self.peek() != &Token::LParen {
+        if !matches!(name, "int64" | "uint64")
+            || self.peek() != &Token::LParen
+            || (self.matrix_depth > 0
+                && self.tokens[self.pos].start != self.tokens[self.pos - 1].end)
+        {
             return None;
         }
         let number = self.tokens.get(self.pos + 1)?;
@@ -595,6 +754,51 @@ impl Parser {
         }
         false
     }
+    /// After a name: `@Super` written directly against it (no spaces), as in
+    /// classdef `obj@Super(args)` or `obj@pkg.A(args)`. The superclass may be
+    /// a package class (`pkg.A`, `a.b.A`): dots tight against the name are
+    /// part of it, not a field. Returns that name.
+    fn superclass_reference(&mut self) -> Option<String> {
+        let at = self.tokens.get(self.pos)?;
+        let base = self.tokens.get(self.pos + 1)?;
+        if at.token != Token::At
+            || self.pos == 0
+            || at.start != self.tokens[self.pos - 1].end
+            || base.start != at.end
+        {
+            return None;
+        }
+        let Token::Name(first) = &base.token else {
+            return None;
+        };
+        let mut name = first.clone();
+        let mut end = base.end;
+        let mut next = self.pos + 2;
+        while let (Some(dot), Some(part)) = (self.tokens.get(next), self.tokens.get(next + 1)) {
+            let Token::Name(part_name) = &part.token else {
+                break;
+            };
+            if dot.token != Token::Dot
+                || dot.start != end
+                || part.start != dot.end
+                || keyword(part_name)
+                || !crate::files::valid_name(part_name)
+                || name.len() + 1 + part_name.len() > 256
+                || name.bytes().filter(|b| *b == b'.').count() >= 7
+            {
+                break;
+            }
+            name.push('.');
+            name.push_str(part_name);
+            end = part.end;
+            next += 2;
+        }
+        let taken = next - self.pos;
+        for _ in 0..taken {
+            self.take();
+        }
+        Some(name)
+    }
     fn expr(&mut self, min: u8) -> Result<Expr> {
         self.error_byte = self.tokens[self.pos].start;
         self.nodes += 1;
@@ -619,7 +823,22 @@ impl Parser {
                 }
                 if let Some(literal) = self.exact_integer_literal(&name) {
                     literal
-                } else if matches!(self.peek(), Token::LParen | Token::LBrace) {
+                } else if let Some(base) = self.superclass_reference() {
+                    // classdef `obj@Super(args)` / `method@Super(obj, ...)`:
+                    // a call named `name@Super`, which no lexer name can spell.
+                    let args = if *self.peek() == Token::LParen
+                        && self.tokens[self.pos].start == self.tokens[self.pos - 1].end
+                    {
+                        self.take();
+                        self.arguments(false)?
+                    } else {
+                        Vec::new()
+                    };
+                    Expr::Call(format!("{name}@{base}"), args)
+                } else if matches!(self.peek(), Token::LParen | Token::LBrace)
+                    && (self.matrix_depth == 0
+                        || self.tokens[self.pos].start == self.tokens[self.pos - 1].end)
+                {
                     let content = self.take() == Token::LBrace;
                     let args = self.arguments(content)?;
                     if content {
@@ -761,7 +980,8 @@ impl Parser {
                 | Token::Slash
                 | Token::Backslash
                 | Token::DotStar
-                | Token::DotSlash => 30,
+                | Token::DotSlash
+                | Token::DotBackslash => 30,
                 Token::Power | Token::DotPower => 40,
                 _ => break,
             };
@@ -804,8 +1024,35 @@ impl Parser {
         let old = self.matrix_depth;
         self.matrix_depth = 0;
         let mut args = Vec::new();
+        let mut seen_name_value = false;
         if *self.peek() != closing {
             loop {
+                // Keep Name=Value distinct from a text argument until the
+                // evaluator knows whether this is a call or an index.
+                let name_value = !content
+                    && matches!(self.peek(), Token::Name(name) if crate::files::valid_name(name) && !keyword(name))
+                    && self
+                        .tokens
+                        .get(self.pos + 1)
+                        .is_some_and(|t| t.token == Token::Eq);
+                if seen_name_value && !name_value {
+                    return Err("Positional arguments cannot follow Name=Value arguments".into());
+                }
+                if name_value {
+                    let Token::Name(name) = self.take() else {
+                        unreachable!()
+                    };
+                    self.take();
+                    self.nodes += 1;
+                    if self.nodes > 256 {
+                        return Err("Statement exceeds 256 expression nodes; split it into smaller statements".into());
+                    }
+                    args.push(Expr::NameValue(name));
+                    if *self.peek() == Token::RParen {
+                        return Err("Name=Value arguments require a value".into());
+                    }
+                    seen_name_value = true;
+                }
                 args.push(self.expr(0)?);
                 if *self.peek() != Token::Comma {
                     break;
@@ -820,8 +1067,20 @@ impl Parser {
     /// After `@`: a named handle or an anonymous function.
     fn function_handle(&mut self) -> Result<Expr> {
         match self.peek().clone() {
-            Token::Name(name) if !keyword(&name) => {
+            Token::Name(mut name) if !keyword(&name) => {
                 self.take();
+                // `@pkg.sub.name`: a handle to a package function, written
+                // without spaces.
+                while *self.peek() == Token::Dot
+                    && self.tokens[self.pos].start == self.tokens[self.pos - 1].end
+                    && let Some(Token::Name(part)) = self.tokens.get(self.pos + 1).map(|t| &t.token)
+                    && !keyword(part)
+                    && name.len() + part.len() < 256
+                {
+                    name.push('.');
+                    name.push_str(part);
+                    self.pos += 2;
+                }
                 Ok(Expr::FunctionHandle(name))
             }
             Token::LParen => {
@@ -883,99 +1142,86 @@ impl Parser {
             }
         }
     }
-    fn cell_literal(&mut self) -> Result<Expr> {
+    fn matrix_rows(&mut self, close: Token) -> Result<Vec<Vec<Expr>>> {
         self.matrix_depth += 1;
-        let mut rows = Vec::new();
-        let mut row = Vec::new();
-        while matches!(self.peek(), Token::Newline) {
-            self.take();
-        }
-        if *self.peek() == Token::RBrace {
-            self.take();
-            self.matrix_depth -= 1;
-            return Ok(Expr::CellLiteral(rows));
-        }
-        loop {
-            row.push(self.expr(0)?);
-            match self.peek() {
-                Token::RBrace => {
+        let result = (|| {
+            let mut rows = Vec::new();
+            let mut row = Vec::new();
+            while matches!(self.peek(), Token::Newline | Token::Semi) {
+                self.take();
+            }
+            if *self.peek() == Token::Comma {
+                self.take();
+                while matches!(self.peek(), Token::Newline | Token::Semi) {
+                    self.take();
+                }
+            }
+            if *self.peek() == close {
+                self.take();
+                return Ok(rows);
+            }
+            loop {
+                row.push(self.expr(0)?);
+                if *self.peek() == close {
                     self.take();
                     rows.push(row);
                     break;
                 }
-                Token::Comma => {
-                    self.take();
-                }
-                Token::Semi | Token::Newline => {
-                    self.take();
-                    rows.push(row);
-                    row = Vec::new();
-                    while matches!(self.peek(), Token::Newline | Token::Semi) {
+                match self.peek() {
+                    Token::Comma => {
                         self.take();
+                        while matches!(self.peek(), Token::Newline) {
+                            self.take();
+                        }
+                        if *self.peek() == close {
+                            self.take();
+                            rows.push(row);
+                            break;
+                        }
+                        if *self.peek() == Token::Semi {
+                            self.take();
+                            rows.push(row);
+                            row = Vec::new();
+                            while matches!(self.peek(), Token::Newline | Token::Semi) {
+                                self.take();
+                            }
+                            if *self.peek() == close {
+                                self.take();
+                                break;
+                            }
+                        }
                     }
-                    if *self.peek() == Token::RBrace {
+                    Token::Semi | Token::Newline => {
                         self.take();
-                        break;
+                        rows.push(row);
+                        row = Vec::new();
+                        while matches!(self.peek(), Token::Newline | Token::Semi) {
+                            self.take();
+                        }
+                        if *self.peek() == close {
+                            self.take();
+                            break;
+                        }
                     }
-                }
-                _ => {
-                    if self.tokens[self.pos].start == self.tokens[self.pos - 1].end {
-                        self.error_byte = self.tokens[self.pos].start;
-                        return Err("Expected a matrix separator".into());
+                    _ => {
+                        if self.tokens[self.pos].start == self.tokens[self.pos - 1].end {
+                            self.error_byte = self.tokens[self.pos].start;
+                            return Err("Expected a matrix separator".into());
+                        }
+                        self.implicit_commas.insert(self.pos);
                     }
-                    self.implicit_commas.insert(self.pos);
                 }
             }
-        }
+            Ok(rows)
+        })();
         self.matrix_depth -= 1;
-        Ok(Expr::CellLiteral(rows))
+        result
+    }
+    fn cell_literal(&mut self) -> Result<Expr> {
+        Ok(Expr::CellLiteral(self.matrix_rows(Token::RBrace)?))
     }
     fn matrix(&mut self) -> Result<Expr> {
-        self.matrix_depth += 1;
-        let mut rows = Vec::new();
-        let mut row = Vec::new();
-        while matches!(self.peek(), Token::Newline) {
-            self.take();
-        }
-        if *self.peek() == Token::RBracket {
-            self.take();
-            self.matrix_depth -= 1;
-            return Ok(Expr::Matrix(rows));
-        }
-        loop {
-            row.push(self.expr(0)?);
-            match self.peek() {
-                Token::RBracket => {
-                    self.take();
-                    rows.push(row);
-                    break;
-                }
-                Token::Comma => {
-                    self.take();
-                }
-                Token::Semi | Token::Newline => {
-                    self.take();
-                    rows.push(row);
-                    row = Vec::new();
-                    while matches!(self.peek(), Token::Newline | Token::Semi) {
-                        self.take();
-                    }
-                    if *self.peek() == Token::RBracket {
-                        self.take();
-                        break;
-                    }
-                }
-                _ => {
-                    if self.tokens[self.pos].start == self.tokens[self.pos - 1].end {
-                        self.error_byte = self.tokens[self.pos].start;
-                        return Err("Expected a matrix separator".into());
-                    }
-                    self.implicit_commas.insert(self.pos);
-                }
-            }
-        }
-        self.matrix_depth -= 1;
-        Ok(Expr::Matrix(rows))
+        Ok(Expr::Matrix(self.matrix_rows(Token::RBracket)?))
     }
 }
 /// Parse exactly one expression (used by `str2func`).
@@ -984,7 +1230,7 @@ pub fn parse_expression(source: &str) -> Result<Expr> {
         return Err("Expression text exceeds 65536 bytes".into());
     }
     let mut byte = 0;
-    let tokens = lex(source, &mut byte)?;
+    let tokens = lex_in(source, &mut byte, command_syntax::Scope::new(false, None))?;
     let mut p = Parser {
         tokens,
         pos: 0,
@@ -1007,13 +1253,34 @@ pub fn parse_expression(source: &str) -> Result<Expr> {
 pub fn parse(source: &str) -> Result<Vec<Statement>> {
     parse_detailed(source).map_err(|e| e.to_string())
 }
+/// Parse a script or function file: command syntax (`myfn a b`) applies to
+/// names not assigned earlier in the same code unit.
 pub fn parse_detailed(source: &str) -> std::result::Result<Vec<Statement>, Diagnostic> {
+    parse_scoped(source, None)
+}
+/// Parse Command Window, -batch or eval text: names `is_variable` accepts
+/// (the current workspace) are variables too, so `x -1` subtracts when `x`
+/// exists and calls `x('-1')` otherwise.
+pub fn parse_in_workspace(
+    source: &str,
+    is_variable: &dyn Fn(&str) -> bool,
+) -> std::result::Result<Vec<Statement>, Diagnostic> {
+    parse_scoped(source, Some(is_variable))
+}
+fn parse_scoped(
+    source: &str,
+    workspace: Option<&dyn Fn(&str) -> bool>,
+) -> std::result::Result<Vec<Statement>, Diagnostic> {
     if source.len() > 1_000_000 {
         return Err(Diagnostic::new(source, 0, "Script exceeds 1 MB".into()));
     }
     let mut byte = 0;
-    let tokens =
-        lex(source, &mut byte).map_err(|message| Diagnostic::new(source, byte, message))?;
+    let tokens = lex_in(
+        source,
+        &mut byte,
+        command_syntax::Scope::new(true, workspace),
+    )
+    .map_err(|message| Diagnostic::new(source, byte, message))?;
     let mut p = Parser {
         tokens,
         pos: 0,
@@ -1024,7 +1291,13 @@ pub fn parse_detailed(source: &str) -> std::result::Result<Vec<Statement>, Diagn
         source: source.into(),
         implicit_commas: Default::default(),
     };
-    let result = parse_block(&mut p, 0, false, false).and_then(|statements| {
+    let function_file = p
+        .tokens
+        .iter()
+        .find(|t| !is_separator(&t.token))
+        .is_some_and(|t| matches!(&t.token, Token::Name(n) if n == "function"));
+    let statements = function_decl::parse_file(&mut p, function_file);
+    let result = statements.and_then(|statements| {
         if *p.peek() != Token::Eof {
             p.error_byte = p.tokens[p.pos].start;
             Err(format!("Unexpected block keyword {:?}", p.peek()))
@@ -1040,7 +1313,10 @@ fn assignment_path(mut expr: Expr) -> Result<(String, Vec<PathStep>)> {
     let mut steps = Vec::new();
     let root = loop {
         let subscripts = |args: &[Expr]| {
-            if args.is_empty() || args.len() > 2 {
+            if args.iter().any(|arg| matches!(arg, Expr::NameValue(_))) {
+                return Err("Name=Value syntax is not supported for indexing".to_owned());
+            }
+            if args.is_empty() || args.len() > 32 {
                 Err("Indexed assignment requires one or two subscripts".to_owned())
             } else {
                 Ok(())
@@ -1082,15 +1358,32 @@ fn assignment_path(mut expr: Expr) -> Result<(String, Vec<PathStep>)> {
     steps.reverse();
     Ok((root, steps))
 }
+fn is_separator(token: &Token) -> bool {
+    matches!(token, Token::Newline | Token::Semi | Token::Comma)
+}
 fn separator(p: &mut Parser, eof: bool) -> Result<()> {
-    if matches!(p.peek(), Token::Newline | Token::Semi | Token::Comma)
-        || (eof && *p.peek() == Token::Eof)
-    {
+    if is_separator(p.peek()) || (eof && *p.peek() == Token::Eof) {
         Ok(())
     } else {
         p.error_byte = p.tokens[p.pos].start;
         Err("Expected a statement separator".into())
     }
+}
+fn ends_block(name: &str) -> bool {
+    matches!(
+        name,
+        "end" | "elseif" | "else" | "catch" | "case" | "otherwise"
+    )
+}
+fn parse_condition(p: &mut Parser) -> Result<Expr> {
+    let condition = p.expr(0)?;
+    if p.tokens[p.pos - 1].token != Token::RParen
+        || *p.peek() == Token::Eof
+        || matches!(p.peek(), Token::Name(name) if ends_block(name))
+    {
+        separator(p, false)?;
+    }
+    Ok(condition)
 }
 fn end_block(p: &mut Parser) -> Result<()> {
     if matches!(p.peek(), Token::Name(n) if n == "end") {
@@ -1101,12 +1394,7 @@ fn end_block(p: &mut Parser) -> Result<()> {
         Err("Expected 'end' to close the block".into())
     }
 }
-fn parse_block(
-    p: &mut Parser,
-    depth: usize,
-    in_loop: bool,
-    function_body: bool,
-) -> Result<Vec<Statement>> {
+fn parse_block(p: &mut Parser, depth: usize, in_loop: bool) -> Result<Vec<Statement>> {
     if depth > 64 {
         return Err("Control-flow nesting exceeds 64 blocks".into());
     }
@@ -1120,13 +1408,10 @@ fn parse_block(
         let start = p.tokens[p.pos].start;
         p.error_byte = start;
         if let Token::Name(name) = p.peek().clone() {
-            if name == "function" && depth == 0 && function_body {
+            if name == "function" && depth == 0 {
                 break;
             }
-            if matches!(
-                name.as_str(),
-                "end" | "elseif" | "else" | "catch" | "case" | "otherwise"
-            ) {
+            if ends_block(&name) {
                 break;
             }
             let kind = match name.as_str() {
@@ -1149,12 +1434,9 @@ fn parse_block(
                         names,
                     })
                 }
-                "function" if depth == 0 && !function_body => Some(StatementKind::Function(
-                    Box::new(function_decl::parse_function(p)?),
-                )),
                 "function" => {
                     return Err(
-                        "Nested or conditional function definitions are not supported yet".into(),
+                        "Function definitions cannot appear inside a control-flow block".into(),
                     );
                 }
                 "if" => {
@@ -1163,9 +1445,8 @@ fn parse_block(
                     let mut byte = start;
                     loop {
                         p.nodes = 0;
-                        let condition = p.expr(0)?;
-                        separator(p, false)?;
-                        let body = parse_block(p, depth + 1, in_loop, function_body)?;
+                        let condition = parse_condition(p)?;
+                        let body = parse_block(p, depth + 1, in_loop)?;
                         branches.push(ConditionalBranch {
                             condition,
                             body,
@@ -1179,11 +1460,10 @@ fn parse_block(
                     }
                     let otherwise = if matches!(p.peek(), Token::Name(n) if n == "else") {
                         p.take();
-                        // MATLAB's "else if" is a nested if and needs two ends.
-                        if !matches!(p.peek(), Token::Name(n) if n == "if") {
-                            separator(p, false)?;
-                        }
-                        parse_block(p, depth + 1, in_loop, function_body)?
+                        // A statement may follow `else` on its line (`else x = 1`), as after
+                        // `otherwise` and `try`. MATLAB's "else if" is therefore a nested if
+                        // and needs two ends.
+                        parse_block(p, depth + 1, in_loop)?
                     } else {
                         Vec::new()
                     };
@@ -1207,12 +1487,12 @@ fn parse_block(
                         p.nodes = 0;
                         let value = p.expr(0)?;
                         separator(p, false)?;
-                        let body = parse_block(p, depth + 1, in_loop, function_body)?;
+                        let body = parse_block(p, depth + 1, in_loop)?;
                         cases.push(SwitchCase { value, body, byte });
                     }
                     let otherwise = if matches!(p.peek(), Token::Name(n) if n == "otherwise") {
                         p.take();
-                        parse_block(p, depth + 1, in_loop, function_body)?
+                        parse_block(p, depth + 1, in_loop)?
                     } else {
                         Vec::new()
                     };
@@ -1231,28 +1511,70 @@ fn parse_block(
                 }
                 "while" => {
                     p.take();
-                    let condition = p.expr(0)?;
-                    separator(p, false)?;
-                    let body = parse_block(p, depth + 1, true, function_body)?;
+                    let condition = parse_condition(p)?;
+                    let body = parse_block(p, depth + 1, true)?;
                     end_block(p)?;
                     Some(StatementKind::While { condition, body })
                 }
-                "for" => {
+                "for" | "parfor" => {
                     p.take();
+                    // `parfor (k = range, M)`: the worker limit is evaluated and ignored,
+                    // since MatRust runs parfor bodies serially in loop order.
+                    let paren = name == "parfor" && matches!(p.peek(), Token::LParen);
+                    if paren {
+                        p.take();
+                    }
                     let name = match p.take() {
                         Token::Name(n) if !keyword(&n) => n,
                         _ => return Err("A for loop requires a variable name".into()),
                     };
                     p.expect(Token::Eq)?;
                     let values = p.expr(0)?;
+                    let mut arguments = Vec::new();
+                    if paren {
+                        if matches!(p.peek(), Token::Comma) {
+                            p.take();
+                            arguments.push(p.expr(0)?);
+                        }
+                        p.expect(Token::RParen)?;
+                    }
                     separator(p, false)?;
-                    let body = parse_block(p, depth + 1, true, function_body)?;
+                    let body = parse_block(p, depth + 1, true)?;
                     end_block(p)?;
-                    Some(StatementKind::For { name, values, body })
+                    let kind = StatementKind::For { name, values, body };
+                    Some(if arguments.is_empty() {
+                        kind
+                    } else {
+                        StatementKind::SerialBlock {
+                            arguments,
+                            body: vec![Statement {
+                                kind,
+                                span: start..p.tokens[p.pos.saturating_sub(1)].end,
+                            }],
+                        }
+                    })
+                }
+                "spmd" => {
+                    // One serial worker: the body runs once, like `if true`.
+                    p.take();
+                    let mut arguments = Vec::new();
+                    if matches!(p.peek(), Token::LParen) {
+                        p.take();
+                        arguments.push(p.expr(0)?);
+                        if matches!(p.peek(), Token::Comma) {
+                            p.take();
+                            arguments.push(p.expr(0)?);
+                        }
+                        p.expect(Token::RParen)?;
+                    }
+                    separator(p, false)?;
+                    let body = parse_block(p, depth + 1, in_loop)?;
+                    end_block(p)?;
+                    Some(StatementKind::SerialBlock { arguments, body })
                 }
                 "try" => {
                     p.take();
-                    let body = parse_block(p, depth + 1, in_loop, function_body)?;
+                    let body = parse_block(p, depth + 1, in_loop)?;
                     let (error, handler) = if matches!(p.peek(), Token::Name(n) if n == "catch") {
                         p.take();
                         // `catch err` names the error only on the same line, and only when
@@ -1268,7 +1590,7 @@ fn parse_block(
                                 }
                                 _ => None,
                             };
-                        (error, parse_block(p, depth + 1, in_loop, function_body)?)
+                        (error, parse_block(p, depth + 1, in_loop)?)
                     } else {
                         (None, Vec::new())
                     };
@@ -1405,7 +1727,10 @@ fn parse_block(
                 }
                 _ => return Err("Assignment requires a variable name or indexed variable".into()),
             };
-            if args.is_empty() || args.len() > 2 {
+            if args.iter().any(|arg| matches!(arg, Expr::NameValue(_))) {
+                return Err("Name=Value syntax is not supported for indexing".into());
+            }
+            if args.is_empty() || args.len() > 32 {
                 return Err("Indexed assignment requires one or two subscripts".into());
             }
             p.take();
@@ -1414,20 +1739,6 @@ fn parse_block(
         } else {
             None
         };
-        if targets.is_empty()
-            && list_target.is_none()
-            && indexed_target.is_none()
-            && path_target.is_none()
-            && let Expr::Name(command) = &expr
-            && matches!(
-                command.as_str(),
-                "hold" | "grid" | "legend" | "axis" | "close" | "format"
-            )
-            && let Token::Name(option) = p.peek().clone()
-        {
-            p.take();
-            expr = Expr::Call(command.clone(), vec![Expr::String(option)]);
-        }
         let quiet = *p.peek() == Token::Semi;
         if !matches!(
             p.peek(),
@@ -1453,7 +1764,9 @@ fn parse_block(
     Ok(statements)
 }
 
-const BLOCK_OPENERS: [&str; 7] = ["if", "for", "while", "switch", "try", "function", "parfor"];
+const BLOCK_OPENERS: [&str; 8] = [
+    "if", "for", "while", "switch", "try", "function", "parfor", "spmd",
+];
 
 /// Block openers minus `end`s at statement starts outside brackets, for input
 /// the parser stops at because it does not support the block yet (`switch`).
@@ -1482,23 +1795,38 @@ fn open_blocks(tokens: &[Spanned]) -> isize {
 }
 
 /// True when `source` is unfinished input that more lines could complete: an
-/// open block without its `end`, an unclosed bracket or a trailing `...`.
-/// The input is parsed with its open brackets closed and the line break Enter
-/// adds. Its first error must lie in that added text or at the end of input;
-/// an earlier error is real, so the input counts as complete and reports it.
+/// open block without its `end`, an unclosed bracket, a trailing `...` or an
+/// unclosed `%{` block comment. The input is parsed with its open brackets
+/// closed and the line break Enter adds. Its first error must lie in that
+/// added text, at the end of input or at an unclosed bracket (`x [` with a
+/// variable `x` waits for the bracket's contents); an earlier error is real,
+/// so the input counts as complete and reports it. Command syntax is decided
+/// lexically, as in script files; see [`is_incomplete_in_workspace`].
 pub fn is_incomplete(source: &str) -> bool {
+    incomplete(source, None)
+}
+/// [`is_incomplete`] for text run by [`parse_in_workspace`] with the same
+/// `is_variable`: with a workspace variable `x`, `x [` is an expression whose
+/// bracket is open (more lines follow); without one it is the complete
+/// command `x('[')`.
+pub fn is_incomplete_in_workspace(source: &str, is_variable: &dyn Fn(&str) -> bool) -> bool {
+    incomplete(source, Some(is_variable))
+}
+fn incomplete(source: &str, workspace: Option<&dyn Fn(&str) -> bool>) -> bool {
+    let scope = || command_syntax::Scope::new(true, workspace);
     let mut byte = 0;
-    let Ok(tokens) = lex(source, &mut byte) else {
+    let Ok(tokens) = lex_in(source, &mut byte, scope()) else {
         return false;
     };
+    // Closers of the brackets still open at the end, with each opener's byte.
     let mut open = Vec::new();
     for spanned in &tokens {
         match spanned.token {
-            Token::LParen => open.push(Token::RParen),
-            Token::LBracket => open.push(Token::RBracket),
-            Token::LBrace => open.push(Token::RBrace),
+            Token::LParen => open.push((Token::RParen, spanned.start)),
+            Token::LBracket => open.push((Token::RBracket, spanned.start)),
+            Token::LBrace => open.push((Token::RBrace, spanned.start)),
             Token::RParen | Token::RBracket | Token::RBrace
-                if open.pop().as_ref() != Some(&spanned.token) =>
+                if open.pop().map(|(closer, _)| closer).as_ref() != Some(&spanned.token) =>
             {
                 return false;
             }
@@ -1508,7 +1836,7 @@ pub fn is_incomplete(source: &str) -> bool {
     let closers: String = open
         .iter()
         .rev()
-        .map(|token| match token {
+        .map(|(token, _)| match token {
             Token::RParen => ')',
             Token::RBracket => ']',
             _ => '}',
@@ -1517,13 +1845,14 @@ pub fn is_incomplete(source: &str) -> bool {
     // Only blanks, comments and continuations follow the last real token.
     let body = &source[..tokens.iter().rev().nth(1).map_or(0, |last| last.end)];
     // A `...` on the last line swallows the line break Enter adds.
-    let continued = lex(&format!("{source}\n"), &mut byte).is_ok_and(|tokens| {
+    // An unclosed `%{` block comment swallows it too.
+    let continued = lex_in(&format!("{source}\n"), &mut byte, scope()).is_ok_and(|tokens| {
         !tokens
             .iter()
             .any(|t| t.token == Token::Newline && t.end == source.len() + 1)
     });
     let line_break = body.len() + closers.len();
-    match parse_detailed(&format!("{body}{closers}\n")) {
+    match parse_scoped(&format!("{body}{closers}\n"), workspace) {
         Ok(statements) => {
             !closers.is_empty()
                 || continued
@@ -1531,6 +1860,9 @@ pub fn is_incomplete(source: &str) -> bool {
                     .iter()
                     .any(|s| matches!(&s.kind, StatementKind::Function(f) if !f.explicit_end))
         }
+        // A bracket that cannot start here (`x [` for a variable `x`) still
+        // waits for its contents and closer, as other open brackets do.
+        Err(d) if open.iter().any(|(_, start)| *start == d.byte) => true,
         // The parser stops at a block it does not support yet: count blocks.
         Err(d) if d.byte < body.len() => {
             tokens.iter().any(|t| {

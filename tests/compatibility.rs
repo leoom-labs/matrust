@@ -69,7 +69,6 @@ fn malformed_and_oversize_inputs_return_errors() {
         "A=[1 2]; A(0)",
         "A=[1 2]; A(3)",
         "A=[1 2]; A(1.5)",
-        "1:0:3",
         "(1+2",
         "ones()",
     ] {

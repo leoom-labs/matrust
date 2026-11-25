@@ -146,18 +146,29 @@ fn mixed_comparisons_expand_scalars_without_converting_masks() {
         let out = L::compare(left, right, C::Equal, &cancel()).unwrap();
         assert_eq!((out.rows(), out.cols()), (0, 3));
     }
-    // Same count is not enough: nonscalar row/column expansion is not implemented.
     let column = a.reshape(4, 1).unwrap();
-    assert!(L::compare(A::Logical(&a), A::Logical(&column), C::Equal, &cancel()).is_err());
-    assert!(
-        L::compare(
-            A::Logical(&empty),
-            A::Numeric(&numeric(0, 1, &[])),
-            C::Equal,
-            &cancel()
-        )
-        .is_err()
+    let outer = L::compare(A::Logical(&a), A::Logical(&column), C::Equal, &cancel()).unwrap();
+    assert_eq!((outer.rows(), outer.cols()), (4, 4));
+    assert_eq!(
+        outer.data(),
+        &[1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1]
     );
+    let expanded_empty = L::compare(
+        A::Logical(&empty),
+        A::Numeric(&numeric(0, 1, &[])),
+        C::Equal,
+        &cancel(),
+    )
+    .unwrap();
+    assert_eq!((expanded_empty.rows(), expanded_empty.cols()), (0, 3));
+    let err = L::compare(
+        A::Logical(&empty),
+        A::Numeric(&numeric(0, 2, &[])),
+        C::Equal,
+        &cancel(),
+    )
+    .unwrap_err();
+    assert_eq!(err, "Arrays have incompatible sizes for this operation.");
 }
 
 #[test]
@@ -231,9 +242,10 @@ fn boolean_truth_tables_scalar_identities_and_aliases() {
             .data(),
         &[1; 4]
     );
-    assert!(
-        a.combine(&b.reshape(4, 1).unwrap(), B::And, &cancel())
-            .is_err()
+    let incompatible = logical(1, 3, &[0, 1, 0]);
+    assert_eq!(
+        a.combine(&incompatible, B::And, &cancel()).unwrap_err(),
+        "Arrays have incompatible sizes for this operation."
     );
     let empty = logical(3, 0, &[]);
     for op in [B::And, B::Or, B::Xor] {

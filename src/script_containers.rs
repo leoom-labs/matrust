@@ -182,6 +182,7 @@ pub struct CharacterRow {
     rows: usize,
     cols: usize,
     units: Arc<Vec<u16>>,
+    nd: Option<Arc<Vec<usize>>>,
 }
 impl CharacterRow {
     /// Historical constructor: nonempty row, or canonical 0x0 empty.
@@ -210,6 +211,7 @@ impl CharacterRow {
             rows,
             cols,
             units: Arc::new(units),
+            nd: None,
         })
     }
     pub fn rows(&self) -> usize {
@@ -217,6 +219,30 @@ impl CharacterRow {
     }
     pub fn cols(&self) -> usize {
         self.cols
+    }
+    pub fn dims(&self) -> std::borrow::Cow<'_, [usize]> {
+        self.nd.as_deref().map_or_else(
+            || std::borrow::Cow::Owned(vec![self.rows, self.cols]),
+            |dims| std::borrow::Cow::Borrowed(dims.as_slice()),
+        )
+    }
+    pub fn ndims(&self) -> usize {
+        self.nd.as_ref().map_or(2, |dims| dims.len())
+    }
+    pub fn is_nd(&self) -> bool {
+        self.nd.is_some()
+    }
+    pub fn with_dims(&self, dims: &[usize]) -> Result<Self> {
+        check(&AtomicBool::new(false))?;
+        let dims = crate::array::normalize_dims(dims)?;
+        if dims[0] != self.rows
+            || dims[1..].iter().try_fold(1usize, |n, &d| n.checked_mul(d)) != Some(self.cols)
+        {
+            return Err("reshape dimensions do not match folded character storage".into());
+        }
+        let mut result = self.clone();
+        result.nd = (dims.len() > 2).then(|| Arc::new(dims));
+        Ok(result)
     }
     /// Text interpretation never flattens a matrix or a shaped nonrow empty.
     pub fn is_text_row(&self) -> bool {
@@ -231,6 +257,7 @@ impl CharacterRow {
             rows,
             cols,
             units: self.units.clone(),
+            nd: None,
         })
     }
     pub fn replaced(&self, index: usize, unit: u16, cancel: &AtomicBool) -> Result<Self> {
@@ -260,6 +287,7 @@ impl CharacterRow {
             rows: self.rows,
             cols: self.cols,
             units: Arc::new(units),
+            nd: None,
         })
     }
     pub(crate) fn weak_storage(&self) -> std::sync::Weak<Vec<u16>> {

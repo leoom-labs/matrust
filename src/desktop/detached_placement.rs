@@ -472,7 +472,13 @@ impl Registry {
                 state.attempts = 0;
                 state.maximizing = false;
             }
-            let step = if areas.is_empty() {
+            let step = if areas.is_empty() && !cfg!(windows) {
+                // Monitor work areas are read on Windows only (window_monitors).
+                // Elsewhere the OS places the window; docking it back would make
+                // native figure windows impossible on Linux and macOS.
+                state.restore = false;
+                Step::Confirm
+            } else if areas.is_empty() {
                 Step::Dock
             } else {
                 state.step(&areas, root, controls, now, cascade)

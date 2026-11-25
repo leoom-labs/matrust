@@ -17,6 +17,8 @@ pub struct AxesColors {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub y: Option<[f64; 3]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub z: Option<[f64; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<[f64; 3]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xlabel: Option<[f64; 3]>,
@@ -24,11 +26,12 @@ pub struct AxesColors {
     pub ylabel: Option<[f64; 3]>,
 }
 impl AxesColors {
-    fn fields(self) -> [Option<[f64; 3]>; 6] {
+    fn fields(self) -> [Option<[f64; 3]>; 7] {
         [
             self.background,
             self.x,
             self.y,
+            self.z,
             self.title,
             self.xlabel,
             self.ylabel,

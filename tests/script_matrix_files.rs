@@ -108,14 +108,17 @@ fn script_text_rejects_unsupported_options_without_touching_destinations() {
 }
 
 #[test]
-fn strict_numeric_import_never_discards_headers_missing_fields_or_mixed_types() {
+fn strict_numeric_import_rejects_missing_fields_and_mixed_types() {
     let dir = tempfile::tempdir().unwrap();
     let mut e = engine(dir.path());
     e.execute("R=42;").unwrap();
     let path = dir.path().join("bad.csv");
+    std::fs::write(&path, b"time,value\n1,2\n").unwrap();
+    e.execute("R=readmatrix('bad.csv');").unwrap();
+    assert_eq!(e.variables["R"].data(), &[1., 2.]);
+    e.execute("R=42;").unwrap();
     for bytes in [
-        b"time,value\n1,2\n".as_slice(),
-        b"1,\n2,3\n",
+        b"1,\n2,3\n".as_slice(),
         b"1,2\n3,4,5\n",
         b"\"1\",2\n",
         b"1,2;3\n",

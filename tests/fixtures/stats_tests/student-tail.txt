@@ -1,0 +1,3 @@
+SciPy 1.18.1
+direct smaller-tail lower CI -739.427653077057
+rounded upper-probability lower CI -739.4276376865674

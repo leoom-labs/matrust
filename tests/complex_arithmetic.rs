@@ -76,7 +76,7 @@ fn complex_literal_suffixes_precedence_shadowing_and_transposes() {
 }
 
 #[test]
-fn complex_script_arithmetic_mixed_types_scalar_expansion_and_real_paths() {
+fn complex_script_arithmetic_mixed_types_expansion_and_real_paths() {
     let mut e = Engine::default();
     e.execute("Z=[1+2i 3-4i];Alias=Z;A=Z+2;B=2-Z;C=Z.*[2 3];D=Z./[1-2i 2];E=true+Z;F=Z*2;R=[1 2]+[3 4];L=(1:2)>1;S=L.*[3 4];").unwrap();
     compare(&e.complex_variables["A"], &[(3., 2.), (5., -4.)]);
@@ -90,11 +90,22 @@ fn complex_script_arithmetic_mixed_types_scalar_expansion_and_real_paths() {
     assert_eq!(e.variables["S"].data(), &[0., 4.]);
     let before = e.workspace();
     // Complex powers, scalar division and least-squares solves are supported; a non-square matrix power still fails.
-    e.execute("P=Z.^2;").unwrap();
+    e.execute("P=Z.^2; T=Z+[1;2];").unwrap();
     compare(&e.complex_variables["P"], &[(-3., 4.), (-7., -24.)]);
-    e.execute("clear P").unwrap();
-    for bad in ["Z=Z^2;", "Z=Z+[1;2];"] {
-        assert!(e.execute(bad).is_err());
+    compare(
+        &e.complex_variables["T"],
+        &[(2., 2.), (3., 2.), (4., -4.), (5., -4.)],
+    );
+    e.execute("clear P T").unwrap();
+    for (bad, message) in [
+        ("Z=Z^2;", "Inputs must be a scalar and a square matrix."),
+        (
+            "Z=Z+[1 2 3];",
+            "Arrays have incompatible sizes for this operation.",
+        ),
+    ] {
+        let err = e.execute(bad).unwrap_err();
+        assert!(err.contains(message), "{bad}: {err}");
         for (name, value) in &before {
             assert!(value.same_snapshot(&e.array(name).unwrap()), "{bad}:{name}");
         }

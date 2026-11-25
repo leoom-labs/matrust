@@ -37,25 +37,40 @@ impl Engine {
             + complex.map_or(0, |m| m.bytes())
             + container.map_or(0, Array::retained_bytes);
         let used = self.workspace_bytes() - replaced + array.retained_bytes();
-        if used > 256 * 1024 * 1024 {
+        // A user object shows through its class (its disp method may run); the
+        // tag of the displayed value decides, so the first construction of a
+        // class in a session displays like any later one.
+        let object = (!quiet && super::classdef::is_object(&array)).then(|| array.clone());
+        if used > super::limits::memory_bytes(&self.limits) {
             // An echo that is too large fails after the assignment, as an oversized emit does.
-            let output = (!quiet).then(|| self.display_text(name, &array));
+            let output = (!quiet && object.is_none()).then(|| self.display_text(name, &array));
             self.merge_workspace([(name.to_owned(), array)].into())?;
-            if let Some(text) = output {
+            if let Some(object) = object {
+                self.cls_echo(name, &object, execution)?;
+            } else if let Some(text) = output {
                 self.emit(execution, text?)?;
             }
             return Ok(());
         }
         self.check_cancel()?;
-        let output = (!quiet).then(|| self.display_text(name, &array));
+        let output = (!quiet && object.is_none()).then(|| self.display_text(name, &array));
         self.container_variables.remove(name);
         match array {
-            a @ (Array::Character(_)
+            a @ (Array::Str(_)
+            | Array::Character(_)
             | Array::Cell(_)
             | Array::Graphics(_)
             | Array::Struct(_)
             | Array::Handle(_)
-            | Array::Typed(_)) => {
+            | Array::Typed(_)
+            | Array::Categorical(_)
+            | Array::Datetime(_)
+            | Array::Duration(_)
+            | Array::Table(_)
+            | Array::Sparse(_)) => {
+                if matches!(a, Array::Sparse(_)) {
+                    self.sparse.seen = true;
+                }
                 self.variables.remove(name);
                 self.logical_variables.remove(name);
                 self.complex_variables.remove(name);
@@ -89,7 +104,9 @@ impl Engine {
                 }
             }
         }
-        if let Some(text) = output {
+        if let Some(object) = object {
+            self.cls_echo(name, &object, execution)?;
+        } else if let Some(text) = output {
             self.emit(execution, text?)?;
         }
         Ok(())

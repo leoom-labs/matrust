@@ -11,30 +11,36 @@ use std::sync::Arc;
 /// Largest permutation table perms builds (rows times columns).
 const MAX_PERMS_ELEMENTS: usize = 8 * 1024 * 1024;
 
+pub(super) fn elementwise_operator(name: &str) -> Option<(Token, &'static str)> {
+    Some(match name {
+        "plus" => (Token::Plus, "@(a,b)a+b"),
+        "minus" => (Token::Minus, "@(a,b)a-b"),
+        "times" => (Token::DotStar, "@(a,b)a.*b"),
+        "rdivide" => (Token::DotSlash, "@(a,b)a./b"),
+        "ldivide" => (Token::DotBackslash, "@(a,b)a.\\b"),
+        "power" => (Token::DotPower, "@(a,b)a.^b"),
+        _ => return None,
+    })
+}
+
 /// The expression an operator function evaluates, over parameters `a` and `b`.
 fn operator_body(name: &str) -> Option<(&'static [&'static str], Expr, &'static str)> {
     let name_expr = |n: &str| Box::new(Expr::Name(n.into()));
-    let binary = |op: Token, swap: bool| {
-        let (l, r) = if swap { ("b", "a") } else { ("a", "b") };
-        Expr::Binary(op, name_expr(l), name_expr(r))
-    };
+    let binary = |op: Token| Expr::Binary(op, name_expr("a"), name_expr("b"));
     const AB: &[&str] = &["a", "b"];
     const A: &[&str] = &["a"];
+    if let Some((op, text)) = elementwise_operator(name) {
+        return Some((AB, binary(op), text));
+    }
     Some(match name {
-        "plus" => (AB, binary(Token::Plus, false), "@(a,b)a+b"),
-        "minus" => (AB, binary(Token::Minus, false), "@(a,b)a-b"),
-        "times" => (AB, binary(Token::DotStar, false), "@(a,b)a.*b"),
-        "rdivide" => (AB, binary(Token::DotSlash, false), "@(a,b)a./b"),
-        "ldivide" => (AB, binary(Token::DotSlash, true), "@(a,b)b./a"),
-        "mtimes" => (AB, binary(Token::Star, false), "@(a,b)a*b"),
-        "power" => (AB, binary(Token::DotPower, false), "@(a,b)a.^b"),
-        "mpower" => (AB, binary(Token::Power, false), "@(a,b)a^b"),
-        "eq" => (AB, binary(Token::Equal, false), "@(a,b)a==b"),
-        "ne" => (AB, binary(Token::NotEqual, false), "@(a,b)a~=b"),
-        "lt" => (AB, binary(Token::Less, false), "@(a,b)a<b"),
-        "gt" => (AB, binary(Token::Greater, false), "@(a,b)a>b"),
-        "le" => (AB, binary(Token::LessEqual, false), "@(a,b)a<=b"),
-        "ge" => (AB, binary(Token::GreaterEqual, false), "@(a,b)a>=b"),
+        "mtimes" => (AB, binary(Token::Star), "@(a,b)a*b"),
+        "mpower" => (AB, binary(Token::Power), "@(a,b)a^b"),
+        "eq" => (AB, binary(Token::Equal), "@(a,b)a==b"),
+        "ne" => (AB, binary(Token::NotEqual), "@(a,b)a~=b"),
+        "lt" => (AB, binary(Token::Less), "@(a,b)a<b"),
+        "gt" => (AB, binary(Token::Greater), "@(a,b)a>b"),
+        "le" => (AB, binary(Token::LessEqual), "@(a,b)a<=b"),
+        "ge" => (AB, binary(Token::GreaterEqual), "@(a,b)a>=b"),
         "uminus" => (A, Expr::Unary(true, name_expr("a")), "@(a)-a"),
         "uplus" => (A, Expr::Unary(false, name_expr("a")), "@(a)+a"),
         _ => return None,
@@ -552,22 +558,123 @@ impl Engine {
         Ok(Value::Void)
     }
 
-    /// optimset('Name', value, ...) and optimset(oldopts, 'Name', value, ...):
-    /// a structure holding exactly the given options.
+    /// optimset(), optimset('Name', value, ...), optimset(oldopts, newopts, ...),
+    /// and optimset(oldopts, 'Name', value, ...): scalar struct with R2024b optimset
+    /// fields (MathWorks R2024b `optimset` reference: base MATLAB + Optimization Toolbox),
+    /// [] where unset. Non-empty fields in later structs override earlier ones; explicit
+    /// name-value pairs apply last (including [] to clear).
     fn core_more_optimset(&self, args: &[Value]) -> Result<Value> {
-        let (mut names, mut slots, pairs) = match args.first() {
-            Some(Value::Container(Array::Struct(s))) => {
-                if s.len() != 1 {
-                    return Err("optimset: the options structure must be scalar".into());
-                }
-                let slots = (0..s.field_count())
-                    .map(|f| s.get(f, 0).cloned())
-                    .collect::<Result<Vec<_>>>()?;
-                (s.field_names().to_vec(), slots, &args[1..])
-            }
-            _ => (Vec::new(), Vec::new(), args),
+        const OPTIMSET_FIELDS: [&str; 58] = [
+            // Base MATLAB optimset options (MathWorks R2024b optimset ref)
+            "Display",
+            "MaxFunEvals",
+            "MaxIter",
+            "TolFun",
+            "TolX",
+            "FunValCheck",
+            "OutputFcn",
+            "PlotFcns",
+            // Optimization Toolbox optimset options (MathWorks R2024b optimset ref)
+            "ActiveConstrTol",
+            "Algorithm",
+            "AlwaysHonorConstraints",
+            "DerivativeCheck",
+            "Diagnostics",
+            "DiffMaxChange",
+            "DiffMinChange",
+            "FinDiffRelStep",
+            "FinDiffType",
+            "GoalsExactAchieve",
+            "GradConstr",
+            "GradObj",
+            "HessFcn",
+            "Hessian",
+            "HessMult",
+            "HessPattern",
+            "HessUpdate",
+            "InitBarrierParam",
+            "InitTrustRegionRadius",
+            "Jacobian",
+            "JacobMult",
+            "JacobPattern",
+            "LargeScale",
+            "MaxNodes",
+            "MaxPCGIter",
+            "MaxProjCGIter",
+            "MaxRLPIter",
+            "MaxSQPIter",
+            "MaxTime",
+            "MeritFunction",
+            "MinAbsMax",
+            "NoStopIfFlatInfeas",
+            "ObjectiveLimit",
+            "PhaseOneTotalScaling",
+            "PrecondBandWidth",
+            "RelLineSrchBnd",
+            "RelLineSrchBndDuration",
+            "ScaleProblem",
+            "Simplex",
+            "SubproblemAlgorithm",
+            "TolCon",
+            "TolConSQP",
+            "TolGradCon",
+            "TolPCG",
+            "TolProjCG",
+            "TolProjCGAbs",
+            "TolRLPFun",
+            "TolXInteger",
+            "TypicalX",
+            "UseParallel",
+        ];
+        // An exact field (including a custom field) wins. Only the declared
+        // options participate in abbreviation.
+        let option_slot = |names: &[String], given: &str| {
+            names
+                .iter()
+                .position(|name| name.eq_ignore_ascii_case(given))
+                .or_else(|| {
+                    let mut matches = OPTIMSET_FIELDS.iter().enumerate().filter(|(_, name)| {
+                        name.as_bytes()
+                            .get(..given.len())
+                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(given.as_bytes()))
+                    });
+                    let (first, _) = matches.next()?;
+                    matches.next().is_none().then_some(first)
+                })
         };
-        if pairs.len() % 2 != 0 {
+        let unset = Arc::new(Array::Numeric(Matrix::filled(0, 0, 0.)?));
+        let mut names: Vec<String> = OPTIMSET_FIELDS.iter().map(|s| (*s).to_string()).collect();
+        let mut slots = vec![unset; OPTIMSET_FIELDS.len()];
+        let mut i = 0;
+        let mut has_base = false;
+        while i < args.len() {
+            match &args[i] {
+                Value::Container(Array::Struct(s)) => {
+                    if s.len() != 1 {
+                        return Err("optimset: the options structure must be scalar".into());
+                    }
+                    for (field_idx, field_name) in s.field_names().iter().enumerate() {
+                        let setting = s.get(field_idx, 0)?;
+                        if has_base && setting.is_empty() {
+                            continue;
+                        }
+                        if let Some(pos) = option_slot(&names, field_name) {
+                            slots[pos] = setting.clone();
+                        } else {
+                            names.push(field_name.clone());
+                            slots.push(setting.clone());
+                        }
+                    }
+                    has_base = true;
+                    i += 1;
+                }
+                Value::Matrix(m) if m.is_empty() => i += 1,
+                Value::Container(Array::Numeric(m)) if m.is_empty() => i += 1,
+                _ => break,
+            }
+        }
+        let pairs = &args[i..];
+        if !pairs.len().is_multiple_of(2) {
             return Err("Arguments must occur in name-value pairs.".into());
         }
         for pair in pairs.chunks(2) {
@@ -576,7 +683,7 @@ impl Engine {
                 .text_value(pair[0].clone())
                 .map_err(|_| String::from("optimset: option names must be character vectors"))?;
             let value = Arc::new(pair[1].clone().array(&self.cancel)?);
-            match names.iter().position(|n| n.eq_ignore_ascii_case(&name)) {
+            match option_slot(&names, &name) {
                 Some(k) => slots[k] = value,
                 None => {
                     names.push(name);

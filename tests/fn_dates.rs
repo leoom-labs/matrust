@@ -267,11 +267,11 @@ fn datestr_rejects_oversized_output_before_rendering_rows() {
 #[test]
 fn datevec_rejects_oversized_six_column_output() {
     let mut e = Engine::default();
-    value(&mut e, "t = zeros(3000000,1);");
+    value(&mut e, "t = zeros(9000000,1);");
     for statement in ["datevec(t)", "[y,m,d,h,mi,s] = datevec(t)"] {
         assert_eq!(
             e.execute(statement).unwrap_err(),
-            "Line 1, column 1: Matrix exceeds the 16777216-element limit"
+            "Line 1, column 1: Matrix exceeds the 50331648-element limit"
         );
     }
 }

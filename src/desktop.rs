@@ -1,4 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[path = "desktop/app_window.rs"]
+mod app_window;
+#[path = "desktop/apps/mod.rs"]
+mod apps;
 #[path = "desktop/cell_replace_job.rs"]
 mod cell_replace_job;
 #[cfg(test)]
@@ -13,14 +17,14 @@ mod command_window;
 #[cfg(test)]
 #[path = "desktop/container_workspace_tests.rs"]
 mod container_workspace_tests;
-#[path = "desktop/csv_import.rs"]
-mod csv_import;
-#[path = "desktop/designer_apply.rs"]
-mod designer_apply;
+#[path = "desktop/designer_output.rs"]
+mod designer_output;
 #[path = "desktop/designer_save.rs"]
 mod designer_save;
 #[path = "desktop/detached_figures.rs"]
 mod detached_figures;
+#[path = "desktop/dialog_windows.rs"]
+mod dialog_windows;
 #[path = "desktop/document_save.rs"]
 mod document_save;
 #[path = "desktop/editor.rs"]
@@ -47,6 +51,8 @@ mod figure_export;
 mod figure_files;
 #[path = "desktop/figure_geometry.rs"]
 mod figure_geometry;
+#[path = "desktop/figure_images.rs"]
+mod figure_images;
 #[path = "desktop/figure_recovery.rs"]
 mod figure_recovery;
 #[path = "desktop/figure_selector.rs"]
@@ -55,8 +61,13 @@ mod figure_selector;
 mod figure_target;
 #[path = "desktop/figure_view.rs"]
 mod figure_view;
-#[path = "desktop/fir_designer.rs"]
-mod fir_designer;
+#[cfg(test)]
+#[path = "desktop/figure_view_latex_date_tests.rs"]
+mod figure_view_latex_date_tests;
+#[path = "desktop/figure_volumes.rs"]
+mod figure_volumes;
+#[path = "desktop/filter_spec.rs"]
+mod filter_spec;
 #[path = "desktop/focus_areas.rs"]
 mod focus_areas;
 #[path = "desktop/folder_browser.rs"]
@@ -69,11 +80,15 @@ mod folder_scan;
 mod folder_search_ui;
 #[path = "desktop/global_search.rs"]
 mod global_search;
+#[path = "desktop/graphics_frames.rs"]
+mod graphics_frames;
+#[path = "desktop/graphics_overlay.rs"]
+mod graphics_overlay;
 #[cfg(test)]
 #[path = "desktop/headless.rs"]
 mod headless;
-#[path = "desktop/iir_designer.rs"]
-mod iir_designer;
+#[path = "desktop/icons.rs"]
+mod icons;
 #[path = "desktop/image_export.rs"]
 mod image_export;
 #[path = "desktop/image_load.rs"]
@@ -92,6 +107,8 @@ mod model_new;
 mod model_read;
 #[path = "desktop/model_write.rs"]
 mod model_write;
+#[path = "desktop/modes.rs"]
+mod modes;
 #[path = "desktop/named_layout.rs"]
 mod named_layout;
 #[path = "desktop/navigation.rs"]
@@ -122,6 +139,8 @@ mod plot_request;
 mod preview_recovery;
 #[path = "desktop/recovery.rs"]
 mod recovery;
+#[path = "desktop/response_plot.rs"]
+mod response_plot;
 #[path = "desktop/sample_inspector.rs"]
 mod sample_inspector;
 #[path = "desktop/screenshot_options.rs"]
@@ -166,6 +185,8 @@ mod typed_inspector;
 #[cfg(test)]
 #[path = "desktop/typed_inspector_tests.rs"]
 mod typed_inspector_tests;
+#[path = "desktop/ui_windows.rs"]
+mod ui_windows;
 #[path = "desktop/variable_edit_job.rs"]
 mod variable_edit_job;
 #[cfg(test)]
@@ -185,6 +206,7 @@ use eframe::egui::{self, Color32, RichText};
 use egui_plot::PlotPoint;
 use matrust::session::{self, FolderEntry, History, Session};
 use matrust::{document::Document, plot::Figure};
+use panels::PaneBorder;
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -193,7 +215,6 @@ use std::{
 };
 use worker::{Job, Worker};
 
-use tokens::FIGURE_ACCENT as ACCENT;
 const DEMO: &str = include_str!("../examples/signals.m");
 /// Smallest Command Window card: header, a few output lines and the 34 px input.
 const CONSOLE_MIN: f32 = 164.;
@@ -246,10 +267,17 @@ struct Workspace {
     recovering_session: bool,
     recovery_blocked: bool,
     quit_discarded_figures: std::collections::BTreeSet<u32>,
+    /// Quit's single dialog chose Save: once figures are saved, save scripts without a second prompt.
+    quit_save_scripts: bool,
     layout: session::DesktopLayout,
     layout_presets: session::LayoutPresets,
     named_layout: named_layout::State,
     compact_figure: bool,
+    /// Command mode: the Command Window owns the work area even when a
+    /// script is open (the editor waits in Editor mode).
+    command_only: bool,
+    /// Apps mode with no tool selected: the app launcher fills the work area.
+    apps_home: bool,
     navigation: navigation::State,
     focus_areas: focus_areas::State,
     document_save: document_save::State,
@@ -258,6 +286,7 @@ struct Workspace {
     editor: editor::Editor,
     editor_columns: editor_columns::State,
     editor_window: editor_window::State,
+    windows: app_window::State,
     running_origin: Option<RunOrigin>,
     editor_issue: Option<EditorIssue>,
     pending_close: Option<usize>,
@@ -295,6 +324,7 @@ struct Workspace {
     recovery_dirty: bool,
     recovery_due: Instant,
     console: Vec<String>,
+    console_rows: command_window::ConsoleRows,
     variables: BTreeMap<String, matrust::Array>,
     figure: Option<Figure>,
     figure_editor: Option<figure_editor::Editor>,
@@ -311,12 +341,10 @@ struct Workspace {
     figure_reload_demo: bool,
     figure_reopen_demo: bool,
     workspace_import: Option<workspace_import::Import>,
-    csv_import: Option<csv_import::Import>,
     root_open: open_files::PickerState,
+    pending_edits: std::collections::VecDeque<worker::EditRequest>,
     root_figure_save: figure_files::RootSave,
     designer_save: designer_save::State,
-    csv_import_picker: csv_import::PickerState,
-    csv_naming: csv_import::NamingState,
     figure_export: Option<figure_export::Dialog>,
     plot_data: Option<plot_data::Dialog>,
     plot_data_demo_pending: bool,
@@ -353,6 +381,9 @@ struct Workspace {
     detached_capture: Option<detached_figures::capture::Coordinator>,
     layout_grid: [usize; 2],
     plot_points: Vec<Vec<PlotPoint>>,
+    plot_point_indices: Vec<Option<Vec<usize>>>,
+    /// Figure shown before the running script's first drawnow frame.
+    frame_reveal: graphics_frames::FrameReveal,
     plot_axes: [matrust::plot::AxisTransform; 2],
     reset_plot: bool,
     restore_plot_view: bool,
@@ -362,6 +393,14 @@ struct Workspace {
     toolkits: toolkits::Toolkits,
     model_toolbar: toolkits::model_files::ToolbarState,
     busy: bool,
+    /// The command line answers a running script's `input` or `pause`.
+    answer: command_window::AnswerState,
+    /// uigetfile, inputdlg, msgbox, waitbar ... of running scripts.
+    dialog_windows: dialog_windows::DialogWindows,
+    /// Separate viewport windows for `uifigure` and classic `figure + uicontrol`.
+    ui_windows: ui_windows::UiWindows,
+    /// Queued UI events arrived while the worker was busy and need draining when idle.
+    ui_events_pending: bool,
     status: String,
     chrome: chrome::State,
     // Explicit capture appearance overrides recovery without being persisted.
@@ -404,10 +443,10 @@ impl Workspace {
             folder_browse: Default::default(),
             folder_search: Default::default(),
             all_figures: Default::default(), recovery_manifest: None, workspace_manifest: None, recovering_session: false,
-            recovery_blocked: false, quit_discarded_figures: Default::default(),
-            layout_presets: Default::default(), named_layout: Default::default(), layout: session::DesktopLayout::fresh_desktop(), compact_figure: false, navigation: Default::default(), focus_areas: Default::default(), document_save: Default::default(), script_conflict: None, script_reload: None, script_run: Default::default(), global_search: Default::default(), display_format: Default::default(), selected_display: None, new_model_requested: false, script_io: Default::default(), script_save_queue: None, script_tab_reveal: None, ui_dispatch_frame: None, sample_inspector: Default::default(), figure_conflict: None,
+            recovery_blocked: false, quit_discarded_figures: Default::default(), quit_save_scripts: false,
+            layout_presets: Default::default(), named_layout: Default::default(), layout: session::DesktopLayout::fresh_desktop(), compact_figure: false, command_only: false, apps_home: false, navigation: Default::default(), focus_areas: Default::default(), document_save: Default::default(), script_conflict: None, script_reload: None, script_run: Default::default(), global_search: Default::default(), display_format: Default::default(), selected_display: None, new_model_requested: false, script_io: Default::default(), script_save_queue: None, script_tab_reveal: None, ui_dispatch_frame: None, sample_inspector: Default::default(), figure_conflict: None,
             large_import_demo:std::env::args().any(|a|a=="--large-mat-import-demo"),
-            workspace_import:None,csv_import:None,csv_import_picker:Default::default(),csv_naming:Default::default(),root_open:Default::default(),root_figure_save:Default::default(), designer_save:Default::default(), pending_image:None, pending_page:None, image_view:None, preview_restore:None, image_loading:false, eps_preview:eps_preview::Settings::configured(forced_isolated), eps_capture:None, image_action:false, original_copy:Default::default(), single_export:Default::default(), image_ignore_result:false,
+            workspace_import:None,root_open:Default::default(),pending_edits:Default::default(),root_figure_save:Default::default(), designer_save:Default::default(), pending_image:None, pending_page:None, image_view:None, preview_restore:None, image_loading:false, eps_preview:eps_preview::Settings::configured(forced_isolated), eps_capture:None, image_action:false, original_copy:Default::default(), single_export:Default::default(), image_ignore_result:false,
             figure_export:None, plot_data:None, plot_data_demo_pending:std::env::args().any(|a|a=="--plot-data-demo"), export_settings:Default::default(),
             export_demo_pending:std::env::args().any(|a| matches!(a.as_str(), "--export-demo" | "--batch-export-demo" | "--matlab-export-demo")),
             figure_reopen_demo: std::env::args().any(|a|a=="--figure-reopen-demo"),
@@ -415,11 +454,12 @@ impl Workspace {
             figure_conflict_demo: std::env::args().any(|a|a=="--figure-conflict-demo"),
             figure_files_demo_stage: if std::env::args().any(|a|a=="--figure-files-demo" || a=="--close-all-figures-demo") {1} else {0},
             figure_documents:Default::default(),figure_history:Default::default(),figure_history_demo_stage:if std::env::args().any(|a|matches!(a.as_str(),"--figure-history-demo"|"--figure-history-undone-demo")){1}else{0},figure_views:Default::default(),figure_windows:Default::default(),figure_close:None,restore_plot_view:false,
-            documents:vec![Document::new()],active:0,editor:Default::default(),editor_columns:Default::default(),editor_window:Default::default(),running_origin:None,editor_issue:None,pending_close:None,pending_quit:false,allow_close:false, command: String::new(),
+            documents:vec![Document::new()],active:0,editor:Default::default(),editor_columns:Default::default(),editor_window:Default::default(),windows:Default::default(),running_origin:None,editor_issue:None,pending_close:None,pending_quit:false,allow_close:false, command: String::new(),
             history:History::default(),recent:vec![],open_queue:Default::default(),folder:std::env::current_dir().unwrap_or_else(|_|PathBuf::from(".")),folder_text:String::new(),folder_navigation:Default::default(),entries:vec![],selection:None,suggestions:vec![],completion_range:None,recovery:None,recovery_dirty:false,recovery_due:Instant::now()+Duration::from_secs(2),
             console: chrome::banner(),
-            variables: BTreeMap::new(), figure: None, figure_editor:None, properties_demo_pending:std::env::args().any(|a|matches!(a.as_str(),"--properties-demo"|"--series-properties-demo"|"--layout-properties-demo"|"--line-width-properties-demo")), selected: None, workspace_tools: workspace_tools::Tools::new(), workspace_mat_save:Default::default(), cell_error:None,cell_job:None,editing_variable:None,typed_inspector:Default::default(),numeric_editor:Default::default(),edit_row:1,edit_col:1,edit_value:String::new(),first_col:1, subplot_canvas:Default::default(),detached:Default::default(),detached_capture:None, layout_grid:[2,2], plot_points: Vec::new(), worker, toolkits:Default::default(), model_toolbar:Default::default(),
-            busy: false, status: "Ready".into(), chrome: Default::default(),
+            console_rows: Default::default(),
+            variables: BTreeMap::new(), figure: None, figure_editor:None, properties_demo_pending:std::env::args().any(|a|matches!(a.as_str(),"--properties-demo"|"--series-properties-demo"|"--layout-properties-demo"|"--line-width-properties-demo")), selected: None, workspace_tools: workspace_tools::Tools::new(), workspace_mat_save:Default::default(), cell_error:None,cell_job:None,editing_variable:None,typed_inspector:Default::default(),numeric_editor:Default::default(),edit_row:1,edit_col:1,edit_value:String::new(),first_col:1, subplot_canvas:Default::default(),detached:Default::default(),detached_capture:None, layout_grid:[2,2], plot_points: Vec::new(), plot_point_indices: Vec::new(), frame_reveal: Default::default(), worker, toolkits:Default::default(), model_toolbar:Default::default(),
+            busy: false, answer: Default::default(), dialog_windows: Default::default(), ui_windows: Default::default(), ui_events_pending: false, status: "Ready".into(), chrome: Default::default(),
             screenshot_theme_override: None,
             screenshot_path: std::env::args().skip_while(|a|a!="--screenshot").nth(1).map(Into::into),
             screenshot_requested: false,screenshot_ready_frames:0,screenshot_ready_target:3,screenshot_model_new_pending:false,screenshot_figure_selector_popup:false,reset_plot:true,figure_ids:Vec::new(),current_figure:1,view_bounds:None,view_auto:[true;2],plot_axes:Default::default(),
@@ -624,7 +664,11 @@ impl Workspace {
                     .toolkits
                     .open_designer_demo(std::env::args().any(|a| a == "--iir-designer-demo"));
             }
-            if let Ok(script) = workspace.toolkits.preview_script() {
+            // Captures also run the design in the console; the demo shows
+            // the designer's own analysis only.
+            if iir_capture.is_some()
+                && let Ok(script) = workspace.toolkits.preview_script()
+            {
                 workspace.run(script);
             }
         }
@@ -890,15 +934,31 @@ impl Workspace {
             title: doc.title(),
             source: Arc::from(doc.text.as_str()),
         };
+        // Echo what ran, as a typed command would: a saved script as the
+        // `run` call that repeats it, otherwise a comment naming the tab.
+        let name = doc.title().trim_end_matches(" *").to_owned();
+        let echo = match (&selection, &doc.path) {
+            (Some(_), _) => format!(">> % Run selection of {name}"),
+            (None, Some(path)) => {
+                let shown = if path.parent() == Some(self.folder.as_path()) {
+                    name
+                } else {
+                    path.display().to_string()
+                };
+                format!(">> run('{}')", shown.replace('\'', "''"))
+            }
+            (None, None) => format!(">> % Run {name}"),
+        };
         let job = if let Some(range) = selection {
             Job::SelectionInFolder(origin.source.clone(), range, self.folder.clone())
         } else if let Some(path) = &doc.path {
             Job::DocumentInFolder(source, path.clone(), self.folder.clone())
         } else {
-            Job::ScriptInFolder(source, self.folder.clone())
+            Job::UnsavedDocumentInFolder(source, self.folder.clone())
         };
         self.submit(job);
         if self.busy {
+            self.console.push(echo);
             self.running_origin = Some(origin);
             self.editor_issue = None;
         }
@@ -968,6 +1028,29 @@ impl Workspace {
         }
         self.reveal_editor();
     }
+    fn queue_edit(&mut self, edit: worker::EditRequest) {
+        if self.pending_edits.len() < session::MAX_DOCUMENTS {
+            self.pending_edits.push_back(edit);
+        } else {
+            self.status = "Dropped edit request: at most 32 pending edits are allowed".into();
+            if self.console.last() != Some(&self.status) {
+                self.console.push(self.status.clone());
+                self.console_rows.invalidate();
+            }
+        }
+    }
+    fn new_document_untitled(&mut self, name: Option<String>) {
+        if self.documents.len() >= session::MAX_DOCUMENTS {
+            self.status = "Close a script before opening more than 32 tabs".into();
+            return;
+        }
+        self.new_document("");
+        if let Some(doc) = self.documents.get_mut(self.active)
+            && doc.path.is_none()
+        {
+            doc.untitled_name = name;
+        }
+    }
     fn new_document(&mut self, source: &str) {
         if self.documents.len() >= session::MAX_DOCUMENTS {
             self.status = "Close a script before opening more than 32 tabs".into();
@@ -988,15 +1071,18 @@ impl Workspace {
         }
         self.selection = None;
         self.recovery_dirty = true;
+        // A new script takes the keyboard: typing goes straight into it.
+        let id = self.documents[self.active].id;
+        self.editor.jump = Some((id, source.chars().count()..source.chars().count()));
     }
     fn save_document(&mut self, index: usize, save_as: bool) -> bool {
         if self.script_conflict.is_some() || self.script_io.pending() {
             return false;
         }
-        let path = if save_as || self.documents[index].path.is_none() {
-            self.pick_script_save_path(index)
+        let path = if !save_as && let Some(path) = self.documents[index].default_save_path() {
+            Some(path.to_owned())
         } else {
-            self.documents[index].path.clone()
+            self.pick_script_save_path(index)
         };
         let Some(path) = path else {
             self.status = "Save cancelled; script remains open".into();
@@ -1010,10 +1096,11 @@ impl Workspace {
             self.script_io.save_picker_calls += 1;
             return picker(self, index);
         }
-        let current = self.documents[index].path.as_deref();
-        let (filters, file_name) = script_save_choices(current);
+        let current = self.documents[index].suggested_save_path(&self.folder);
+        let (filters, file_name) = script_save_choices(current.as_deref());
         let mut dialog = rfd::FileDialog::new().set_directory(
             current
+                .as_deref()
                 .and_then(|path| path.parent())
                 .unwrap_or(&self.folder),
         );
@@ -1193,7 +1280,12 @@ impl Workspace {
         );
         let job = if matches!(
             &job,
-            Job::ScriptInFolder(..) | Job::DocumentInFolder(..) | Job::SelectionInFolder(..)
+            Job::ScriptInFolder(..)
+                | Job::UnsavedDocumentInFolder(..)
+                | Job::ExportAppScript(..)
+                | Job::ExportVolumeSettings(..)
+                | Job::DocumentInFolder(..)
+                | Job::SelectionInFolder(..)
         ) && !self.figure_views.is_empty()
         {
             Job::ScriptViewContext(
@@ -1253,16 +1345,64 @@ impl Workspace {
         self.receive_folder();
         if let Some(store) = &self.recovery {
             while let Ok(error) = store.errors.try_recv() {
-                self.console.push(format!("Recovery: {error}"));
+                // Checkpoints repeat after every command; say a failure once, not each time.
+                let line = format!("Recovery: {error}");
+                if !self.console.iter().rev().take(200).any(|l| *l == line) {
+                    self.console.push(line);
+                }
             }
         }
-        if self.console.len() > 200 {
-            self.console.drain(..self.console.len() - 200);
+        if !self.console_rows.has_length(self.console.len()) {
+            worker::keep_newest_output(&mut self.console);
+            self.console_rows.invalidate();
         }
+        while let Ok(request) = self.worker.input.try_recv() {
+            self.answer.begin(&mut self.console, request);
+            // begin can clear the console or edit it in place: the row cache is keyed on length.
+            self.console_rows.invalidate();
+        }
+        while let Ok(mut ticket) = self.worker.dialogs.try_recv() {
+            if ticket.clear {
+                self.console.clear();
+            }
+            self.console.append(&mut ticket.output);
+            self.console_rows.invalidate();
+            if let Some(ticket) = self.ui_windows.receive_dialog(ticket) {
+                self.dialog_windows.receive(ticket);
+            }
+        }
+        while let Ok(edit) = self.worker.edits.try_recv() {
+            self.queue_edit(edit);
+        }
+        self.receive_graphics_frame();
         if let Ok(reply) = self.worker.receive.try_recv() {
+            // A drawnow frame of the finished run is older than this reply.
+            self.worker.take_frame();
+            let before_frames = self.frame_reveal.finish();
             let detached_prepared = reply.detached_prepared;
             let selected_existing = reply.selected_existing;
             self.busy = false;
+            self.toolkits.apps.mpc.app.catalogue = reply.mpc_catalogue;
+            self.toolkits.apps.fuzzy.app.catalogue = reply.fuzzy_catalogue;
+            self.toolkits.apps.registration.app.catalogue = reply.registration_catalogue;
+            self.answer.cancel();
+            // Tickets sent before the run ended: windows still open, answers
+            // nobody waits for any more are dropped.
+            while let Ok(mut ticket) = self.worker.dialogs.try_recv() {
+                self.console.append(&mut ticket.output);
+                self.console_rows.invalidate();
+                if ticket.reply.is_none()
+                    && let Some(ticket) = self.ui_windows.receive_dialog(ticket)
+                {
+                    self.dialog_windows.receive(ticket);
+                }
+            }
+            while let Ok(edit) = self.worker.edits.try_recv() {
+                self.queue_edit(edit);
+            }
+            self.dialog_windows.end_run();
+            self.ui_windows.end_run();
+            self.ui_windows.set_snapshot(reply.ui_snapshot);
             self.display_format = reply.display;
             if let Some(folder) = reply.current_folder {
                 self.commit_folder(folder.clone(), None);
@@ -1296,14 +1436,6 @@ impl Workspace {
             }
             if let Some(result) = reply.design_save {
                 self.complete_design_save(result);
-                return;
-            }
-            if let Some(mut result) = reply.fir_block {
-                if self.worker.cancel.load(Ordering::Relaxed) {
-                    result = Err("Filter design cancelled; model unchanged".into());
-                }
-                self.recovery_dirty |= self.toolkits.finish_filter_block(result);
-                self.status = self.toolkits.message.clone();
                 return;
             }
             if let Some(model) = reply.model_read {
@@ -1373,20 +1505,24 @@ impl Workspace {
                     Err(e) => import.error = Some(e.clone()),
                 }
             }
-            self.finish_csv_import(&reply.result);
             let restored = reply.recovered.is_some();
             let activate_opened_figure = self.document_save.figure_open_completed();
+            // drawnow frames already replaced the shown figure: compare with
+            // the one shown before the run, as a run without frames does.
+            let (shown_current, shown_figure) = match &before_frames {
+                Some((current, figure)) => (*current, figure.as_ref()),
+                None => (self.current_figure, self.figure.as_ref()),
+            };
             let reveal_changed_figure = !restored
+                && self.toolkits.selected_tool()
+                    != Some(toolkits::Tool::App(apps::AppKind::DataStatistics))
                 && reply.result.is_ok()
                 && !self.worker.cancel.load(Ordering::Relaxed)
                 && activate_opened_figure != Some(false)
                 && reply.figure.as_ref().is_some_and(|figure| {
                     activate_opened_figure == Some(true)
-                        || self.current_figure != reply.current_figure
-                        || self
-                            .figure
-                            .as_ref()
-                            .is_none_or(|old| !old.same_snapshot(figure))
+                        || shown_current != reply.current_figure
+                        || shown_figure.is_none_or(|old| !old.same_snapshot(figure))
                 });
             self.recovery_dirty |= self.figure_documents != reply.figure_documents
                 || self.current_figure != reply.current_figure;
@@ -1476,22 +1612,7 @@ impl Workspace {
                 self.view_bounds = None;
             }
             let same_points = match (&self.figure, &reply.figure) {
-                (Some(a), Some(b)) => {
-                    a.active_position() == b.active_position()
-                        && a.layout.is_some() == b.layout.is_some()
-                        && a.series.len() == b.series.len()
-                        && a.xscale == b.xscale
-                        && a.yscale == b.yscale
-                        && a.xlim == b.xlim
-                        && a.ylim == b.ylim
-                        && a.series.iter().zip(&b.series).all(|(a, b)| {
-                            a.points.same_storage(&b.points)
-                                && a.kind == b.kind
-                                && a.visible == b.visible
-                                && a.bar_width == b.bar_width
-                                && a.bar_offset == b.bar_offset
-                        })
-                }
+                (Some(a), Some(b)) => graphics_frames::same_display_points(a, b),
                 (None, None) => true,
                 _ => false,
             };
@@ -1500,6 +1621,7 @@ impl Workspace {
                 // Release obsolete root display buffers BEFORE replacement allocation.
                 // PlotMemory and committed views retain interaction state separately.
                 self.plot_points = Vec::new();
+                self.plot_point_indices = Vec::new();
                 if let Some(figure) = reply.figure.as_ref().filter(|f| f.layout.is_some()) {
                     self.subplot_canvas
                         .retain_source(self.current_figure, figure);
@@ -1510,23 +1632,16 @@ impl Workspace {
                 let _ = self
                     .detached
                     .reserve_root_cache(0, figure_geometry::ONE_CACHE_BYTES);
-                self.plot_points = reply
+                if let Some(f) = reply
                     .figure
                     .as_ref()
                     .filter(|f| f.layout.is_none() && !self.detached.contains(self.current_figure))
-                    .map(|f| {
-                        self.plot_axes = f.axis_transforms();
-                        f.series
-                            .iter()
-                            .map(|s| {
-                                s.display_points_axes(8192 / f.series.len().max(1), self.plot_axes)
-                                    .into_iter()
-                                    .map(|[x, y]| PlotPoint::new(x, y))
-                                    .collect()
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                {
+                    let (axes, points, indices) = graphics_frames::display_points_indexed(f);
+                    self.plot_axes = axes;
+                    self.plot_points = points;
+                    self.plot_point_indices = indices;
+                }
             }
             self.reset_plot |= !same_points
                 || match (&self.figure, &reply.figure) {
@@ -1595,6 +1710,7 @@ impl Workspace {
                     }
                 }
             }
+            self.console_rows.invalidate();
             match reply.result {
                 Ok(result) => {
                     if result.clear_console {
@@ -1647,9 +1763,7 @@ impl Workspace {
             if std::env::args().any(|a| a == "--function-error-demo") {
                 self.jump_to_error();
             }
-            if self.console.len() > 200 {
-                self.console.drain(..self.console.len() - 200);
-            }
+            worker::keep_newest_output(&mut self.console);
             self.refresh_folder();
             let mut detached = std::mem::take(&mut self.detached);
             detached.complete(self, selected_existing, detached_prepared);
@@ -1666,6 +1780,20 @@ impl Workspace {
                 self.reset_plot = false;
                 self.restore_plot_view = false;
             }
+            apps::receive_launches(self, reply.app_launches, reply.profiler_viewer);
+        }
+        while !self.busy && !self.file_action_pending() {
+            let Some(req) = self.pending_edits.pop_front() else {
+                break;
+            };
+            if let Some(file) = &req.path {
+                if !self.try_open_editor_path(file.path.clone(), file.source_read_only) {
+                    self.pending_edits.push_front(req);
+                    break;
+                }
+            } else {
+                self.new_document_untitled(req.untitled_name);
+            }
         }
     }
 }
@@ -1679,8 +1807,6 @@ impl Workspace {
         self.observe_designer_save(ctx);
         self.observe_model_toolbar(ctx);
         self.observe_folder_browse(ctx);
-        self.observe_csv_import_picker(ctx);
-        self.observe_csv_naming_action(ctx);
         self.observe_ordinary_script_conflict(ctx);
         self.observe_editor_window_root(ctx);
         self.begin_focus_areas(ctx);
@@ -1689,17 +1815,9 @@ impl Workspace {
         self.observe_named_layout(ctx);
         self.apply_desktop_theme(ctx);
         root.set_style(ctx.global_style());
-        // Panel cards sit on the canvas; the gutters between them show it.
+        // Flat workbench: bars and panes touch, a 1 px pane_border between them.
         root.painter()
             .rect_filled(root.max_rect(), 0., tokens::palette(ctx).canvas);
-        // Every card keeps a 4 px margin; the window edge adds the other half
-        // of the 8 px gutter.
-        let mut inset = root.new_child(
-            egui::UiBuilder::new()
-                .max_rect(root.max_rect().shrink2(egui::vec2(tokens::GUTTER / 2., 0.)))
-                .layout(*root.layout()),
-        );
-        let root = &mut inset;
         self.document_save
             .set_tiled(self.layout.figure_tiling.is_some());
         self.observe_editor_columns(ctx);
@@ -1735,6 +1853,7 @@ impl Workspace {
             self.sample_inspection_demo();
         }
         self.sync_editor_columns();
+        self.dialog_windows.show(ctx);
         self.document_save
             .set_script_document(self.script_action_document(ctx));
         let pending = self.file_action_pending();
@@ -1777,8 +1896,12 @@ impl Workspace {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             dialog.error = Some("Finish or cancel the export before closing.".into());
         }
-        let shortcut =
-            !pending && ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::Enter));
+        let shortcut = !pending
+            && ctx.input_mut(|i| {
+                // F5 runs the active script as in MATLAB; Ctrl+Enter does the same.
+                i.consume_key(egui::Modifiers::CTRL, egui::Key::Enter)
+                    | i.consume_key(egui::Modifiers::NONE, egui::Key::F5)
+            });
         if shortcut && !self.busy {
             self.request_script_run(ctx, false);
         }
@@ -1844,92 +1967,94 @@ impl Workspace {
             self.new_document("");
         }
         self.pane_focus_shortcuts(ctx);
+        self.mode_shortcuts(ctx, pending);
         self.folder_shortcuts(ctx, pending);
+        let mode_key = egui::Id::new("workbench_previous_mode");
+        let current_mode = self.mode();
+        if ctx.data(|d| d.get_temp::<modes::Mode>(mode_key)) != Some(current_mode) {
+            self.navigation.inspector_open = false;
+        }
+        if current_mode == modes::Mode::Apps
+            && ctx.data(|d| d.get_temp::<modes::Mode>(mode_key)) != Some(current_mode)
+        {
+            self.navigation.drawer_collapsed = true;
+            ctx.data_mut(|d| {
+                d.remove::<egui::containers::panel::PanelState>(egui::Id::new("console"))
+            });
+        }
+        ctx.data_mut(|d| d.insert_temp(mode_key, current_mode));
         self.desktop_toolbar(root, pending);
         let status_frame = egui::Frame::new()
             .fill(tokens::palette(root.ctx()).canvas)
             .inner_margin(egui::Margin::symmetric(tokens::M as i8, 0));
         let compact = tokens::compact(root.ctx());
         egui::Panel::bottom("status")
-            .show_separator_line(false)
             .frame(status_frame)
-            .exact_size(if compact {
-                tokens::COMPACT_ROW
-            } else {
-                tokens::STATUS_BAR
-            })
-            .show(root, |ui| self.status_bar(ui, compact));
+            .exact_size(tokens::STATUS_BAR)
+            .show_pane(root, |ui| self.status_bar(ui, compact));
         self.desktop_side_panels(root);
-        self.center_tabs(root);
         // Freeze placement for this pass: actions inside a pane cannot cause a
-        // second command TextEdit to render under the same ID. A selected tool
-        // tab owns the main area; Command then docks below it like the Editor.
-        let tool = self.toolkits.selected_tool();
-        let central_command = tool.is_none() && self.central_command();
-        let figure_column = self.figure_column();
+        // second command TextEdit to render under the same ID. Outside
+        // Command mode the Command Window is the drawer below the work area.
+        self.apply_window_layout(ctx);
+        let mode = self.mode();
+        let tool = self.docked_tool();
+        let central_command = mode == modes::Mode::Command;
         let editor_above = self.editor_above_command();
-        if figure_column {
-            let width = root.available_rect_before_wrap().width();
-            egui::Panel::right("figure_column")
-                .show_separator_line(false)
-                .frame(tokens::card(ctx).inner_margin(1))
-                .default_size(self.layout.figure_width.unwrap_or(tokens::RIGHT_COLUMN))
-                .size_range(280.0..=(width * 0.5).max(280.))
-                .resizable(true)
-                .show(root, |ui| self.figure_pane(ui));
-            if let Some(size) = layout::resized_panel(ctx, "figure_column") {
-                self.layout.figure_width = Some(size.x);
-            }
-        }
-        if self.navigation.command && (!central_command || editor_above) {
-            // Tool tabs and legacy compact panes retain useful canvas height
-            // beside the visible toolstrip: keep their Command Window minimal.
-            let minimal = (tool.is_some() || self.layout.center.is_none())
-                && ctx.content_rect().height() < 760.0;
-            // Beside an editor and figure the console keeps six output lines;
-            // the editor above yields the height.
-            let console_min = if minimal {
-                CONSOLE_MIN
+        if self.navigation.command && !central_command {
+            let collapsed = self.navigation.drawer_collapsed;
+            let console_min = if collapsed {
+                36.
             } else {
-                console_six_lines(ctx)
+                console_six_lines(ctx).min(CONSOLE_MIN)
             };
             egui::Panel::bottom("console")
-                .show_separator_line(false)
-                .frame(tokens::card(ctx).inner_margin(1))
-                .default_size(self.layout.console_height.unwrap_or(
-                    if ctx.content_rect().height() < 750.0 {
-                        console_min.max(CONSOLE_MIN + 20.)
-                    } else {
-                        230.0
-                    },
-                ))
-                .min_size(console_min)
-                .max_size(if minimal {
-                    CONSOLE_MIN
+                .frame(tokens::card(ctx))
+                .default_size(if collapsed {
+                    36.
                 } else {
-                    (root.available_rect_before_wrap().height()
-                        * if ctx.content_rect().height() < 750.0 {
-                            0.35
+                    self.layout
+                        .console_height
+                        .unwrap_or(if ctx.content_rect().height() < 750. {
+                            150.
                         } else {
-                            0.40
+                            240.
                         })
-                    .max(console_min)
+                })
+                .min_size(console_min)
+                .max_size(if collapsed {
+                    36.
+                } else {
+                    (root.available_rect_before_wrap().height() * 0.40).max(console_min)
                 })
                 .resizable(true)
-                .show(root, |ui| {
+                .show_pane(root, |ui| {
+                    // The drawer header sits on surface 3.
+                    let header = egui::Rect::from_min_size(
+                        ui.max_rect().min,
+                        egui::vec2(ui.max_rect().width(), panels::header_height(ctx)),
+                    );
+                    ui.painter()
+                        .rect_filled(header, 0., tokens::palette(ctx).canvas);
                     self.command_window(ui);
                 });
         }
+        self.sync_app_workspace();
         let mut tool_pass = self.toolkits.begin_pass(ctx);
         egui::CentralPanel::default()
-            .frame(tokens::card(ctx).inner_margin(1))
+            .frame(tokens::card(ctx))
             .show(root, |ui| {
                 if let Some(tool) = tool {
                     self.document_save.set_compact(false);
                     self.toolkits.tab_ui(ui, tool, self.busy, &mut tool_pass);
                     return;
                 }
-                if editor_above {
+                if mode == modes::Mode::Apps {
+                    self.document_save.set_compact(false);
+                    self.apps_home_ui(ui);
+                    return;
+                }
+                if editor_above || (mode == modes::Mode::Editor && self.layout.center.is_some()) {
                     self.document_save.set_compact(false);
                     self.editor_pane(ui);
                     return;
@@ -1962,7 +2087,7 @@ impl Workspace {
                             .default_size(width * self.layout.editor_fraction.unwrap_or(0.5))
                             .size_range(280.0..=(width - 290.0).max(280.0))
                             .resizable(true)
-                            .show(ui, |ui| self.editor_pane(ui));
+                            .show_pane(ui, |ui| self.editor_pane(ui));
                         if let Some(size) = layout::resized_panel(ctx, "editor_split") {
                             self.layout.editor_fraction = Some((size.x / width).clamp(0.15, 0.85));
                         }
@@ -1970,28 +2095,28 @@ impl Workspace {
                     }
                 }
             });
+        self.apps_window_frame(ctx, &mut tool_pass);
         if let Some(action) = self.toolkits.finish_pass(ctx, tool_pass) {
             match action {
                 toolkits::Action::Script(s) => self.run(s),
-                toolkits::Action::Apply(design, input) => {
-                    let view = self
-                        .figure_views
-                        .get(&self.current_figure)
-                        .map(|v| (self.current_figure, (v.bounds, v.auto)));
-                    self.submit(Job::ApplyFilter(Box::new(designer_apply::Request {
-                        design,
-                        input,
-                        folder: self.folder.clone(),
-                        view,
-                    })));
+                toolkits::Action::ExportScript(s) => {
+                    self.submit(Job::ExportAppScript(s, self.folder.clone()));
                 }
-                toolkits::Action::FirBlock(request) => self.submit_fir_block(request),
-                toolkits::Action::IirBlock(request) => self.submit_iir_block(request),
+                toolkits::Action::ExportVolumeSettings(settings) => {
+                    self.submit(Job::ExportVolumeSettings(settings, self.folder.clone()));
+                }
+                toolkits::Action::Apply(s) => {
+                    if !self.busy {
+                        self.submit(Job::ApplyDesign(s, self.folder.clone()));
+                    }
+                }
+                toolkits::Action::FilterBlock(block, summary) => {
+                    self.recovery_dirty |= self.toolkits.add_filter_block(block, &summary);
+                    self.status = self.toolkits.message.clone();
+                }
                 toolkits::Action::ChooseDesignSave(design) => {
                     self.queue_designer_save(ctx, design);
                 }
-                #[cfg(test)]
-                toolkits::Action::SaveFir(request) => self.submit_fir_save(request),
                 toolkits::Action::Simulate(m) => self.submit(Job::Simulate(m)),
                 toolkits::Action::ModelResolved => {
                     self.recovery_dirty = true;
@@ -2002,6 +2127,20 @@ impl Workspace {
                 toolkits::Action::StopModel => self.stop_work(),
                 toolkits::Action::NewModel => self.request_new_model(),
                 toolkits::Action::ModelFile(kind) => self.queue_model_toolbar(ctx, kind),
+                toolkits::Action::SaveVolumeScript(script, volume, labels) => {
+                    self.queue_app_script_save_with_volume(
+                        apps::AppKind::VolumeViewer,
+                        script,
+                        volume,
+                        labels,
+                    );
+                }
+                toolkits::Action::SaveAppScript(kind, script) => {
+                    self.queue_app_script_save(kind, script);
+                }
+                toolkits::Action::CloseAppDesigner => {
+                    self.close_tool_tab(toolkits::Tool::App(apps::AppKind::AppDesigner));
+                }
                 toolkits::Action::ModelCancelled => {
                     self.pending_quit = false;
                     self.pending_close = None;
@@ -2022,6 +2161,7 @@ impl Workspace {
         self.advance_script_io();
         self.workspace_action_ui(ctx);
         self.variable_editor(ctx);
+        self.settings_window(ctx);
         self.recovery_dirty |= self.toolkits.take_diagram_change();
         if self.toolkits.model_open
             && ctx.input(|i| {
@@ -2188,51 +2328,89 @@ impl Workspace {
             }
         }
         self.workspace_import_ui(ctx);
-        self.csv_import_ui(ctx);
         self.figure_close_ui(ctx);
         self.figure_conflict_ui(ctx);
         if !self.script_io.pending()
+            // The last save already closed the window: do not flash the prompt.
+            && !self.allow_close
             && self.script_conflict.is_none()
             && self.figure_conflict.is_none()
             && !self.toolkits.model_file_modal_open()
             && (self.pending_quit || self.pending_close.is_some())
         {
-            egui::Modal::new(egui::Id::new("unsaved_scripts")).show(root, |ui| {
-                ui.label(crate::tokens::title(ui.ctx(), "Unsaved work"));
-                ui.label("Save changes before closing?");
-                if self.pending_quit && self.toolkits.model_dirty() {
-                    ui.label("The block model has unsaved changes.");
-                }
-                ui.horizontal(|ui| {
-                    let mut finish = false;
-                    if ui.button("Save").clicked() {
-                        self.save_pending_scripts(ctx);
-                    }
-                    if ui.button("Discard changes").clicked() {
-                        if self.pending_quit {
-                            for doc in &mut self.documents {
-                                doc.discard();
+            if std::mem::take(&mut self.quit_save_scripts) && self.pending_quit {
+                // Save was already chosen in the single quit dialog; a failure
+                // leaves pending_quit set and this dialog shows the error next frame.
+                self.save_pending_scripts(ctx);
+            } else {
+                let viewport = ctx.content_rect();
+                let mut cancel = false;
+                let shown = egui::Modal::new(egui::Id::new("unsaved_scripts"))
+                    .frame(dialog_windows::dialog_frame(ctx))
+                    .show(root, |ui| {
+                        dialog_windows::window_chrome(ui, "Unsaved work", None, |ui| {
+                            ui.set_width((viewport.width() - 48.).clamp(240., 420.));
+                            ui.label("Save changes before closing?");
+                            // Name what would be lost: the closing tab, or every unsaved tab on quit.
+                            // Long or many names scroll so the buttons stay on screen.
+                            let names = self.unsaved_script_names(self.pending_quit);
+                            use crate::theme::ThemedScrollArea as _;
+                            egui::ScrollArea::vertical()
+                                .id_salt("unsaved_script_list")
+                                .min_scrolled_height(0.)
+                                .max_height((viewport.height() - 235.).clamp(20., 240.))
+                                .show_themed(ui, |ui| {
+                                    for name in &names {
+                                        let line =
+                                            format!("Script: {}", name.replace(['\n', '\r'], " "));
+                                        ui.add(egui::Label::new(line).truncate())
+                                            .on_hover_text(name);
+                                    }
+                                });
+                            if self.pending_quit && self.toolkits.model_dirty() {
+                                ui.label("The block model has unsaved changes.");
                             }
-                            self.toolkits.discard_model();
-                        }
-                        finish = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.pending_close = None;
-                        self.pending_quit = false;
-                        self.quit_discarded_figures.clear();
-                    }
-                    if finish {
-                        if self.pending_quit {
-                            self.allow_close = true;
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                        } else if let Some(i) = self.pending_close {
-                            self.remove_document(i);
-                        }
-                    }
-                });
-                ui.label(&self.status);
-            });
+                            ui.horizontal(|ui| {
+                                let mut finish = false;
+                                if ui.button("Save").clicked() {
+                                    self.save_pending_scripts(ctx);
+                                }
+                                if ui.button("Discard changes").clicked() {
+                                    if self.pending_quit {
+                                        for doc in &mut self.documents {
+                                            doc.discard();
+                                        }
+                                        self.toolkits.discard_model();
+                                    }
+                                    finish = true;
+                                }
+                                cancel = ui.button("Cancel").clicked();
+                                if finish {
+                                    if self.pending_quit {
+                                        self.allow_close = true;
+                                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                                    } else if let Some(i) = self.pending_close {
+                                        self.remove_document(i);
+                                    }
+                                }
+                            });
+                            if !self.status.is_empty() {
+                                ui.add(egui::Label::new(&self.status).truncate());
+                            }
+                        })
+                    });
+                if shown.is_top_modal
+                    && !shown.any_popup_open
+                    && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape))
+                {
+                    cancel = true;
+                }
+                if cancel {
+                    self.pending_close = None;
+                    self.pending_quit = false;
+                    self.quit_discarded_figures.clear();
+                }
+            }
         }
         self.script_reload_ui(ctx);
         self.script_conflict_ui(ctx);
@@ -2256,6 +2434,17 @@ impl Workspace {
         self.finish_new_model(ctx);
         self.finish_script_run(ctx);
         self.detached_frame(ctx);
+        let ui_events = self.ui_windows.show(ctx);
+        if !ui_events.is_empty() {
+            for ev in ui_events {
+                let _ = self.worker.ui_events.send(ev);
+            }
+            self.ui_events_pending = true;
+        }
+        if self.ui_events_pending && !self.busy {
+            self.ui_events_pending = false;
+            self.submit(Job::DrainUiEvents);
+        }
         if !ctx.will_discard()
             && self.detached_capture.is_none()
             && let Some(path) = &self.screenshot_path
@@ -2350,10 +2539,10 @@ impl Workspace {
         self.finish_root_open(ctx);
         self.finish_root_figure_save(ctx);
         self.finish_designer_save(ctx);
+        self.finish_app_script_save(ctx);
+        self.finish_import_pick(ctx);
         self.finish_model_toolbar(ctx);
         self.finish_folder_browse(ctx);
-        self.finish_csv_import_picker(ctx);
-        self.finish_csv_naming_action(ctx);
         // Existing accepted rail/history/focus actions own navigation. Mirror
         // only its bounded visibility preference into normal recovery tracking.
         self.layout.panels = self.navigation.panels();
@@ -2421,6 +2610,12 @@ impl Drop for Workspace {
 fn workspace_type_label(value: &matrust::Array) -> &'static str {
     if value.is_complex() {
         "complex double"
+    } else if let matrust::Array::Sparse(s) = value {
+        if s.is_logical() {
+            "sparse logical"
+        } else {
+            "sparse double"
+        }
     } else {
         value.class()
     }
@@ -2612,11 +2807,14 @@ fn main() -> eframe::Result {
 mod ui_tests {
     use super::*;
 
+    include!("desktop/output_window_tests.rs");
+
     // Existing geometry/focus fixtures explicitly retain their old sample and
     // split arrangement. Fresh-start coverage below uses the real constructor.
     fn legacy_sample_layout() -> session::DesktopLayout {
         session::DesktopLayout {
             center: None,
+            workspace_dock: Some(session::WorkspaceDock::BelowFiles),
             ..session::DesktopLayout::fresh_desktop()
         }
     }
@@ -2657,13 +2855,15 @@ mod ui_tests {
                 "Selected preview should produce a response plot: {}",
                 app.status
             );
-            let (band, order) = case.settings();
+            let (_, order) = case.settings();
             let sos = app.variables["sos"].as_numeric().unwrap();
             assert_eq!((sos.rows(), sos.cols()), (order, 6));
-            assert!(app.toolkits.preview_script().unwrap().contains(&format!(
-                "butter_sos({order}, [0.2 0.4], '{}')",
-                band.name()
-            )));
+            assert!(
+                app.toolkits
+                    .preview_script()
+                    .unwrap()
+                    .contains(&format!("butter({order}, "))
+            );
             assert!(app.toolkits.model.same_storage(&original_model));
             assert_eq!(
                 app.documents
@@ -2720,6 +2920,45 @@ mod ui_tests {
     include!("desktop/document_close_tests.rs");
     include!("desktop/model_document_tests.rs");
     include!("desktop/tool_tabs_tests.rs");
+    include!("desktop/app_framework_tests.rs");
+    include!("desktop/profiler_app_tests.rs");
+    include!("desktop/neural_net_apps_tests.rs");
+    include!("desktop/econ_modeler_tests.rs");
+    include!("desktop/mpc_designer_tests.rs");
+    include!("desktop/comm_apps_tests.rs");
+    include!("desktop/fuzzy_designer_tests.rs");
+    include!("desktop/app_designer_tests.rs");
+    include!("desktop/image_viewer_tests.rs");
+    include!("desktop/dicom_browser_tests.rs");
+    include!("desktop/model_reducer_tests.rs");
+    include!("desktop/regression_learner_tests.rs");
+    include!("desktop/ui_window_tests.rs");
+    include!("desktop/window_designer_tests.rs");
+    include!("desktop/spline_tool_tests.rs");
+    include!("desktop/image_segmenter_tests.rs");
+    include!("desktop/image_region_analyzer_tests.rs");
+    include!("desktop/image_batch_processor_tests.rs");
+    include!("desktop/system_identification_tests.rs");
+    include!("desktop/color_thresholder_tests.rs");
+    include!("desktop/classification_learner_tests.rs");
+    include!("desktop/pid_tuner_tests.rs");
+    include!("desktop/basic_fitting_tests.rs");
+    include!("desktop/comparison_tool_tests.rs");
+    include!("desktop/data_statistics_tests.rs");
+    include!("desktop/signal_analyzer_tests.rs");
+    include!("desktop/import_tool_tests.rs");
+    include!("desktop/curve_fitter_tests.rs");
+    include!("desktop/control_system_designer_tests.rs");
+    include!("desktop/linear_system_analyzer_tests.rs");
+    include!("desktop/distribution_fitter_tests.rs");
+    include!("desktop/distribution_explorer_tests.rs");
+    include!("desktop/data_cleaner_tests.rs");
+    include!("desktop/optimize_app_tests.rs");
+    include!("desktop/solve_ode_app_tests.rs");
+    include!("desktop/filter_visualizer_tests.rs");
+    include!("desktop/wavelet_denoiser_tests.rs");
+    include!("desktop/multires_analyzer_tests.rs");
+    include!("desktop/wavelet_tf_analyzer_tests.rs");
     include!("desktop/model_new_tests.rs");
     include!("desktop/sample_inspector_tests.rs");
     include!("desktop/figure_save_all_tests.rs");
@@ -2744,9 +2983,9 @@ mod ui_tests {
     include!("desktop/folder_resolution_tests.rs");
     include!("desktop/open_files_tests.rs");
     include!("desktop/native_extension_tests.rs");
-    include!("desktop/csv_import_tests.rs");
     include!("desktop/product_chrome_tests.rs");
     include!("desktop/redesign_tests.rs");
+    include!("desktop/clear_panes_tests.rs");
     #[test]
     fn layout_drag_preferences_survive_worker_save_restart_and_compact_clamping() {
         fn panel(ctx: &egui::Context, name: &str) -> egui::Rect {
@@ -2786,8 +3025,20 @@ mod ui_tests {
         drag(&mut app, &ctx, size, from, from + egui::vec2(50., 0.));
         assert!(app.layout.sidebar_width.unwrap() > r.width() + 30.);
         let r = panel(&ctx, "console");
-        let from = egui::pos2(r.center().x, r.top());
+        let from = ctx
+            .read_response(egui::Id::new("console").with("__resize"))
+            .unwrap()
+            .rect
+            .center()
+            + egui::vec2(0., 2.);
         drag(&mut app, &ctx, size, from, from - egui::vec2(0., 30.));
+        assert!(
+            app.layout.console_height.is_some(),
+            "console drag {from:?}, before={r:?}, after={:?}, handle={:?}, mode={:?}",
+            panel(&ctx, "console"),
+            ctx.read_response(egui::Id::new("console").with("__resize")),
+            app.mode()
+        );
         assert!(app.layout.console_height.unwrap() > r.height() + 20.);
         let r = panel(&ctx, "editor_split");
         let from = egui::pos2(r.right(), r.center().y);
@@ -2842,14 +3093,14 @@ mod ui_tests {
         }
         let maximum = (compact.x * 0.25).max(workspace_tools::minimum_dock_width(&small_ctx));
         assert!(panel(&small_ctx, "workspace").width() <= maximum);
-        // Clamped to 35 % of the compact window, not the saved wide height.
-        assert!(panel(&small_ctx, "console").height() < 215.);
+        // Clamped to 40 % of the space below the 76 px bars and above status.
+        assert!(panel(&small_ctx, "console").height() <= (compact.y - 100.) * 0.40 + 0.5);
         assert_eq!(small.layout, saved);
         assert!(!small.recovery_dirty);
         // Completion choices must also fit at the console's minimum height,
         // keeping the visible divider aligned with its interactive handle.
         let r = panel(&small_ctx, "console");
-        let from = egui::pos2(r.center().x, r.top());
+        let from = egui::pos2(r.center().x, r.top() + 2.);
         drag(
             &mut small,
             &small_ctx,
@@ -2938,7 +3189,15 @@ mod ui_tests {
                 .contains("complex_data")
         );
         assert!(
-            !app.workspace_import
+            app.workspace_import
+                .as_ref()
+                .unwrap()
+                .selected
+                .contains("struct_data")
+        );
+        // Sparse variables load since sparse part 1.
+        assert!(
+            app.workspace_import
                 .as_ref()
                 .unwrap()
                 .selected
@@ -3152,11 +3411,89 @@ mod ui_tests {
     fn click_label_at(app: &mut Workspace, ctx: &egui::Context, size: egui::Vec2, label: &str) {
         let mut position = None;
         for _ in 0..3 {
-            position = frame_at(app, ctx, size, vec![])
+            let output = frame_at(app, ctx, size, vec![]);
+            position = output
                 .shapes
                 .iter()
                 .rev()
-                .find_map(|s| text_position(&s.shape, label));
+                // Text scrolled out of its clip rect is painted but cannot be
+                // clicked (thirty apps push the examples below 900 px).
+                .find_map(|s| text_position(&s.shape, label).filter(|p| s.clip_rect.contains(*p)));
+            // Pane headers have their own "More"; the bare word means the
+            // toolstrip's while the action row shows one.
+            if label == "More"
+                && let Some(row) =
+                    egui::containers::panel::PanelState::load(ctx, egui::Id::new("action_row"))
+                && let Some(more) = output
+                    .shapes
+                    .iter()
+                    .rev()
+                    .filter_map(|s| text_position(&s.shape, label))
+                    .find(|p| row.outer_rect.contains(*p))
+            {
+                position = Some(more);
+            }
+        }
+        // Tools moved from document tabs to the Apps navigator. Prefer the
+        // actual row, not the noninteractive app title of the same name.
+        if !egui::Popup::is_any_open(ctx)
+            && let Some(row) = ctx.read_response(egui::Id::new(("app_nav", label)))
+            && row.rect.intersects(ctx.content_rect())
+        {
+            position = Some(row.rect.center());
+        }
+        // Overflowed actions are available through the same command palette.
+        // Exercise that real route when this layout has no visible action tile.
+        if position.is_none() && label == "Save workspace" {
+            click_label_at(app, ctx, size, "Menu");
+            click_label_at(app, ctx, size, "Workspace");
+            click_label_at(app, ctx, size, "Save workspace");
+            return;
+        }
+        if position.is_none() {
+            let query = match label {
+                "Save" => "Save script",
+                "Open" => "Open script",
+                "Plot" => "Plot workspace data",
+                "Run section" => "Run selection",
+                other => other,
+            };
+            if toolstrip::Action::ALL
+                .iter()
+                .any(|action| action.label() == query)
+            {
+                let modifiers = egui::Modifiers::CTRL;
+                for pressed in [true, false] {
+                    frame_at(
+                        app,
+                        ctx,
+                        size,
+                        vec![egui::Event::Key {
+                            key: egui::Key::K,
+                            physical_key: None,
+                            pressed,
+                            repeat: false,
+                            modifiers,
+                        }],
+                    );
+                }
+                frame_at(app, ctx, size, vec![egui::Event::Text(query.into())]);
+                for pressed in [true, false] {
+                    frame_at(
+                        app,
+                        ctx,
+                        size,
+                        vec![egui::Event::Key {
+                            key: egui::Key::Enter,
+                            physical_key: None,
+                            pressed,
+                            repeat: false,
+                            modifiers: egui::Modifiers::NONE,
+                        }],
+                    );
+                }
+                return;
+            }
         }
         let pos = position.unwrap_or_else(|| panic!("Missing {label}"));
         for pressed in [true, false] {
@@ -3185,7 +3522,7 @@ mod ui_tests {
                 .unwrap(),
             42.
         );
-        click_label(&mut app, &ctx, "Plots");
+        click_label(&mut app, &ctx, "Figures");
         assert_eq!(app.layout.toolstrip, ToolstripTab::Plots);
         click_label(&mut app, &ctx, "Figure properties");
         assert!(app.figure_editor.is_some());
@@ -3227,7 +3564,7 @@ mod ui_tests {
         let original = app.figure.clone().unwrap();
         let input = app.variables["y"].as_numeric().unwrap().data().as_ptr();
         app.selected = Some("y".into());
-        click_label(&mut app, &ctx, "Plots");
+        click_label(&mut app, &ctx, "Figures");
         click_label(&mut app, &ctx, "Plot");
         assert_eq!(app.plot_data.as_ref().unwrap().y, "y");
         click_label(&mut app, &ctx, "Sample index");
@@ -3817,7 +4154,7 @@ mod ui_tests {
             include_str!("../examples/tiled_layout.m")
         );
         let small = egui::vec2(960., 650.);
-        click_label_at(&mut app, &ctx, small, "Home");
+        click_label_at(&mut app, &ctx, small, "Command");
         let count = app.documents.len();
         click_label_at(&mut app, &ctx, small, "New script");
         assert_eq!(app.documents.len(), count + 1);
@@ -3826,13 +4163,13 @@ mod ui_tests {
         click_label_at(&mut app, &ctx, small, "Layout");
         click_label_at(&mut app, &ctx, small, "Show tools");
         assert!(!app.layout.toolstrip_collapsed);
-        click_label(&mut app, &ctx, "Plots");
+        click_label(&mut app, &ctx, "Figures");
         for _ in 0..3 {
             frame_at(&mut app, &ctx, small, vec![]);
         }
         assert!(!app.layout.toolstrip_collapsed);
         assert_eq!(app.layout.toolstrip, ToolstripTab::Plots);
-        click_label_at(&mut app, &ctx, small, "Home");
+        click_label_at(&mut app, &ctx, small, "Command");
         click_label_at(&mut app, &ctx, small, "More");
         click_label_at(&mut app, &ctx, small, "Layout");
         click_label_at(&mut app, &ctx, small, "Reset layout");
@@ -3856,7 +4193,7 @@ mod ui_tests {
             view_before: None,
         })));
         finish(&mut app);
-        click_label(&mut app, &ctx, "Plots");
+        click_label(&mut app, &ctx, "Figures");
         click_label(&mut app, &ctx, "Undo figure edit");
         finish(&mut app);
         assert!(original.same_snapshot(app.figure.as_ref().unwrap()));
@@ -4126,9 +4463,11 @@ mod ui_tests {
         assert_eq!(matrust::files::load_figure(&path).unwrap().title, "Edited");
     }
     #[test]
-    fn application_quit_saves_all_figures_before_prompting_for_scripts() {
+    fn application_quit_save_all_saves_figures_then_reports_a_cancelled_script_save() {
         let ctx = egui::Context::default();
         let mut app = legacy_sample_desktop(ctx.clone(), true);
+        // The untitled script's Save As picker is cancelled after the figures save.
+        app.script_io.save_picker = Some(|_, _| None);
         let dir = tempfile::tempdir().unwrap();
         for id in 1..=2 {
             app.run(format!("figure({id});plot([1 2 3]);"));
@@ -4138,6 +4477,8 @@ mod ui_tests {
         }
         app.run("figure(1);title('First');figure(2);title('Second');".into());
         finish(&mut app);
+        // Untitled, so the save goes through the (cancelled) picker, never examples/.
+        app.documents[0].path = None;
         app.documents[0].dirty = true;
         let mut input = egui::RawInput::default();
         input
@@ -4164,6 +4505,8 @@ mod ui_tests {
         assert!(app.figure_close.is_none());
         assert!(app.pending_quit);
         assert!(!app.allow_close);
+        assert_eq!(app.script_io.save_picker_calls, 1);
+        assert_eq!(app.status, "Save cancelled; script remains open");
         assert!(!app.figure_dirty(1));
         assert!(!app.figure_dirty(2));
         assert_eq!(
@@ -4520,7 +4863,7 @@ mod ui_tests {
         let ctx = egui::Context::default();
         let mut app = legacy_sample_desktop(ctx.clone(), true);
         frame(&mut app, &ctx, vec![]);
-        let source = "% αβ\nskipped=missing;\nR=twice(4);\nfunction y=twice(x)\ny=x*2;\nend";
+        let source = "% αβ\nskipped=uihtml;\nR=twice(4);\nfunction y=twice(x)\ny=x*2;\nend";
         app.documents[0].text = source.into();
         app.documents[0].changed();
         let start = source.find("R=twice").unwrap();
@@ -4537,7 +4880,7 @@ mod ui_tests {
             8.
         );
         assert!(!app.variables.contains_key("skipped"));
-        app.documents[0].text = source.replace("y=x*2", "y=missing");
+        app.documents[0].text = source.replace("y=x*2", "y=uihtml");
         app.documents[0].changed();
         app.selection = Some((0, range));
         press(&mut app, &ctx, egui::Key::F9);
@@ -4551,7 +4894,7 @@ mod ui_tests {
                 app.selection.as_ref().unwrap().1.clone()
             )
             .unwrap(),
-            "y=missing;"
+            "y=uihtml;"
         );
         assert_eq!(
             app.variables["R"]
@@ -4570,7 +4913,7 @@ mod ui_tests {
     fn error_navigation_tracks_document_identity_and_selection_offset() {
         let ctx = egui::Context::default();
         let mut app = legacy_sample_desktop(ctx.clone(), true);
-        app.new_document("% αβ\nskip=1; good=7; bad=missing(1);\n");
+        app.new_document("% αβ\nskip=1; good=7; bad=uihtml(1);\n");
         let id = app.documents[1].id;
         let start = app.documents[1].text.find("good=").unwrap();
         let range =
@@ -4590,7 +4933,7 @@ mod ui_tests {
         let selected = app.selection.as_ref().unwrap().1.clone();
         assert_eq!(
             session::selected_text(&app.documents[0].text, selected).unwrap(),
-            "bad=missing(1);"
+            "bad=uihtml(1);"
         );
         app.documents[0].text.push_str("% changed");
         app.active = 1;
@@ -4627,7 +4970,7 @@ mod ui_tests {
             24.
         );
         assert_eq!(app.figure.as_ref().unwrap().series.len(), 4);
-        app.new_document("% α\nfor k=1:3\n  if k==2\n    missing;\n  end\nend\n");
+        app.new_document("% α\nfor k=1:3\n  if k==2\n    uihtml;\n  end\nend\n");
         app.run_document(None);
         finish(&mut app);
         assert_eq!(
@@ -4646,7 +4989,7 @@ mod ui_tests {
             session::selected_text(&app.documents[app.active].text, selection)
                 .unwrap()
                 .trim(),
-            "missing;"
+            "uihtml;"
         );
     }
 
@@ -4668,7 +5011,7 @@ mod ui_tests {
         );
         assert_eq!(app.figure.as_ref().unwrap().series.len(), 2);
         assert!(!app.variables.contains_key("first"));
-        app.new_document("% α\nR=broken(1);\nfunction y=broken(x)\n  missing;\nend");
+        app.new_document("% α\nR=broken(1);\nfunction y=broken(x)\n  uihtml;\nend");
         app.run_document(None);
         finish(&mut app);
         assert_eq!(app.editor_issue.as_ref().unwrap().diagnostic.line, 4);
@@ -4679,7 +5022,7 @@ mod ui_tests {
             session::selected_text(&app.documents[app.active].text, selected)
                 .unwrap()
                 .trim(),
-            "missing;"
+            "uihtml;"
         );
     }
 
@@ -4687,7 +5030,7 @@ mod ui_tests {
     fn external_error_navigation_opens_exact_source_and_preserves_disk_conflicts() {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("broken.m");
-        let source = "function y=broken(x)\n% αβ\n  y=missing;\nend";
+        let source = "function y=broken(x)\n% αβ\n  y=uihtml;\nend";
         std::fs::write(&path, source).unwrap();
         let ctx = egui::Context::default();
         let mut app = legacy_sample_desktop(ctx.clone(), true);
@@ -4708,7 +5051,7 @@ mod ui_tests {
                 app.selection.as_ref().unwrap().1.clone()
             )
             .unwrap(),
-            "y=missing;"
+            "y=uihtml;"
         );
         assert!(matches!(
             app.documents[app.active].try_save(&path, None).unwrap(),
@@ -4766,7 +5109,7 @@ mod ui_tests {
     fn external_error_navigation_reuses_matching_open_helper() {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("broken.m");
-        std::fs::write(&path, "function y=broken(x)\ny=missing;\nend").unwrap();
+        std::fs::write(&path, "function y=broken(x)\ny=uihtml;\nend").unwrap();
         let mut app = legacy_sample_desktop(egui::Context::default(), true);
         app.folder = folder.path().canonicalize().unwrap();
         app.documents.push(Document::open(&path).unwrap());
@@ -5252,6 +5595,123 @@ mod ui_tests {
         );
         assert!(!app.variables.contains_key("x"));
     }
+
+    #[test]
+    fn desktop_edit_opens_existing_on_path_and_missing_as_untitled_buffer() {
+        let dir = tempfile::tempdir().unwrap();
+        let path_dir = tempfile::tempdir().unwrap();
+        let target = path_dir.path().join("myfunc.m");
+        std::fs::write(&target, "function y = myfunc(x)\ny = x + 1;\nend\n").unwrap();
+
+        let mut app = legacy_sample_desktop(egui::Context::default(), true);
+        app.folder = dir.path().to_path_buf();
+        let run_cmd = |app: &mut Workspace, cmd: &str| {
+            app.run(cmd.into());
+            finish(app);
+            finish(app);
+        };
+        run_cmd(
+            &mut app,
+            &format!("addpath('{}');", path_dir.path().display()),
+        );
+        run_cmd(&mut app, "edit myfunc");
+        assert_eq!(app.documents[app.active].title(), "myfunc.m");
+        assert!(app.documents[app.active].path.is_some());
+        assert!(app.documents[app.active].text.contains("y = x + 1;"));
+
+        run_cmd(&mut app, "edit brand_new_script");
+        assert_eq!(app.documents[app.active].title(), "brand_new_script.m");
+        assert!(app.documents[app.active].path.is_none());
+        assert!(!dir.path().join("brand_new_script.m").exists());
+
+        run_cmd(&mut app, "edit");
+        assert_eq!(app.documents[app.active].title(), "Untitled.mr");
+        assert!(app.documents[app.active].path.is_none());
+
+        while app.documents.len() < session::MAX_DOCUMENTS {
+            app.new_document_untitled(Some("keep.m".into()));
+        }
+        let active = app.active;
+        let before: Vec<_> = app
+            .documents
+            .iter()
+            .map(|doc| (doc.id, doc.title(), doc.text.clone()))
+            .collect();
+        run_cmd(&mut app, "edit must_not_rename");
+        assert_eq!(app.active, active);
+        let after: Vec<_> = app
+            .documents
+            .iter()
+            .map(|doc| (doc.id, doc.title(), doc.text.clone()))
+            .collect();
+        assert_eq!(after, before);
+        assert!(app.status.contains("32 tabs"), "{}", app.status);
+
+        for i in 0..session::MAX_DOCUMENTS + 3 {
+            app.queue_edit(worker::EditRequest {
+                path: None,
+                untitled_name: Some(format!("queued_{i}.m")),
+            });
+        }
+        assert_eq!(app.pending_edits.len(), session::MAX_DOCUMENTS);
+        assert_eq!(
+            app.pending_edits.back().unwrap().untitled_name.as_deref(),
+            Some("queued_31.m")
+        );
+        assert!(
+            app.status.contains("Dropped edit request"),
+            "{}",
+            app.status
+        );
+    }
+
+    #[test]
+    fn desktop_web_invokes_os_opener_without_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = legacy_sample_desktop(egui::Context::default(), true);
+        app.folder = dir.path().to_path_buf();
+        type Calls = Vec<(String, Vec<String>)>;
+        let calls: Arc<std::sync::Mutex<Calls>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = calls.clone();
+        worker::set_test_url_opener(Some(Box::new(move |prog, args| {
+            recorded
+                .lock()
+                .unwrap()
+                .push((prog.to_owned(), args.to_vec()));
+            Ok(())
+        })));
+        app.run("s = web('https://example.com', '-browser');".into());
+        finish(&mut app);
+        app.run("web('https://example.com/unsafe url');".into());
+        finish(&mut app);
+        assert!(app.console.iter().any(|line| line.contains("RFC 3986")));
+        worker::set_test_url_opener(None);
+
+        let recorded = calls.lock().unwrap();
+        assert_eq!(recorded.len(), 1);
+        let (prog, args) = &recorded[0];
+        if cfg!(windows) {
+            assert_eq!(prog, "rundll32");
+            assert_eq!(
+                args,
+                &["url.dll,FileProtocolHandler", "https://example.com"]
+            );
+        } else if cfg!(target_os = "macos") {
+            assert_eq!(prog, "open");
+            assert_eq!(args, &["https://example.com"]);
+        } else {
+            assert_eq!(prog, "xdg-open");
+            assert_eq!(args, &["https://example.com"]);
+        }
+        assert_eq!(
+            app.variables["s"]
+                .scalar(0, 0)
+                .unwrap()
+                .into_real()
+                .unwrap(),
+            0.
+        );
+    }
 }
 
 #[cfg(test)]
@@ -5265,3 +5725,13 @@ mod figure_appearance_tests;
 #[cfg(test)]
 #[path = "desktop/automatic_series_palette_tests.rs"]
 mod automatic_series_palette_tests;
+
+#[cfg(test)]
+include!("desktop/video_viewer_tests.rs");
+
+#[cfg(test)]
+include!("desktop/registration_estimator_tests.rs");
+#[cfg(test)]
+include!("desktop/camera_calibrator_tests.rs");
+#[cfg(test)]
+include!("desktop/pde_modeler_tests.rs");

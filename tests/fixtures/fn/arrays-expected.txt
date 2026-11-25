@@ -94,7 +94,9 @@ x =
 
 x =
 
-    1    5    5
+  int8
+
+  1  5  5
 
 @@CLASS int8 [1 3]
 @@END
@@ -935,7 +937,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1009,7 +1011,7 @@ x =
 
 x =
 
-     []
+  0×0 empty logical array
 
 @@CLASS logical [0 0]
 @@END

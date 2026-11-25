@@ -1,6 +1,6 @@
 //! Environment and local filesystem operations. Folder and environment changes
 //! belong to an engine, never to the process shared with desktop/other engines.
-use super::{Engine, Execution, Value};
+use super::{Engine, Execution, Value, app_launchers::Launch};
 use crate::{
     Array, CharacterRow, LogicalMatrix, Matrix, Result, StructArray,
     clock::{Instant, system_now},
@@ -18,6 +18,9 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+mod line_files;
+mod search_path;
+
 const NAMES: &[&str] = &[
     "getenv",
     "setenv",
@@ -28,6 +31,7 @@ const NAMES: &[&str] = &[
     "version",
     "ver",
     "verLessThan",
+    "isMATLABReleaseOlderThan",
     "matlabroot",
     "filesep",
     "pathsep",
@@ -38,6 +42,21 @@ const NAMES: &[&str] = &[
     "mkdir",
     "rmdir",
     "fileread",
+    "readlines",
+    "writelines",
+    "visdiff",
+    "implay",
+    "nnstart",
+    "nftool",
+    "fuzzyLogicDesigner",
+    "appdesigner",
+    "bertool",
+    "econometricModeler",
+    "mpcDesigner",
+    "wirelessWaveformGenerator",
+    "nprtool",
+    "nctool",
+    "ntstool",
     "tempdir",
     "tempname",
     "clock",
@@ -45,23 +64,39 @@ const NAMES: &[&str] = &[
     "date",
     "now",
     "pause",
+    "beep",
     "timeit",
     "isdir",
+    "isfile",
+    "isfolder",
     "copyfile",
     "movefile",
     "delete",
 ];
 pub(super) fn envx_handles(name: &str) -> bool {
-    NAMES.contains(&name)
+    NAMES.contains(&name) || Launch::for_name(name).is_some() || search_path::spath_handles(name)
 }
 const MAX_ENTRIES: usize = 10_000;
 const MAX_BYTES: u64 = 256 * 1024 * 1024;
 const DIR_FIELDS: &[&str] = &["name", "date", "bytes", "isdir", "datenum"];
 
+const MATLAB_RELEASE_YEAR: u32 = 2024;
+const MATLAB_RELEASE_HALF: u8 = 1; // 'a' = 0, 'b' = 1
+const MATLAB_RELEASE_TAG: &str = "2024b";
+const MATLAB_RELEASE_VERSION: &str = "24.2";
+const MATLAB_RELEASE_DATE: &str = "September 12, 2024";
+// No-argument `version` text. The public page returns a character vector
+// `<numbers> (R<release>)`:
+// https://www.mathworks.com/help/matlab/ref/version.html
+// The build field stays 0. This is the claimed R2024b target, not an
+// installed product and not an update number.
+const MATLAB_VERSION_TEXT: &str = "24.2.0.0 (R2024b)";
+
 #[derive(Clone, Default)]
 pub(super) struct Environment {
     variables: BTreeMap<String, String>,
     pause_off: bool,
+    beep_off: bool,
 }
 
 fn envx_arity(args: &[Value], min: usize, max: usize) -> Result<()> {
@@ -76,6 +111,80 @@ fn envx_arity(args: &[Value], min: usize, max: usize) -> Result<()> {
 fn envx_bool(value: bool) -> Value {
     Value::Logical(LogicalMatrix::scalar(value))
 }
+fn parse_matlab_release(release: &str) -> Result<(u32, u8)> {
+    let bytes = release.as_bytes();
+    if bytes.len() != 6
+        || !matches!(bytes[0], b'R' | b'r')
+        || !bytes[1..5].iter().all(|b| b.is_ascii_digit())
+    {
+        return Err(
+            "Release must be a string or character vector in the form 'R20XXa' or 'R20XXb'.".into(),
+        );
+    }
+    let year: u32 = release[1..5].parse().map_err(
+        |_| "Release must be a string or character vector in the form 'R20XXa' or 'R20XXb'.",
+    )?;
+    let half = match bytes[5] {
+        b'a' | b'A' => 0,
+        b'b' | b'B' => 1,
+        _ => {
+            return Err(
+                "Release must be a string or character vector in the form 'R20XXa' or 'R20XXb'."
+                    .into(),
+            );
+        }
+    };
+    Ok((year, half))
+}
+/// Names given to isfile/isfolder: a char row, string array or cellstr, with
+/// the result shape (scalar for char). Missing strings are None. Shared with
+/// the browser build so both reject the same inputs.
+pub(super) fn envx_query_names(
+    engine: &Engine,
+    name: &str,
+    args: &[Value],
+) -> Result<(Vec<Option<String>>, Vec<usize>)> {
+    envx_arity(args, 1, 1)?;
+    let value = &args[0];
+    let invalid = || {
+        let class = value
+            .clone()
+            .array(&engine.cancel)
+            .map(|a| a.class().to_owned())
+            .unwrap_or_else(|_| "unknown".into());
+        format!(
+            "{name}: Invalid input argument of type '{class}'. Input must be a string array, character vector, or cell array of character vectors."
+        )
+    };
+    let dims = match value {
+        Value::Text(_) | Value::QuotedString(_) => vec![1, 1],
+        Value::Container(Array::Character(c)) if c.rows() <= 1 => vec![1, 1],
+        Value::Container(Array::Str(_) | Array::Cell(_)) => value.dims().into_owned(),
+        _ => return Err(invalid()),
+    };
+    let Some((texts, _)) = super::datetime_fns::text_elements(value, &engine.cancel)? else {
+        return Err(invalid());
+    };
+    Ok((texts, dims))
+}
+
+/// Logical array of `dims` from per-element answers (column-major).
+pub(super) fn envx_query_result(
+    engine: &Engine,
+    answers: Vec<bool>,
+    dims: &[usize],
+) -> Result<Value> {
+    let rows = dims[0];
+    let cols = dims[1..].iter().product::<usize>();
+    let data = answers.into_iter().map(u8::from).collect();
+    let logical = LogicalMatrix::from_column_vec(rows, cols, data, &engine.cancel)?;
+    Ok(Value::Logical(if dims.len() > 2 {
+        logical.with_dims(dims)?
+    } else {
+        logical
+    }))
+}
+
 fn envx_number(value: f64) -> Value {
     Value::Matrix(Matrix::scalar(value))
 }
@@ -94,6 +203,24 @@ pub(super) fn envx_path_text(path: &Path) -> String {
         }
     }
     text.into_owned()
+}
+
+/// Path text for a dialog reply. A non-Unicode path is an error, not a name
+/// rewritten with U+FFFD.
+pub(super) fn envx_reply_path(path: &Path) -> Result<String> {
+    let Some(text) = path.to_str() else {
+        return Err("The picked path is not valid Unicode.".into());
+    };
+    #[cfg(windows)]
+    {
+        if let Some(network) = text.strip_prefix(r"\\?\UNC\") {
+            return Ok(format!(r"\\{network}"));
+        }
+        if let Some(local) = text.strip_prefix(r"\\?\") {
+            return Ok(local.to_owned());
+        }
+    }
+    Ok(text.to_owned())
 }
 fn envx_arch() -> (&'static str, &'static str) {
     if cfg!(windows) {
@@ -160,6 +287,12 @@ impl Engine {
         self.file_directory.as_deref()
     }
 
+    /// Engine-local environment changes to apply to a child process. Empty
+    /// values represent `setenv(name)` and must remove inherited values.
+    pub(super) fn envx_child_variables(&self) -> &BTreeMap<String, String> {
+        &self.envx.variables
+    }
+
     pub(super) fn envx_call(
         &mut self,
         name: &str,
@@ -179,9 +312,27 @@ impl Engine {
         quiet: bool,
         out: &mut Execution,
     ) -> Result<bool> {
+        if let Some(launch) = Launch::for_name(name) {
+            let args = self.function_arguments(expressions, None, out)?;
+            super::profiler::dispatch(self, name, |_| launch.open(name, args.len(), 0))?;
+            return Ok(true);
+        }
         if !matches!(
             name,
-            "setenv"
+            "visdiff"
+                | "implay"
+                | "nnstart"
+                | "fuzzyLogicDesigner"
+                | "appdesigner"
+                | "bertool"
+                | "econometricModeler"
+                | "mpcDesigner"
+                | "wirelessWaveformGenerator"
+                | "nftool"
+                | "nprtool"
+                | "nctool"
+                | "ntstool"
+                | "setenv"
                 | "cd"
                 | "dir"
                 | "ls"
@@ -191,11 +342,34 @@ impl Engine {
                 | "movefile"
                 | "delete"
                 | "pause"
+                | "beep"
                 | "ver"
+                | "path"
+                | "addpath"
+                | "rmpath"
+                | "restoredefaultpath"
+                | "userpath"
+                | "savepath"
         ) {
             return Ok(false);
         }
-        let args = self.function_arguments(expressions, None, out)?;
+        if name == "userpath" && expressions.is_empty() {
+            // A query is an ordinary value (ans); setters have no implicit output.
+            return Ok(false);
+        }
+        let args = super::string_class::arguments(self, name, expressions, out)?;
+        #[cfg(all(feature = "audio", not(target_arch = "wasm32")))]
+        if matches!(name, "pause" | "delete")
+            && args
+                .first()
+                .is_some_and(|v| super::objects::audio_receiver(self, v))
+        {
+            self.obj_call(name, &args, out)?;
+            return Ok(true);
+        }
+        if name == "delete" && self.dlg_call(name, &args, out)?.is_some() {
+            return Ok(true);
+        }
         if name == "pause"
             && args
                 .first()
@@ -206,7 +380,11 @@ impl Engine {
             self.assign_workspace_array("ans", value.array(&self.cancel)?, quiet, out)?;
             return Ok(true);
         }
-        self.envx_run(name, &args, 0, out)?;
+        if self.profiler.enabled {
+            super::profiler::builtin(self, name, |engine| engine.envx_run(name, &args, 0, out))?;
+        } else {
+            self.envx_run(name, &args, 0, out)?;
+        }
         Ok(true)
     }
 
@@ -221,24 +399,43 @@ impl Engine {
             Expr::Name(name) => (name.as_str(), &[][..]),
             _ => return Ok(None),
         };
-        if !matches!(
+        let launch = Launch::for_name(name);
+        if (!matches!(
             name,
-            "computer" | "mkdir" | "rmdir" | "copyfile" | "movefile"
-        ) || self.contains_array(name)
+            "nnstart"
+                | "fuzzyLogicDesigner"
+                | "appdesigner"
+                | "bertool"
+                | "econometricModeler"
+                | "mpcDesigner"
+                | "wirelessWaveformGenerator"
+                | "nftool"
+                | "nprtool"
+                | "nctool"
+                | "ntstool"
+                | "visdiff"
+                | "implay"
+                | "computer"
+                | "mkdir"
+                | "rmdir"
+                | "copyfile"
+                | "movefile"
+        ) && launch.is_none())
+            || self.contains_array(name)
+            || self.resolve_function(name)?.is_some()
         {
             return Ok(None);
         }
-        if let Some(function) = self.resolve_function(name)? {
+        if let Some(launch) = launch {
             let args = self.function_arguments(expressions, None, out)?;
-            return self
-                .invoke_function(function, args, count, None, out)
-                .map(Some);
+            launch.open(name, args.len(), count)?;
+            return Ok(Some(Vec::new()));
         }
-        let args = self.function_arguments(expressions, None, out)?;
+        let args = super::string_class::arguments(self, name, expressions, out)?;
         self.envx_run(name, &args, count, out).map(Some)
     }
 
-    fn envx_string(&self, value: &Value, error: &str) -> Result<String> {
+    pub(super) fn envx_string(&self, value: &Value, error: &str) -> Result<String> {
         let text = match value {
             Value::Text(s) | Value::QuotedString(s) => s.clone(),
             Value::Container(Array::Character(c)) if c.is_text_row() => c.to_utf8(&self.cancel)?,
@@ -257,6 +454,14 @@ impl Engine {
             return Err("Network paths and URLs are not supported yet".into());
         }
         self.file_path(text, "")
+    }
+    fn envx_read_path(&self, text: &str) -> Result<PathBuf> {
+        let local = self.envx_path(text)?;
+        Ok(super::file_commands::resolve_read_path(
+            self,
+            Path::new(text),
+            local,
+        ))
     }
     fn envx_warning(&mut self, id: &str, message: String, out: &mut Execution) -> Result<()> {
         // With an identifier, warning formats its message: pass it as data.
@@ -297,12 +502,55 @@ impl Engine {
         if super::browser::file_command(name, Some(args)) {
             return Err(super::browser::NO_FILES.into());
         }
+        if search_path::spath_handles(name) {
+            return self.spath_run(name, args, count, out);
+        }
+        if matches!(
+            name,
+            "nnstart" | "nftool" | "nprtool" | "nctool" | "ntstool"
+        ) {
+            super::neural_app_hooks::open(name, args.len(), count)?;
+            return Ok(vec![]);
+        }
+        if matches!(name, "bertool" | "wirelessWaveformGenerator") {
+            super::comm_app_hooks::open(name, args.len(), count)?;
+            return Ok(vec![]);
+        }
+        if name == "mpcDesigner" {
+            super::mpc_app_hooks::open(self, args, count)?;
+            return Ok(vec![]);
+        }
+        if name == "econometricModeler" {
+            super::econ_app_hooks::open(args.len(), count)?;
+            return Ok(vec![]);
+        }
+        if name == "fuzzyLogicDesigner" {
+            super::fuzzy_app_hooks::open(self, args, count, out)?;
+            return Ok(vec![]);
+        }
+        if name == "appdesigner" {
+            super::app_designer_model::hooks::open(self, args, count)?;
+            return Ok(vec![]);
+        }
+        if name == "implay" {
+            return super::implay::open(self, args, count);
+        }
+        if name == "visdiff" {
+            return super::compare_builtin::visdiff(self, args, count, out);
+        }
         let multi = matches!(
             name,
             "computer" | "mkdir" | "rmdir" | "copyfile" | "movefile"
         );
         if count > if multi { 3 } else { 1 } {
             return Err("Too many output arguments.".into());
+        }
+        if name == "delete" && matches!(args.first(), Some(Value::Container(Array::Graphics(_)))) {
+            if count != 0 {
+                return Err("delete graphics does not return outputs".into());
+            }
+            super::graphics_handles::graphics_delete_lines(self, args, out)?;
+            return Ok(Vec::new());
         }
         let value = match name {
             "ispc" | "isunix" | "ismac" | "filesep" | "pathsep" | "pwd" | "matlabroot"
@@ -427,9 +675,12 @@ impl Engine {
                     .transpose()?
                     .unwrap_or_default();
                 envx_text(match option.as_str() {
-                    "" => concat!("MatRust ", env!("CARGO_PKG_VERSION")),
-                    "-release" => "alpha",
-                    "-date" => "not recorded",
+                    "" => MATLAB_VERSION_TEXT,
+                    "-release" => MATLAB_RELEASE_TAG,
+                    "-date" => MATLAB_RELEASE_DATE,
+                    // Same page: a general release with no update returns empty.
+                    // An update would be 'Update n'. This target has no update.
+                    "-description" => "",
                     _ => return Err("Unknown command option.".into()),
                 })
             }
@@ -442,8 +693,17 @@ impl Engine {
                 let present = product.as_deref().is_none_or(|p| {
                     p.eq_ignore_ascii_case("matlab") || p.eq_ignore_ascii_case("matrust")
                 });
+                let is_matlab = product
+                    .as_deref()
+                    .is_some_and(|p| p.eq_ignore_ascii_case("matlab"));
+                let release = format!("(R{MATLAB_RELEASE_TAG})");
+                let (ver_str, rel_str) = if is_matlab {
+                    (MATLAB_RELEASE_VERSION, release.as_str())
+                } else {
+                    (env!("CARGO_PKG_VERSION"), "(alpha)")
+                };
                 let slots = if present {
-                    ["MatRust", env!("CARGO_PKG_VERSION"), "(alpha)", ""]
+                    ["MatRust", ver_str, rel_str, ""]
                         .into_iter()
                         .map(|s| envx_text(s).array(&self.cancel).map(Arc::new))
                         .collect::<Result<Vec<_>>>()?
@@ -464,7 +724,7 @@ impl Engine {
                 envx_arity(args, 2, 2)?;
                 let product = self.envx_string(&args[0], "Argument must contain a string.")?;
                 let installed = match product.as_str() {
-                    "matlab" => "9.0",
+                    "matlab" => MATLAB_RELEASE_VERSION,
                     "matrust" => env!("CARGO_PKG_VERSION"),
                     _ => return Err(format!("Toolbox '{product}' not found.")),
                 };
@@ -480,6 +740,40 @@ impl Engine {
                     Ok(result)
                 };
                 envx_bool(parse(installed)? < parse(&wanted)?)
+            }
+            "isMATLABReleaseOlderThan" => {
+                envx_arity(args, 1, 3)?;
+                let release_str = self.envx_string(
+                    &args[0],
+                    "Release must be a string or character vector in the form 'R20XXa' or 'R20XXb'.",
+                )?;
+                let (year, half) = parse_matlab_release(&release_str)?;
+                let stage_ord: u8 = if let Some(stage_arg) = args.get(1) {
+                    let stage =
+                        self.envx_string(stage_arg, "Stage must be 'release' or 'prerelease'.")?;
+                    match stage.to_ascii_lowercase().as_str() {
+                        "prerelease" => 0,
+                        "release" => 1,
+                        _ => return Err("Stage must be 'release' or 'prerelease'.".into()),
+                    }
+                } else {
+                    1
+                };
+                let update: u64 = if let Some(update_arg) = args.get(2) {
+                    let m = self.real_arg("isMATLABReleaseOlderThan", update_arg)?;
+                    let v = m
+                        .as_scalar()
+                        .map_err(|_| "Update must be a nonnegative integer.".to_string())?;
+                    if !v.is_finite() || v < 0. || v.fract() != 0. || v > (u64::MAX as f64) {
+                        return Err("Update must be a nonnegative integer.".into());
+                    }
+                    v as u64
+                } else {
+                    0
+                };
+                let older = (MATLAB_RELEASE_YEAR, MATLAB_RELEASE_HALF, 1u8, 0u64)
+                    < (year, half, stage_ord, update);
+                envx_bool(older)
             }
             "tempname" => {
                 envx_arity(args, 0, 1)?;
@@ -522,6 +816,29 @@ impl Engine {
                 let text =
                     self.envx_string(&args[0], "The first input to exist must be a string.")?;
                 envx_bool(!text.is_empty() && self.envx_path(&text)?.is_dir())
+            }
+            "isfile" | "isfolder" => {
+                let (texts, dims) = envx_query_names(self, name, args)?;
+                let mut answers = Vec::with_capacity(texts.len());
+                for (i, text) in texts.iter().enumerate() {
+                    if i % 1024 == 1023 {
+                        self.check_cancel()?;
+                    }
+                    // Missing, empty or unresolvable names (URLs, network
+                    // paths) are simply not local files or folders.
+                    let path = text
+                        .as_deref()
+                        .filter(|t| !t.is_empty())
+                        .and_then(|t| self.envx_path(t).ok());
+                    answers.push(path.is_some_and(|p| {
+                        if name == "isfile" {
+                            p.is_file()
+                        } else {
+                            p.is_dir()
+                        }
+                    }));
+                }
+                envx_query_result(self, answers, &dims)?
             }
             "mkdir" | "rmdir" => {
                 envx_arity(args, 1, 2)?;
@@ -602,7 +919,7 @@ impl Engine {
             "fileread" => {
                 envx_arity(args, 1, 1)?;
                 let text = self.envx_string(&args[0], "Filename must be a string.")?;
-                let path = self.envx_path(&text)?;
+                let path = self.envx_read_path(&text)?;
                 let mut file = fs::File::open(path).map_err(|e| {
                     if e.kind() == std::io::ErrorKind::NotFound {
                         format!("Could not open file {text}. No such file or directory.")
@@ -627,6 +944,11 @@ impl Engine {
                     .map_err(|_| "fileread: only UTF-8 text is supported yet")?;
                 CharacterRow::checked_len(1, text.encode_utf16().count())?;
                 envx_text(text)
+            }
+            "readlines" => self.envx_readlines(args)?,
+            "writelines" => {
+                self.envx_writelines(args)?;
+                return Ok(vec![Value::Void]);
             }
             "dir" | "ls" => {
                 envx_arity(args, 0, 1)?;
@@ -677,9 +999,20 @@ impl Engine {
             "pause" => {
                 envx_arity(args, 0, 1)?;
                 let Some(arg) = args.first() else {
-                    return Err("pause without an argument waits for a key and is not supported yet; use pause(seconds).".into());
+                    if !self.envx.pause_off {
+                        self.gobj_flush_frame();
+                        super::ui_components::drain_ui_events(self, out)?;
+                        self.hostio_pause(out)?;
+                    }
+                    return Ok(if count == 0 {
+                        Vec::new()
+                    } else {
+                        vec![Value::Void]
+                    });
                 };
-                if arg.is_character() || matches!(arg, Value::QuotedString(_)) {
+                // `pause 0.5`: command syntax passes the char word '0.5' (fix line 12).
+                let word = super::graphics::number_word(arg);
+                if word.is_none() && (arg.is_character() || matches!(arg, Value::QuotedString(_))) {
                     match self.envx_string(arg, "Unknown command option.")?.as_str() {
                         "query" => {
                             let state = if self.envx.pause_off { "off" } else { "on" };
@@ -690,27 +1023,58 @@ impl Engine {
                         _ => return Err("Unknown command option.".into()),
                     }
                 } else {
-                    let seconds = self.real_arg(name, arg)?.as_scalar()?;
+                    let seconds = match word {
+                        Some(seconds) => seconds,
+                        None => self.real_arg(name, arg)?.as_scalar()?,
+                    };
                     if seconds.is_nan() {
                         return Err("Pause duration must not be NaN.".into());
                     }
-                    if !self.envx.pause_off && seconds > 0. {
-                        let start = Instant::now();
-                        while start.elapsed().as_secs_f64() < seconds {
-                            self.check_cancel()?;
-                            // wasm32 cannot sleep a thread: the browser worker
-                            // waits by polling the clock until the deadline.
-                            #[cfg(not(target_arch = "wasm32"))]
-                            {
-                                let remaining =
-                                    (seconds - start.elapsed().as_secs_f64()).clamp(0., 0.01);
-                                std::thread::sleep(Duration::from_secs_f64(remaining));
+                    if !self.envx.pause_off {
+                        // pause flushes graphics and processes queued UI callbacks like drawnow.
+                        self.gobj_flush_frame();
+                        super::ui_components::drain_ui_events(self, out)?;
+                        if seconds > 0. {
+                            let start = Instant::now();
+                            while start.elapsed().as_secs_f64() < seconds {
+                                self.check_cancel()?;
+                                super::ui_components::drain_ui_events(self, out)?;
+                                // wasm32 cannot sleep a thread: the browser worker
+                                // waits by polling the clock until the deadline.
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let remaining =
+                                        (seconds - start.elapsed().as_secs_f64()).clamp(0., 0.01);
+                                    std::thread::sleep(Duration::from_secs_f64(remaining));
+                                }
                             }
                         }
                     }
                     self.check_cancel()?;
                 }
                 Value::Void
+            }
+            "beep" => {
+                envx_arity(args, 0, 1)?;
+                if let Some(arg) = args.first() {
+                    match self.envx_string(arg, "Unknown command option.")?.as_str() {
+                        "on" => self.envx.beep_off = false,
+                        "off" => self.envx.beep_off = true,
+                        _ => return Err("Unknown command option.".into()),
+                    }
+                    return Ok(if count == 0 {
+                        Vec::new()
+                    } else {
+                        vec![Value::Void]
+                    });
+                }
+                if count == 0 {
+                    if !self.envx.beep_off {
+                        self.hostio_beep();
+                    }
+                    return Ok(Vec::new());
+                }
+                envx_text(if self.envx.beep_off { "off" } else { "on" })
             }
             "timeit" => {
                 envx_arity(args, 1, 2)?;
@@ -1140,6 +1504,11 @@ impl Engine {
     }
 }
 
+/// Local wall-clock [y mo d h mi s] of `time` (datetime_fns uses it for
+/// unzoned datetime('now'); now/clock/date keep their own callers).
+pub(super) fn envx_local_parts(time: SystemTime) -> Result<[f64; 6]> {
+    envx_local_clock(time)
+}
 #[cfg(unix)]
 fn envx_local_clock(time: SystemTime) -> Result<[f64; 6]> {
     use std::ffi::{c_char, c_int, c_long};

@@ -6,6 +6,10 @@ pub struct Request {
     pub scripts: Vec<(u64, PathBuf)>,
     pub tabs: usize,
 }
+pub struct EditorOpen {
+    pub file: Request,
+    pub source_read_only: bool,
+}
 pub enum Prepared {
     Directory(PathBuf),
     Script(Box<Document>),
@@ -15,7 +19,8 @@ pub enum Prepared {
 #[derive(Clone, Copy)]
 pub enum Kind {
     Workspace,
-    Csv,
+    /// A data file for the Import Tool.
+    Data,
     Figure,
     Image,
     PagedImage,
@@ -29,6 +34,20 @@ pub fn prepare(
     let path = request.path.clone();
     prepare_inner(request, cancel)
         .map_err(|error| format!("{}: {error}", crate::path_label::display(&path)))
+}
+impl EditorOpen {
+    pub fn prepare(self, cancel: &std::sync::atomic::AtomicBool) -> matrust::Result<Prepared> {
+        let mut result = prepare(self.file, cancel)?;
+        if self.source_read_only {
+            match &mut result {
+                Prepared::Script(document) => document.require_save_as(),
+                // Only scripts have a read-only-source mode; the engine refuses
+                // other added-folder kinds, and this keeps the desktop in step.
+                _ => return Err("Only scripts open from an added path folder".into()),
+            }
+        }
+        Ok(result)
+    }
 }
 fn prepare_inner(
     request: Request,
@@ -65,31 +84,38 @@ fn prepare_inner(
             return Ok(Prepared::Script(Box::new(document)));
         }
         "mat" => Kind::Workspace,
-        "csv" => Kind::Csv,
+        "csv" | "tsv" | "dat" | "xlsx" => Kind::Data,
         "mrfig" | "mfig" | "fig" => Kind::Figure,
         "png" | "jpg" | "jpeg" | "bmp" | "svg" => Kind::Image,
         "pdf" | "tif" | "tiff" => Kind::PagedImage,
         "eps" => Kind::Eps,
         "mrsim" | "slx" => Kind::Model,
-        _ => return Err("Supported: .mr, .m, .txt, supported .mat, .csv, .mrfig, .mfig, supported 2-D .fig, .mrsim, PNG, JPEG, BMP, TIFF, static SVG, PDF and configured EPS previews (Windows). SLX import supports explicit scalar single-rate discrete graphs; .mdl and other Simulink semantics are unsupported.".into()),
+        _ => return Err("Supported: .mr, .m, .txt, supported .mat, .csv, .tsv, .dat, .xlsx, .mrfig, .mfig, supported 2-D .fig, .mrsim, PNG, JPEG, BMP, TIFF, static SVG, PDF and configured EPS previews (Windows). SLX import supports explicit scalar single-rate discrete graphs; .mdl and other Simulink semantics are unsupported.".into()),
     };
     check()?;
     Ok(Prepared::File(path, kind))
 }
 impl Workspace {
     pub(super) fn try_open_path(&mut self, path: PathBuf) -> bool {
+        self.try_open_editor_path(path, false)
+    }
+    pub(super) fn try_open_editor_path(&mut self, path: PathBuf, source_read_only: bool) -> bool {
         if self.busy || self.file_action_pending() {
             return false;
         }
         let scripts = self
             .documents
             .iter()
+            .filter(|doc| doc.default_save_path().is_none() == source_read_only)
             .filter_map(|doc| doc.path.clone().map(|path| (doc.id, path)))
             .collect();
-        self.submit(Job::PrepareOpen(Box::new(Request {
-            path,
-            scripts,
-            tabs: self.documents.len(),
+        self.submit(Job::PrepareOpen(Box::new(EditorOpen {
+            file: Request {
+                path,
+                scripts,
+                tabs: self.documents.len(),
+            },
+            source_read_only,
         })));
         self.worker.opening = self.busy;
         if self.worker.opening {
@@ -139,6 +165,7 @@ impl Workspace {
                     return;
                 }
                 let path = document.path.clone().unwrap();
+                let needs_destination = document.default_save_path().is_none();
                 let id = document.id;
                 if activate_document && self.has_startup_placeholder() {
                     self.forget_script_editor(self.documents[0].id);
@@ -154,7 +181,12 @@ impl Workspace {
                     self.activate_script_index(self.documents.len() - 1);
                     self.selection = None;
                     self.reveal_editor();
-                    self.status = "Script opened".into();
+                    self.status = if needs_destination {
+                        "Script opened; Save will ask for a destination"
+                    } else {
+                        "Script opened"
+                    }
+                    .into();
                 } else {
                     self.status =
                         "Script opened in a background tab; current document retained".into();
@@ -164,7 +196,7 @@ impl Workspace {
             Prepared::File(path, kind) => {
                 match kind {
                     Kind::Workspace => self.submit(Job::InspectWorkspace(path.clone())),
-                    Kind::Csv => self.begin_csv_import(path.clone()),
+                    Kind::Data => self.open_in_import_tool(path.clone()),
                     Kind::Figure => {
                         if activate_document && self.layout.center.is_none() {
                             self.show_plot_pane();
@@ -238,8 +270,9 @@ impl PickerKind {
             Self::Supported => &[(
                 "Supported files",
                 &[
-                    "mr", "m", "txt", "mat", "csv", "mrfig", "mfig", "fig", "mrsim", "slx", "png",
-                    "jpg", "jpeg", "bmp", "tif", "tiff", "svg", "pdf", "eps",
+                    "mr", "m", "txt", "mat", "csv", "tsv", "dat", "xlsx", "mrfig", "mfig", "fig",
+                    "mrsim", "slx", "png", "jpg", "jpeg", "bmp", "tif", "tiff", "svg", "pdf",
+                    "eps",
                 ],
             )],
             Self::WorkspaceCurrentFolder | Self::WorkspaceDefaultDirectory => {
@@ -289,7 +322,7 @@ struct PickerAction {
 impl Workspace {
     pub(super) fn root_open_context(&self, ctx: &egui::Context) -> bool {
         ctx.viewport_id() == egui::ViewportId::ROOT
-            && ctx.input(|i| i.focused && !i.viewport().close_requested())
+            && self.command_window_focused(ctx)
             && ctx.memory(|m| m.top_modal_layer().is_none())
             && !self.busy
             && !self.file_action_pending()

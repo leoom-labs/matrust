@@ -4,6 +4,48 @@ use matrust::{
 };
 
 #[test]
+fn fix15_plot_properties_automatic_color_order_root_and_yyaxis() {
+    let mut e = Engine::default();
+    e.execute(
+        "ax = axes; order = get(ax, 'ColorOrder');
+         assert(isequal(order, get(groot, 'DefaultAxesColorOrder')));
+         assert(isequal(order, get(groot, 'FactoryAxesColorOrder')));
+         yyaxis left; h = plot(1:3);
+         assert(isequal(get(h, 'Color'), order(1,:)));",
+    )
+    .unwrap();
+}
+
+#[test]
+fn fix15_plot_properties_default_line_color_keeps_plot_color_order() {
+    // The public graphics defaults page gives ColorOrder priority for plot.
+    let mut e = Engine::default();
+    e.execute(
+        "set(groot, 'DefaultLineColor', 'k');
+         h = plot(rand(3,2));
+         order = get(gca, 'ColorOrder');
+         c1 = get(h(1), 'Color'); c2 = get(h(2), 'Color');
+         assert(~isequal(c1, c2));
+         assert(isequal(c1, order(1,:)) && isequal(c2, order(2,:)));
+         primitive = line(1:2, 1:2);
+         assert(isequal(get(primitive, 'Color'), [0 0 0]));
+         manual = line(1:2, 1:2, 'Color', 'r');
+         assert(isequal(get(manual, 'Color'), [1 0 0]));
+         ax = gca; ax.ColorOrder = [1 0 1; 0 1 1];
+         assert(isequal(get(h(1), 'Color'), [1 0 1]));
+         assert(isequal(get(h(2), 'Color'), [0 1 1]));
+         assert(isequal(get(primitive, 'Color'), [0 0 0]));
+         set(groot, 'DefaultLineColor', 'factory');
+         factory = get(groot, 'FactoryLineColor');
+         assert(isequal(get(groot, 'DefaultLineColor'), factory));
+         restored = line(1:2, 1:2);
+         assert(isequal(get(restored, 'Color'), round(255 * factory) / 255));
+         reset(groot);",
+    )
+    .unwrap();
+}
+
+#[test]
 fn plot_properties_apply_to_all_new_pairs_and_columns_with_explicit_precedence() {
     let mut e = Engine::default();
     e.execute("plot([1 2],[3 4],'ro',[2 3],[5 6],'b--','LineWidth',2.5,'Color',[0.1 0.5 1],'LineStyle','-.','DisplayName','Measured');").unwrap();
@@ -81,10 +123,12 @@ fn plot_properties_supported_plot_families_keep_geometry_and_style() {
     assert!(s.marker_filled && !s.visible);
     e.execute("scatter([1 2],[3 4],'MarkerEdgeColor','#123456','LineWidth',3);")
         .unwrap();
+    let s = &e.figure.as_ref().unwrap().series[0];
     assert_eq!(
-        e.figure.as_ref().unwrap().series[0].color,
-        [0x12, 0x34, 0x56]
+        s.marker_edge_color,
+        matrust::plot::MarkerColor::Rgb([0x12, 0x34, 0x56])
     );
+    assert_ne!(s.color, [0x12, 0x34, 0x56]);
     e.execute("bar([1 2;3 4],'FaceColor','cyan','DisplayName','Bars','Visible','off');")
         .unwrap();
     assert!(
@@ -160,4 +204,67 @@ fn plot_properties_named_colors_and_native_fig_roundtrips() {
             .unwrap();
         assert_eq!(e.figure.as_ref().unwrap().series[0].color, rgb);
     }
+}
+
+#[test]
+fn fix15c_color_order_recolors_yyaxis_lines_and_rulers_by_side() {
+    let mut e = Engine::default();
+    e.execute(
+        "yyaxis left; h1 = plot(1:3); yyaxis right; h2 = plot(1:3);
+         set(gca, 'ColorOrder', [1 0 0; 0 0 1]);
+         assert(isequal(h2.Color, [0 0 1]));
+         assert(isequal(get(gca, 'YColor'), [0 0 1]));
+         yyaxis left;
+         assert(isequal(h1.Color, [1 0 0]));
+         assert(isequal(get(gca, 'YColor'), [1 0 0]));
+         yyaxis right; h3 = plot(1:3);
+         assert(isequal(h3.Color, [0 0 1]));
+         set(gca, 'ColorOrder', [0 1 0; 1 0 1]);
+         assert(isequal(h3.Color, [1 0 1]));
+         figure; set(gca, 'ColorOrder', [1 0 0; 0 0 1]);
+         yyaxis right; h4 = plot(1:3);
+         set(gca, 'ColorOrder', [0 1 0; 1 0 1]);
+         assert(isequal(h4.Color, [1 0 1]));
+         assert(isequal(get(gca, 'YColor'), [1 0 1]));",
+    )
+    .unwrap();
+}
+
+#[test]
+fn fix15c_theme_change_recolors_automatic_yyaxis_rulers_and_lines() {
+    let mut e = Engine::default();
+    e.execute(
+        "yyaxis left; h1 = plot(1:3); hold on; h2 = plot(1:3, 'r');
+         yyaxis right; h3 = plot(1:3);
+         set(gcf, 'Theme', 'dark');
+         order = get(gca, 'ColorOrder');
+         assert(isequal(get(gca, 'YColor'), order(2,:)));
+         assert(isequal(get(h3, 'Color'), order(2,:)));
+         yyaxis left;
+         assert(isequal(get(gca, 'YColor'), order(1,:)));
+         assert(isequal(get(h1, 'Color'), order(1,:)));
+         assert(isequal(get(h2, 'Color'), [1 0 0]));
+         set(gca, 'YColor', 'g');
+         set(gcf, 'Theme', 'light');
+         assert(isequal(get(gca, 'YColor'), [0 1 0]));
+         yyaxis right;
+         light_order = get(gca, 'ColorOrder');
+         assert(isequal(get(gca, 'YColor'), light_order(2,:)));
+         assert(isequal(get(h3, 'Color'), light_order(2,:)));",
+    )
+    .unwrap();
+}
+
+#[test]
+fn fix15c_animatedline_honours_default_line_color() {
+    let mut e = Engine::default();
+    e.execute(
+        "set(groot, 'DefaultLineColor', 'k');
+         a = animatedline(1:2, 1:2);
+         assert(isequal(get(a, 'Color'), [0 0 0]));
+         p = plot(1:2, 1:2);
+         order = get(gca, 'ColorOrder');
+         assert(isequal(get(p, 'Color'), order(1,:)));",
+    )
+    .unwrap();
 }

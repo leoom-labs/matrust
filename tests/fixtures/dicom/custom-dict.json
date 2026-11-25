@@ -1,0 +1,19 @@
+{
+  "generator": "Python standard library struct",
+  "python": "3.12.3",
+  "PrivateCount": 513,
+  "PrivateLabel": "PRIVATE",
+  "shape": [
+    2,
+    3
+  ],
+  "column_major": [
+    1,
+    4,
+    2,
+    5,
+    3,
+    6
+  ],
+  "dictionary_entries": 12
+}

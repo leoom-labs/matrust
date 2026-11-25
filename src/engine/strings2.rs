@@ -186,6 +186,14 @@ struct Translated {
     branches: Vec<Vec<usize>>,
     /// Frames that need branch markers (see `Nesting::needs_markers`).
     needs: Vec<bool>,
+    unmatched: Vec<usize>,
+}
+
+struct GroupFrame {
+    id: usize,
+    marker: Option<usize>,
+    opening: usize,
+    outer_free_spacing: bool,
 }
 
 /// Group nesting while translating: numbers the regex groups and places the
@@ -194,43 +202,56 @@ struct Nesting<'a> {
     marked: &'a [bool],
     alternation: Vec<bool>,
     captures: Vec<bool>,
-    /// Open frames: id and the marker group of the current branch.
-    stack: Vec<(usize, Option<usize>)>,
+    stack: Vec<GroupFrame>,
+    free_spacing: bool,
     next: usize,
     tokens: Vec<usize>,
     branches: Vec<Vec<usize>>,
 }
 
 impl<'a> Nesting<'a> {
-    fn new(marked: &'a [bool], out: &mut String) -> Self {
+    fn new(marked: &'a [bool], out: &mut String, free_spacing: bool) -> Self {
         let mut nesting = Self {
             marked,
             alternation: Vec::new(),
             captures: Vec::new(),
             stack: Vec::new(),
+            free_spacing,
             next: 1,
             tokens: Vec::new(),
             branches: Vec::new(),
         };
-        nesting.open(out, false);
+        nesting.open(out, false, 0);
         nesting
     }
     /// After a group's opening text has been written.
-    fn open(&mut self, out: &mut String, capturing: bool) {
+    fn open(&mut self, out: &mut String, capturing: bool, opening: usize) {
         if capturing {
-            for &(id, _) in &self.stack {
-                self.captures[id] = true;
+            for frame in self.stack.iter().rev() {
+                if self.captures[frame.id] {
+                    break;
+                }
+                self.captures[frame.id] = true;
             }
             self.tokens.push(self.next);
-            self.branches
-                .push(self.stack.iter().filter_map(|frame| frame.1).collect());
+            let branches = if self.marked.is_empty() {
+                Vec::new()
+            } else {
+                self.stack.iter().filter_map(|frame| frame.marker).collect()
+            };
+            self.branches.push(branches);
             self.next += 1;
         }
         let id = self.alternation.len();
         self.alternation.push(false);
         self.captures.push(false);
         let marker = self.marker(out, id);
-        self.stack.push((id, marker));
+        self.stack.push(GroupFrame {
+            id,
+            marker,
+            opening,
+            outer_free_spacing: self.free_spacing,
+        });
     }
     fn marker(&mut self, out: &mut String, id: usize) -> Option<usize> {
         if !self.marked.get(id).copied().unwrap_or(false) {
@@ -242,14 +263,16 @@ impl<'a> Nesting<'a> {
     }
     fn branch(&mut self, out: &mut String) {
         out.push('|');
-        let id = self.stack.last().expect("frame 0 stays open").0;
+        let id = self.stack.last().expect("frame 0 stays open").id;
         self.alternation[id] = true;
         let marker = self.marker(out, id);
-        self.stack.last_mut().expect("frame 0 stays open").1 = marker;
+        self.stack.last_mut().expect("frame 0 stays open").marker = marker;
     }
-    fn close(&mut self) {
-        if self.stack.len() > 1 {
-            self.stack.pop();
+    fn close(&mut self, closing: usize, unmatched: &mut Vec<usize>) {
+        if self.stack.len() == 1 {
+            unmatched.push(closing);
+        } else if let Some(frame) = self.stack.pop() {
+            self.free_spacing = frame.outer_free_spacing;
         }
     }
     /// Frames that need branch markers: alternations containing tokens.
@@ -338,20 +361,30 @@ fn option_text(v: &Value) -> Option<String> {
 
 /// Translate a MATLAB pattern into `regex` crate syntax; `marked` lists the
 /// group frames that get branch markers.
-fn translate(who: &str, pattern: &str, marked: &[bool]) -> Result<Translated> {
-    if pattern.len() > MAX_PATTERN {
-        return Err(format!("{who}: expression exceeds {MAX_PATTERN} bytes"));
-    }
+fn translate(
+    who: &str,
+    pattern: &str,
+    literal_parens: &[bool],
+    marked: &[bool],
+    free_spacing: bool,
+) -> Result<Translated> {
     let unsupported = |what: &str| format!("{who}: {what} are not supported yet");
     let c: Vec<char> = pattern.chars().collect();
     let mut out = String::with_capacity(pattern.len() + 16);
-    let mut nesting = Nesting::new(marked, &mut out);
+    let mut nesting = Nesting::new(marked, &mut out, free_spacing);
+    let mut unmatched = Vec::new();
     let mut i = 0;
     let mut in_class = false;
     // The last pattern character was a quantifier (a following + is possessive).
     let mut quantified = false;
     while i < c.len() {
         let ch = c[i];
+        if ch == '#' && !in_class && nesting.free_spacing {
+            let end = (i + 1..c.len()).find(|&k| c[k] == '\n').unwrap_or(c.len());
+            out.extend(&c[i..end]);
+            i = end;
+            continue;
+        }
         let was_quantified = std::mem::replace(&mut quantified, false);
         if ch == '\\' {
             let Some(&next) = c.get(i + 1) else {
@@ -437,6 +470,9 @@ fn translate(who: &str, pattern: &str, marked: &[bool]) -> Result<Translated> {
             continue;
         }
         match ch {
+            '(' | ')' if literal_parens.get(i) == Some(&true) => {
+                out.push('\\');
+            }
             '[' => {
                 in_class = true;
                 out.push('[');
@@ -453,6 +489,7 @@ fn translate(who: &str, pattern: &str, marked: &[bool]) -> Result<Translated> {
                 continue;
             }
             '(' if c.get(i + 1) == Some(&'?') => {
+                let opening = i;
                 let rest: String = c[i + 2..c.len().min(i + 4)].iter().collect();
                 if rest.starts_with('#') {
                     let close = c[i..]
@@ -489,35 +526,41 @@ fn translate(who: &str, pattern: &str, marked: &[bool]) -> Result<Translated> {
                     out.extend(&c[first..first + close]);
                     out.push('>');
                     i = first + close + 1;
-                    nesting.open(&mut out, true);
+                    nesting.open(&mut out, true, opening);
                     continue;
                 }
                 // (?flags:...) opens a group; (?flags) only sets flags.
                 let end = (j..c.len())
                     .find(|&k| !(c[k].is_ascii_alphabetic() || c[k] == '-'))
                     .unwrap_or(c.len());
+                let spacing = c[j..end]
+                    .iter()
+                    .rposition(|&flag| flag == 'x')
+                    .map_or(nesting.free_spacing, |x| !c[j..j + x].contains(&'-'));
                 out.push_str("(?");
                 out.extend(&c[j..end]);
                 i = end;
                 if c.get(end) == Some(&')') && end > j {
                     out.push(')');
                     i += 1;
+                    nesting.free_spacing = spacing;
                     continue;
                 }
                 if c.get(end) == Some(&':') {
                     out.push(':');
                     i += 1;
                 }
-                nesting.open(&mut out, false);
+                nesting.open(&mut out, false, opening);
+                nesting.free_spacing = spacing;
                 continue;
             }
             '(' => {
                 out.push('(');
+                nesting.open(&mut out, true, i);
                 i += 1;
-                nesting.open(&mut out, true);
                 continue;
             }
-            ')' => nesting.close(),
+            ')' => nesting.close(i, &mut unmatched),
             '|' => {
                 nesting.branch(&mut out);
                 i += 1;
@@ -565,18 +608,39 @@ fn translate(who: &str, pattern: &str, marked: &[bool]) -> Result<Translated> {
     if in_class {
         return Err(format!("{who}: unterminated character class ["));
     }
+    unmatched.extend(nesting.stack.iter().skip(1).map(|frame| frame.opening));
     Ok(Translated {
         needs: nesting.needs_markers(),
         tokens: nesting.tokens,
         branches: nesting.branches,
         source: out,
+        unmatched,
     })
 }
 
 fn compile(who: &str, pattern: &str, flags: &Flags) -> Result<Pattern> {
-    let mut translated = translate(who, pattern, &[])?;
+    if pattern.len() > MAX_PATTERN {
+        return Err(format!("{who}: expression exceeds {MAX_PATTERN} bytes"));
+    }
+    let mut literal_parens = Vec::new();
+    let mut translated = translate(who, pattern, &[], &[], flags.free_spacing)?;
+    if !translated.unmatched.is_empty() {
+        // Recompute captures and branch markers with only the unmatched
+        // parentheses interpreted as literals.
+        literal_parens.resize(pattern.len(), false);
+        for i in translated.unmatched {
+            literal_parens[i] = true;
+        }
+        translated = translate(who, pattern, &literal_parens, &[], flags.free_spacing)?;
+    }
     if translated.needs.contains(&true) {
-        translated = translate(who, pattern, &translated.needs)?;
+        translated = translate(
+            who,
+            pattern,
+            &literal_parens,
+            &translated.needs,
+            flags.free_spacing,
+        )?;
     }
     let mut source = String::from("(?");
     for (on, flag) in [
@@ -842,6 +906,7 @@ fn literal(e: &Expr, logical: &mut bool, operators: &mut bool) -> Option<Expr> {
                     | Token::Power
                     | Token::DotStar
                     | Token::DotSlash
+                    | Token::DotBackslash
                     | Token::DotPower
             ) =>
         {
@@ -976,6 +1041,11 @@ impl Engine {
         count: usize,
     ) -> Result<Vec<Value>> {
         self.check_cancel()?;
+        if matches!(name, "regexp" | "regexpi")
+            && args.first().is_some_and(super::string_class::is_string)
+        {
+            return self.str_regexp(name, args, count);
+        }
         if count > 1 && !multiple_outputs(name) {
             return Err("Too many output arguments.".into());
         }

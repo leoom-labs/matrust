@@ -20,11 +20,15 @@ fn state(count: usize) -> Session {
             .collect();
         let mut figure = Figure::default();
         figure.series.push(Series {
+            indexed_patch: None,
+            slice_contour_level: None,
             identity: matrust::ObjectIdentity::default(),
             baseline_identity: matrust::ObjectIdentity::default(),
             bar_baseline_visible: false,
             points: Arc::new(points).into(),
             patch: None,
+            patch_cdata: None,
+            patch_vertex_cdata: None,
             base_value: None,
             face_edge_color: None,
             label: "Recording".into(),
@@ -41,6 +45,25 @@ fn state(count: usize) -> Session {
             visible: true,
             bar_width: 0.8,
             bar_offset: 0.,
+            bar_layout: matrust::plot::BarLayout::Grouped,
+            bar_relative_width: None,
+            bar_group_width: None,
+            bar_group_id: None,
+            face_color_mode: matrust::plot::FaceColorMode::Color,
+            z: std::sync::Arc::from([]),
+            legend_hidden: false,
+            face_colors: None,
+            face_edge_colors: None,
+            face_alpha: None,
+            face_color_none: false,
+            edge_alpha: None,
+            face_styles: None,
+            marker_sizes: None,
+            scatter_cdata: None,
+            marker_face_color: matrust::plot::MarkerColor::Default,
+            marker_edge_color: matrust::plot::MarkerColor::Default,
+            marker_face_alpha: None,
+            marker_edge_alpha: None,
         });
         figure.title = format!("Recording {id}");
         figures.push(FigureDocument {

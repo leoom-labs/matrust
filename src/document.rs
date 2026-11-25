@@ -71,6 +71,10 @@ pub struct Document {
     pub id: u64,
     pub text: String,
     pub path: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub untitled_name: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    source_read_only: bool,
     saved: String,
     pub dirty: bool,
 }
@@ -80,6 +84,8 @@ impl Document {
             id: new_id(),
             text: String::new(),
             path: None,
+            untitled_name: None,
+            source_read_only: false,
             saved: String::new(),
             dirty: false,
         }
@@ -91,6 +97,8 @@ impl Document {
             saved: text.clone(),
             text,
             path: Some(absolute_path(path)?),
+            untitled_name: None,
+            source_read_only: false,
             dirty: false,
         })
     }
@@ -105,9 +113,31 @@ impl Document {
             saved: text.clone(),
             text,
             path: Some(path),
+            untitled_name: None,
+            source_read_only: false,
             dirty: false,
         })
     }
+    /// Keep the source for reload and bundle relocation, but require the user
+    /// to choose a destination the first time they save this buffer.
+    pub fn require_save_as(&mut self) {
+        self.source_read_only = true;
+    }
+
+    pub fn default_save_path(&self) -> Option<&Path> {
+        self.path.as_deref().filter(|_| !self.source_read_only)
+    }
+
+    /// The path a Save dialog should propose: the default Save target, or for a
+    /// read-only-source copy its source name and extension in `folder`.
+    pub fn suggested_save_path(&self, folder: &Path) -> Option<PathBuf> {
+        if let Some(path) = self.default_save_path() {
+            return Some(path.to_owned());
+        }
+        let name = self.path.as_deref()?.file_name()?;
+        Some(folder.join(name))
+    }
+
     pub fn changed(&mut self) {
         self.dirty = self.text != self.saved;
     }
@@ -148,6 +178,7 @@ impl Document {
     pub fn same_snapshot(&self, other: &Self) -> bool {
         self.id == other.id
             && self.path == other.path
+            && self.source_read_only == other.source_read_only
             && self.text == other.text
             && self.saved == other.saved
             && self.dirty == other.dirty
@@ -292,6 +323,7 @@ impl Document {
             self.text = text;
         }
         self.path = Some(path);
+        self.source_read_only = false;
         self.saved = self.text.clone();
         self.dirty = false;
         Ok(SaveOutcome::Saved)
@@ -314,6 +346,7 @@ impl Document {
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|s| s.to_string_lossy().into_owned())
+            .or_else(|| self.untitled_name.clone())
             .unwrap_or_else(|| "Untitled.mr".into());
         format!("{name}{}", if self.dirty { " *" } else { "" })
     }

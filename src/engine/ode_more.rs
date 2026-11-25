@@ -7,8 +7,8 @@
 mod bvp;
 mod dde;
 mod implicit;
-mod ivp;
-mod num;
+pub(super) mod ivp;
+pub(super) mod num;
 
 use super::{Engine, Execution, Value};
 use crate::{Array, CellArray, CharacterRow, FunctionHandle, Matrix, Result, StructArray};
@@ -73,14 +73,14 @@ const DDE_NAMES: [&str; 12] = [
 
 /// A problem function: a handle or a function name.
 #[derive(Clone)]
-enum Callable {
+pub(super) enum Callable {
     Handle(FunctionHandle),
     Name(String),
 }
 
 impl Callable {
     /// Function text for diagnostics: the uppercased handle text or the name.
-    fn diagnostic(&self) -> String {
+    pub(super) fn diagnostic(&self) -> String {
         match self {
             Self::Handle(h) => h.func2str().to_uppercase(),
             Self::Name(n) => n.clone(),
@@ -133,6 +133,144 @@ fn rows_of(points: &[Vec<f64>], neq: usize) -> Result<Array> {
         data.extend(points.iter().map(|p| p[j]));
     }
     Ok(Array::Numeric(Matrix::from_column_vec(n, neq, data)?))
+}
+
+pub(super) fn ode_event_arrays(events: &num::Located, neq: usize, sol: bool) -> Result<[Array; 3]> {
+    let indices = events.i.iter().map(|&i| i as f64).collect();
+    if sol {
+        if events.t.is_empty() {
+            return Ok([empty(), empty(), empty()]);
+        }
+        Ok([
+            row(events.t.clone())?,
+            columns(&events.y, neq)?,
+            row(indices)?,
+        ])
+    } else {
+        Ok([
+            column(events.t.clone())?,
+            rows_of(&events.y, neq)?,
+            column(indices)?,
+        ])
+    }
+}
+
+pub(super) fn ode_event_option(
+    option: Option<&Array>,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Option<Callable>> {
+    match option {
+        None => Ok(None),
+        Some(Array::Handle(h)) => Ok(Some(Callable::Handle(h.clone()))),
+        Some(Array::Character(c)) => Ok(Some(Callable::Name(c.to_utf8(cancel)?))),
+        _ => Err("The Events option must be a function handle.".into()),
+    }
+}
+
+pub(super) fn ode_output_fcn_option(
+    option: Option<&Array>,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Result<Option<Callable>> {
+    match option {
+        None => Ok(None),
+        Some(Array::Handle(h)) => Ok(Some(Callable::Handle(h.clone()))),
+        Some(Array::Character(c)) => {
+            let s = c.to_utf8(cancel)?;
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(Callable::Name(s)))
+            }
+        }
+        _ => Err("The OutputFcn option must be a function handle or function name.".into()),
+    }
+}
+
+pub(super) fn ode_output_sel_option(option: Option<&Array>, neq: usize) -> Result<Vec<usize>> {
+    let Some(a) = option else {
+        return Ok((0..neq).collect());
+    };
+    if a.is_empty() {
+        return Ok((0..neq).collect());
+    }
+    let Array::Numeric(m) = a else {
+        return Err("OutputSel must be a vector of integer component indices.".into());
+    };
+    if m.rows() != 1 && m.cols() != 1 {
+        return Err("OutputSel must be a vector of integer component indices.".into());
+    }
+    let mut sel = Vec::with_capacity(m.len());
+    for &v in m.data() {
+        if !v.is_finite() || v.fract() != 0. || v < 1. || v > neq as f64 {
+            return Err(format!(
+                "OutputSel indices must be integers between 1 and {neq}."
+            ));
+        }
+        sel.push(v as usize - 1);
+    }
+    Ok(sel)
+}
+
+pub(super) fn ode_non_negative_option(
+    option: Option<&Array>,
+    neq: usize,
+    y0: &[f64],
+) -> Result<Vec<usize>> {
+    let Some(a) = option else {
+        return Ok(Vec::new());
+    };
+    if a.is_empty() {
+        return Ok(Vec::new());
+    }
+    let Array::Numeric(m) = a else {
+        return Err("NonNegative must be a vector of integer component indices.".into());
+    };
+    if m.rows() != 1 && m.cols() != 1 {
+        return Err("NonNegative must be a vector of integer component indices.".into());
+    }
+    let mut idx = Vec::with_capacity(m.len());
+    for &v in m.data() {
+        if !v.is_finite() || v.fract() != 0. || v < 1. || v > neq as f64 {
+            return Err(format!(
+                "NonNegative indices must be integers between 1 and {neq}."
+            ));
+        }
+        idx.push(v as usize - 1);
+    }
+    idx.sort_unstable();
+    idx.dedup();
+    for &i in &idx {
+        if y0[i] < 0. {
+            return Err("Non-negativity constraint violated at t0.".into());
+        }
+    }
+    Ok(idx)
+}
+
+pub(super) fn ode_nonneg_clamp_input<'a>(
+    y: &'a [f64],
+    non_negative: &[usize],
+    scratch: &'a mut Vec<f64>,
+) -> &'a [f64] {
+    if non_negative.is_empty() || !non_negative.iter().any(|&i| y[i] < 0.) {
+        return y;
+    }
+    scratch.clear();
+    scratch.extend_from_slice(y);
+    for &i in non_negative {
+        if scratch[i] < 0. {
+            scratch[i] = 0.;
+        }
+    }
+    scratch.as_slice()
+}
+
+pub(super) fn ode_nonneg_zero_slope(y: &[f64], dy: &mut [f64], non_negative: &[usize], tdir: f64) {
+    for &i in non_negative {
+        if y[i] <= 0. && tdir * dy[i] < 0. {
+            dy[i] = 0.;
+        }
+    }
 }
 
 fn text(s: &str) -> Result<Array> {
@@ -305,6 +443,10 @@ struct Ivp<'a> {
     jac: Option<Callable>,
     mass: Option<(Callable, bool)>,
     events: Option<Callable>,
+    output_fcn: Option<Callable>,
+    output_sel: Vec<usize>,
+    non_negative: Vec<usize>,
+    tdir: f64,
     neq: usize,
 }
 
@@ -325,10 +467,14 @@ fn cv(y: &[f64]) -> Value {
 
 impl Model for Ivp<'_> {
     fn f(&mut self, t: f64, y: &[f64]) -> num::R<Vec<f64>> {
-        let args = self.args(vec![tv(t), cv(y)]);
+        let mut scratch = Vec::new();
+        let y_in = ode_nonneg_clamp_input(y, &self.non_negative, &mut scratch);
+        let args = self.args(vec![tv(t), cv(y_in)]);
         let f = self.f.clone();
         let v = self.e.od2_invoke(&f, args, 1, self.out)?;
-        self.e.od2_derivative(v, &f, self.neq)
+        let mut dy = self.e.od2_derivative(v, &f, self.neq)?;
+        ode_nonneg_zero_slope(y, &mut dy, &self.non_negative, self.tdir);
+        Ok(dy)
     }
     fn jac(&mut self, t: f64, y: &[f64]) -> num::R<Vec<f64>> {
         let args = self.args(vec![tv(t), cv(y)]);
@@ -358,6 +504,16 @@ impl Model for Ivp<'_> {
         let args = self.args(vec![tv(t), cv(y)]);
         self.e.od2_event_values(&ev, args, self.out)
     }
+    fn has_output(&self) -> bool {
+        self.output_fcn.is_some()
+    }
+    fn output(&mut self, t: &[f64], y: &[Vec<f64>]) -> num::R<bool> {
+        let Some(fcn) = self.output_fcn.as_ref() else {
+            return Ok(false);
+        };
+        self.e
+            .ode_output_step(fcn, t, y, &self.output_sel, &self.extras, self.out)
+    }
     fn check_cancel(&self) -> num::R<()> {
         self.e.check_cancel()
     }
@@ -369,6 +525,10 @@ struct ImplicitIvp<'a> {
     f: Callable,
     extras: Vec<Value>,
     neq: usize,
+    event: Option<Callable>,
+    event_takes_slope: bool,
+    output_fcn: Option<Callable>,
+    output_sel: Vec<usize>,
 }
 
 impl implicit::Implicit for ImplicitIvp<'_> {
@@ -378,6 +538,25 @@ impl implicit::Implicit for ImplicitIvp<'_> {
         let f = self.f.clone();
         let v = self.e.od2_invoke(&f, args, 1, self.out)?;
         self.e.od2_derivative(v, &f, self.neq)
+    }
+    fn events(&mut self, t: f64, y: &[f64], yp: &[f64]) -> num::R<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+        let mut args = vec![tv(t), cv(y)];
+        if self.event_takes_slope {
+            args.push(cv(yp));
+        }
+        args.extend_from_slice(&self.extras);
+        self.e
+            .od2_event_values(self.event.as_ref().unwrap(), args, self.out)
+    }
+    fn has_output(&self) -> bool {
+        self.output_fcn.is_some()
+    }
+    fn output(&mut self, t: &[f64], y: &[Vec<f64>]) -> num::R<bool> {
+        let Some(fcn) = self.output_fcn.as_ref() else {
+            return Ok(false);
+        };
+        self.e
+            .ode_output_step(fcn, t, y, &self.output_sel, &self.extras, self.out)
     }
     fn check_cancel(&self) -> num::R<()> {
         self.e.check_cancel()
@@ -608,14 +787,104 @@ impl Engine {
         let result = (|| match c {
             Callable::Handle(h) => self.call_handle(h, args, nout, None, out),
             Callable::Name(n) => {
-                let Some(resolved) = self.resolve_function(n)? else {
-                    return Err(format!("Undefined function or variable '{n}'."));
-                };
-                self.invoke_function(resolved, args, nout, None, out)
+                if let Some(resolved) = self.resolve_function(n)? {
+                    self.invoke_function(resolved, args, nout, None, out)
+                } else if matches!(n.as_str(), "odeplot" | "odeprint") {
+                    let v = self.ode_call(n, &args, out)?.unwrap_or(Value::Void);
+                    Ok(if nout == 0 { Vec::new() } else { vec![v] })
+                } else {
+                    Err(format!("Undefined function or variable '{n}'."))
+                }
             }
         })();
         self.evaluated_elements = evaluated;
         result
+    }
+
+    pub(super) fn ode_output_init(
+        &mut self,
+        fcn: &Callable,
+        tspan: &[f64],
+        y0: &[f64],
+        sel: &[usize],
+        extras: &[Value],
+        out: &mut Execution,
+    ) -> Result<()> {
+        let t_span = [tspan[0], tspan[tspan.len() - 1]];
+        let y_sel: Vec<f64> = sel.iter().map(|&i| y0[i]).collect();
+        let mut args = vec![
+            Value::Matrix(Matrix::from_column_slice(1, 2, &t_span)?),
+            Value::Matrix(Matrix::from_column_slice(y_sel.len(), 1, &y_sel)?),
+            Value::Text("init".into()),
+        ];
+        args.extend_from_slice(extras);
+        self.od2_invoke(fcn, args, 0, out)?;
+        Ok(())
+    }
+
+    pub(super) fn ode_output_step(
+        &mut self,
+        fcn: &Callable,
+        ts: &[f64],
+        ys: &[Vec<f64>],
+        sel: &[usize],
+        extras: &[Value],
+        out: &mut Execution,
+    ) -> Result<bool> {
+        if ts.is_empty() {
+            return Ok(false);
+        }
+        let k = ts.len();
+        let m = sel.len();
+        let n_elems = Matrix::checked_len(m, k)?;
+        let mut y_cols = Vec::with_capacity(n_elems);
+        for col in ys {
+            for &idx in sel {
+                y_cols.push(col[idx]);
+            }
+        }
+        let mut args = vec![
+            Value::Matrix(Matrix::from_column_slice(1, k, ts)?),
+            Value::Matrix(Matrix::from_column_vec(m, k, y_cols)?),
+            Value::Text(String::new()),
+        ];
+        args.extend_from_slice(extras);
+        let values = self.od2_invoke(fcn, args, 1, out)?;
+        match values.into_iter().next() {
+            None | Some(Value::Void) => Ok(false),
+            Some(v) => {
+                let arr = v.array(&self.cancel)?;
+                if arr.is_empty() {
+                    Ok(false)
+                } else {
+                    match arr {
+                        Array::Logical(l) => Ok(l.data().first().copied().unwrap_or(0) != 0),
+                        Array::Numeric(mat) => Ok(mat.data().first().copied().unwrap_or(0.) != 0.),
+                        Array::Typed(t) => Ok(t.is_nonzero(0)),
+                        Array::Complex(c) => {
+                            Ok(c.data().first().is_some_and(|z| z.re != 0. || z.im != 0.))
+                        }
+                        _ => Ok(false),
+                    }
+                }
+            }
+        }
+    }
+
+    pub(super) fn ode_output_done(
+        &mut self,
+        fcn: &Callable,
+        extras: &[Value],
+        out: &mut Execution,
+    ) -> Result<()> {
+        let mut args = vec![
+            Value::Matrix(Matrix::filled(0, 0, 0.)?),
+            Value::Matrix(Matrix::filled(0, 0, 0.)?),
+            Value::Text("done".into()),
+        ];
+        args.extend_from_slice(extras);
+        self.od2_invoke(fcn, args, 0, out)?;
+        Ok(())
     }
 
     fn od2_vector(&self, v: Value) -> Result<Vec<f64>> {
@@ -654,7 +923,7 @@ impl Engine {
         Ok(m.data().to_vec())
     }
 
-    fn od2_event_values(
+    pub(super) fn od2_event_values(
         &mut self,
         ev: &Callable,
         args: Vec<Value>,
@@ -895,7 +1164,7 @@ impl Engine {
         )?))
     }
 
-    fn od2_extdata(
+    pub(super) fn od2_extdata(
         &self,
         f: &Callable,
         options: Option<&Value>,
@@ -931,10 +1200,13 @@ impl Engine {
     fn od2_ivp(
         &mut self,
         name: &str,
-        args: Vec<Value>,
+        mut args: Vec<Value>,
         count: usize,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        if count > 5 {
+            return Err("Too many output arguments.".into());
+        }
         if args.is_empty() {
             let shown = if name == "ode15s" {
                 "ODE15s".to_string()
@@ -943,6 +1215,7 @@ impl Engine {
             };
             return Err(format!("Not enough input arguments.  See {shown}."));
         }
+        let extras = args.split_off(args.len().min(4));
         let args = self.text_arguments(args)?;
         let Some(f) = self.od2_callable(&args[0]) else {
             return Err(format!(
@@ -971,9 +1244,10 @@ impl Engine {
         if name != "ode113" || opts.get("Mass").is_some() {
             Matrix::checked_len(neq, neq)?;
         }
-        let extras: Vec<Value> = args.iter().skip(4).cloned().collect();
         let (t0, tfinal) = Self::od2_tspan(&tspan)?;
-        Self::od2_unsupported(&opts, &["OutputFcn", "OutputSel", "NonNegative"], name)?;
+        if name == "ode23s" {
+            Self::od2_unsupported(&opts, &["NonNegative"], name)?;
+        }
         let mut warnings = Vec::new();
         let (rtol, atol, normcontrol, threshold, hmax, htry) =
             self.od2_tolerances(&opts, neq, t0, tfinal, &f, &mut warnings)?;
@@ -1059,14 +1333,19 @@ impl Engine {
                 _ => return Err("The Mass option must be a matrix or a function handle.".into()),
             },
         };
-        let events_fun = match opts.get("Events") {
-            None => None,
-            Some(a) => match &*a {
-                Array::Handle(h) => Some(Callable::Handle(h.clone())),
-                Array::Character(c) => Some(Callable::Name(c.to_utf8(&self.cancel)?)),
-                _ => return Err("The Events option must be a function handle.".into()),
-            },
-        };
+        let event_option = opts.get("Events");
+        let events_fun = ode_event_option(event_option.as_deref(), &self.cancel)?;
+        let output_fcn = ode_output_fcn_option(opts.get("OutputFcn").as_deref(), &self.cancel)?;
+        let output_sel = ode_output_sel_option(opts.get("OutputSel").as_deref(), neq)?;
+        let non_negative = ode_non_negative_option(opts.get("NonNegative").as_deref(), neq, &y0)?;
+        if !non_negative.is_empty()
+            && !matches!(mass, MassKind::None)
+            && matches!(name, "ode15s" | "ode23t" | "ode23tb")
+        {
+            return Err(format!(
+                "{name} does not support 'NonNegative' with a 'Mass' matrix."
+            ));
+        }
         let sol_out = count == 1 && handle;
         let at = if sol_out {
             OutAt::Sol
@@ -1093,8 +1372,12 @@ impl Engine {
             mass_singular,
             initial_slope,
             events: events_fun.is_some(),
+            non_negative: non_negative.clone(),
         };
         let have_events = events_fun.is_some();
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_init(fcn, &tspan, &y0, &output_sel, &extras, out)?;
+        }
         let result = {
             let mut model = Ivp {
                 e: self,
@@ -1104,21 +1387,17 @@ impl Engine {
                 jac: jac_fun,
                 mass: mass_fun,
                 events: events_fun.clone(),
+                output_fcn: output_fcn.clone(),
+                output_sel: output_sel.clone(),
+                non_negative: non_negative.clone(),
+                tdir: (tspan[tspan.len() - 1] - t0).signum(),
                 neq,
             };
             let f0 = model.f(t0, &y0)?;
-            let valt = match &events_fun {
-                Some(ev) => {
-                    // Event setup evaluates the event function with one output first.
-                    let args = model.args(vec![tv(t0), cv(&y0)]);
-                    let v = model.e.od2_invoke(ev, args, 1, model.out)?;
-                    Some(
-                        model
-                            .e
-                            .od2_vector(v.into_iter().next().unwrap_or(Value::Void))?,
-                    )
-                }
-                None => None,
+            let valt = if events_fun.is_some() {
+                Some(model.events(t0, &y0)?.0)
+            } else {
+                None
             };
             let m0 = match &o.mass {
                 MassKind::Function { .. } => Some(model.mass(t0, &y0)?),
@@ -1140,6 +1419,9 @@ impl Engine {
                 _ => ivp::ode23tb(&mut model, setup, &o)?,
             }
         };
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_done(fcn, &extras, out)?;
+        }
         warnings.extend(result.warnings.iter().cloned());
         self.od2_emit_lines(out, warnings)?;
         let full = name != "ode113";
@@ -1163,15 +1445,7 @@ impl Engine {
             ];
             if have_events {
                 names.extend(["xe", "ye", "ie"]);
-                values.extend(if result.te.is_empty() {
-                    vec![empty(), empty(), empty()]
-                } else {
-                    vec![
-                        row(result.te.clone())?,
-                        columns(&result.ye, neq)?,
-                        row(result.ie.iter().map(|i| *i as f64).collect())?,
-                    ]
-                });
+                values.extend(ode_event_arrays(&result.events, neq, true)?);
             }
             names.push("stats");
             values.push(self.od2_stats_struct(&stats)?);
@@ -1179,7 +1453,7 @@ impl Engine {
             values.push(if result.data_dropped {
                 Array::Struct(StructArray::scalar_empty(&self.cancel)?)
             } else {
-                self.od2_idata(&result.data, n, neq)?
+                self.od2_idata(&result.data, n, neq, &non_negative)?
             });
             return Ok(vec![self.od2_struct(&names, values)?]);
         }
@@ -1188,26 +1462,25 @@ impl Engine {
             outputs.push(Value::from(rows_of(&result.y, neq)?));
         }
         if count >= 3 {
-            if !have_events {
-                return Err("Too many output arguments.".into());
-            }
-            if result.te.is_empty() {
-                outputs.extend((0..3).map(|_| Value::from(empty())));
-            } else {
-                outputs.push(Value::from(column(result.te.clone())?));
-                outputs.push(Value::from(rows_of(&result.ye, neq)?));
-                outputs.push(Value::from(column(
-                    result.ie.iter().map(|i| *i as f64).collect(),
-                )?));
-            }
+            outputs.extend(ode_event_arrays(&result.events, neq, false)?.map(Value::from));
             outputs.truncate(count);
         }
         Ok(outputs)
     }
 
     /// sol.idata for the step data of one solver; the first point carries zeros.
-    fn od2_idata(&self, data: &[StepData], n: usize, neq: usize) -> Result<Array> {
-        let nonneg = empty();
+    fn od2_idata(
+        &self,
+        data: &[StepData],
+        n: usize,
+        neq: usize,
+        non_negative: &[usize],
+    ) -> Result<Array> {
+        let nonneg = if non_negative.is_empty() {
+            empty()
+        } else {
+            row(non_negative.iter().map(|&i| (i + 1) as f64).collect())?
+        };
         // Interpolation data is bounded like any array: past the element limit
         // it is left out and deval reports the solution unusable.
         if n.saturating_mul(neq.max(1)).saturating_mul(16) > crate::matrix::MAX_ELEMENTS {
@@ -1310,13 +1583,17 @@ impl Engine {
 
     fn od2_ode15i(
         &mut self,
-        args: Vec<Value>,
+        mut args: Vec<Value>,
         count: usize,
         out: &mut Execution,
     ) -> Result<Vec<Value>> {
+        if count > 5 {
+            return Err("Too many output arguments.".into());
+        }
         if args.len() < 4 {
             return Err("Not enough input arguments.  See ODE15I.".into());
         }
+        let extras = args.split_off(args.len().min(5));
         let args = self.text_arguments(args)?;
         let Some(f) = self.od2_callable(&args[0]) else {
             return Err("ode15i expects a function handle or function name as text".into());
@@ -1341,19 +1618,8 @@ impl Engine {
         Matrix::checked_len(neq, neq)?;
         let options_value = args.get(4).cloned();
         let opts = self.od2_options(options_value.as_ref(), "ODESET")?;
-        let extras: Vec<Value> = args.iter().skip(5).cloned().collect();
         let (t0, tfinal) = Self::od2_tspan(&tspan)?;
-        Self::od2_unsupported(
-            &opts,
-            &[
-                "OutputFcn",
-                "OutputSel",
-                "Events",
-                "Jacobian",
-                "NonNegative",
-            ],
-            "ode15i",
-        )?;
+        Self::od2_unsupported(&opts, &["Jacobian", "NonNegative"], "ode15i")?;
         let mut warnings = Vec::new();
         let (rtol, atol, normcontrol, threshold, hmax, htry) =
             self.od2_tolerances(&opts, neq, t0, tfinal, &f, &mut warnings)?;
@@ -1382,6 +1648,24 @@ impl Engine {
         } else {
             OutAt::Steps
         };
+        let event_option = opts.get("Events");
+        let event = ode_event_option(event_option.as_deref(), &self.cancel)?;
+        let event_takes_slope = if let Some(event) = &event {
+            // Also accept the fixed-arity (t, y, p1, ...) form shared by the ODE solvers.
+            let inputs = self.profiler_builtin_call(
+                "nargin",
+                vec![Value::from(event.value())],
+                Vec::new(),
+                out,
+                false,
+            )?;
+            inputs.matrix(&self.cancel)?.data()[0] != (2 + extras.len()) as f64
+        } else {
+            false
+        };
+        let have_events = event.is_some();
+        let output_fcn = ode_output_fcn_option(opts.get("OutputFcn").as_deref(), &self.cancel)?;
+        let output_sel = ode_output_sel_option(opts.get("OutputSel").as_deref(), neq)?;
         let io = implicit::IOpts {
             rtol,
             threshold,
@@ -1390,7 +1674,11 @@ impl Engine {
             htry,
             htspan: (tspan[1] - tspan[0]).abs(),
             maxorder,
+            events: have_events,
         };
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_init(fcn, &tspan, &y0, &output_sel, &extras, out)?;
+        }
         let result = {
             let mut model = ImplicitIvp {
                 e: self,
@@ -1398,10 +1686,17 @@ impl Engine {
                 f: f.clone(),
                 extras: extras.clone(),
                 neq,
+                event,
+                event_takes_slope,
+                output_fcn: output_fcn.clone(),
+                output_sel: output_sel.clone(),
             };
             implicit::Implicit::f(&mut model, t0, &y0, &yp0)?;
             implicit::ode15i(&mut model, &tspan, &y0, &yp0, &io, at)?
         };
+        if let Some(fcn) = &output_fcn {
+            self.ode_output_done(fcn, &extras, out)?;
+        }
         warnings.extend(result.warnings.iter().cloned());
         self.od2_emit_lines(out, warnings)?;
         if stats_on {
@@ -1412,7 +1707,8 @@ impl Engine {
             let idata = self
                 .od2_struct(&["kvec"], vec![kvec])?
                 .array(&self.cancel)?;
-            let values = vec![
+            let mut names = vec!["solver", "extdata", "x", "y"];
+            let mut values = vec![
                 text("ode15i")?,
                 self.od2_extdata(
                     &f,
@@ -1422,20 +1718,22 @@ impl Engine {
                 )?,
                 row(result.t.clone())?,
                 columns(&result.y, neq)?,
-                self.od2_stats_struct(&result.stats)?,
-                idata,
             ];
-            return Ok(vec![self.od2_struct(
-                &["solver", "extdata", "x", "y", "stats", "idata"],
-                values,
-            )?]);
+            if have_events {
+                names.extend(["xe", "ye", "ie"]);
+                values.extend(ode_event_arrays(&result.events, neq, true)?);
+            }
+            names.extend(["stats", "idata"]);
+            values.extend([self.od2_stats_struct(&result.stats)?, idata]);
+            return Ok(vec![self.od2_struct(&names, values)?]);
         }
         let mut outputs = vec![Value::from(column(result.t.clone())?)];
         if count >= 2 {
             outputs.push(Value::from(rows_of(&result.y, neq)?));
         }
-        if count > 2 {
-            return Err("Too many output arguments.".into());
+        if count >= 3 {
+            outputs.extend(ode_event_arrays(&result.events, neq, false)?.map(Value::from));
+            outputs.truncate(count);
         }
         Ok(outputs)
     }
@@ -1513,6 +1811,10 @@ impl Engine {
                 f,
                 extras,
                 neq,
+                event: None,
+                event_takes_slope: false,
+                output_fcn: None,
+                output_sel: Vec::new(),
             };
             implicit::decic(&mut model, t0, &y0, &fixed_y, &yp0, &fixed_yp, rtol, &atol)?
         };
@@ -1732,12 +2034,28 @@ impl Engine {
             }
             Ok(k)
         };
+        let mut event_steps = None;
         match solver.as_str() {
             "ode45" | "ode23" => {
                 if idata_mat("f3d").is_some_and(|m| m.is_empty()) {
                     return Err("The solution has no interpolation data (sol.idata.f3d exceeded the element limit).".into());
                 }
                 checked("f3d", neq, n * if solver == "ode45" { 6 } else { 4 })?;
+                if idata
+                    .as_ref()
+                    .is_some_and(|s| s.field_index("eventStep").is_some())
+                {
+                    let steps = checked("eventStep", 1, n)?;
+                    if steps.data()[0] != 0.
+                        || steps.data()[1..]
+                            .iter()
+                            .zip(t.windows(2))
+                            .any(|(&h, nodes)| h != 0. && tdir * (h - (nodes[1] - nodes[0])) < 0.)
+                    {
+                        return Err("Invalid solution interpolation data: eventStep.".into());
+                    }
+                    event_steps = Some(steps);
+                }
             }
             "ode113" => {
                 checked("phi3d", neq, n * 14)?;
@@ -1789,6 +2107,29 @@ impl Engine {
                 }
             }
         }
+        let non_negative = match idata
+            .as_ref()
+            .and_then(|s| Self::od2_field(s, "idxNonNegative"))
+        {
+            None => Vec::new(),
+            Some(a) if a.is_empty() => Vec::new(),
+            Some(a) => {
+                let Array::Numeric(m) = &*a else {
+                    return Err("Invalid solution interpolation data: idxNonNegative.".into());
+                };
+                if m.rows() != 1 && m.cols() != 1 {
+                    return Err("Invalid solution interpolation data: idxNonNegative.".into());
+                }
+                let mut nn = Vec::with_capacity(m.len());
+                for &v in m.data() {
+                    if !v.is_finite() || v.fract() != 0. || v < 1. || v > neq as f64 {
+                        return Err("Invalid solution interpolation data: idxNonNegative.".into());
+                    }
+                    nn.push(v as usize - 1);
+                }
+                nn
+            }
+        };
         let mut ys = Vec::with_capacity(output_len);
         let mut yps = Vec::with_capacity(if count >= 2 { output_len } else { 0 });
         for (k, &ti) in tint.iter().enumerate() {
@@ -1800,7 +2141,7 @@ impl Engine {
             i = i.clamp(1, n - 1);
             let (a, b) = (i - 1, i);
             let h = t[b] - t[a];
-            let (yv, ypv) = match solver.as_str() {
+            let (yv, mut ypv) = match solver.as_str() {
                 "ode45" | "ode23" => {
                     let f3d = idata_mat("f3d").ok_or_else(not_sol)?;
                     let width = f3d.cols() / n;
@@ -1828,7 +2169,15 @@ impl Engine {
                         [0., -1., 1., 0.],
                     ];
                     let bi: &[[f64; 4]] = if solver == "ode45" { &bi45 } else { &bi23 };
-                    interp::rk(bi, &refs, t[a], &ycol(a), h, ti)
+                    let step = event_steps.as_ref().map_or(0., |steps| steps.data()[b]);
+                    interp::rk(
+                        bi,
+                        &refs,
+                        t[a],
+                        &ycol(a),
+                        if step == 0. { h } else { step },
+                        ti,
+                    )
                 }
                 "ode113" => {
                     let phi = idata_mat("phi3d").ok_or_else(not_sol)?;
@@ -1907,13 +2256,19 @@ impl Engine {
                     }
                 }
             };
-            let yv = if ti == t[b] && !matches!(solver.as_str(), "ode113" | "ode15s") {
+            let mut yv = if ti == t[b] && !matches!(solver.as_str(), "ode113" | "ode15s") {
                 ycol(b)
             } else if ti == t[a] {
                 ycol(a)
             } else {
                 yv
             };
+            for &j in &non_negative {
+                if yv[j] < 0. {
+                    yv[j] = 0.;
+                    ypv[j] = 0.;
+                }
+            }
             ys.extend(idx.iter().map(|i| yv[i - 1]));
             if count >= 2 {
                 yps.extend(idx.iter().map(|i| ypv[i - 1]));
@@ -2097,11 +2452,47 @@ impl Engine {
             Self::od2_field(&new, "idata").as_deref(),
         ) {
             (Some(Array::Struct(a)), Some(Array::Struct(b))) => {
+                let mut names = a.field_names().to_vec();
+                if a.field_index("eventStep").is_none() && b.field_index("eventStep").is_some() {
+                    names.push("eventStep".into());
+                }
+                if a.field_index("idxNonNegative").is_none()
+                    && b.field_index("idxNonNegative").is_some()
+                {
+                    names.push("idxNonNegative".into());
+                }
                 let mut slots = Vec::new();
-                for name in a.field_names() {
+                for name in &names {
                     let va = Self::od2_field(a, name);
                     let vb = Self::od2_field(b, name);
                     let merged = match (va.as_deref(), vb.as_deref()) {
+                        (va, vb) if name == "idxNonNegative" => {
+                            let mut indices = Vec::new();
+                            for arr in [va, vb].into_iter().flatten() {
+                                if let Array::Numeric(m) = arr {
+                                    indices.extend(m.data().iter().copied());
+                                }
+                            }
+                            indices.sort_by(f64::total_cmp);
+                            indices.dedup();
+                            if indices.is_empty() {
+                                Arc::new(empty())
+                            } else {
+                                Arc::new(row(indices)?)
+                            }
+                        }
+                        (va, vb) if name == "eventStep" => {
+                            let step_sizes = |v: Option<&Array>, n| match v {
+                                Some(Array::Numeric(m)) if m.rows() == 1 && m.cols() == n => {
+                                    Ok(m.clone())
+                                }
+                                None => Matrix::filled(1, n, 0.),
+                                _ => Err(invalid()),
+                            };
+                            let old = step_sizes(va, n)?;
+                            let add = step_sizes(vb, n2)?;
+                            Arc::new(Array::Numeric(join(&old, &add, n, n2, false)?))
+                        }
                         (Some(Array::Numeric(ma)), Some(Array::Numeric(mb))) if !ma.is_empty() => {
                             Arc::new(Array::Numeric(join(ma, mb, n, n2, name == "dif3d")?))
                         }
@@ -2110,13 +2501,7 @@ impl Engine {
                     };
                     slots.push(merged);
                 }
-                Array::Struct(StructArray::from_slots(
-                    1,
-                    1,
-                    a.field_names().to_vec(),
-                    slots,
-                    &self.cancel,
-                )?)
+                Array::Struct(StructArray::from_slots(1, 1, names, slots, &self.cancel)?)
             }
             _ => empty(),
         };

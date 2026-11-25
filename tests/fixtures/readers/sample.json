@@ -1,0 +1,23 @@
+{
+  "name": "pump station",
+  "id": 42,
+  "active": true,
+  "offline": false,
+  "notes": null,
+  "levels": [1.5, 2, null, -3e2],
+  "grid": [[1, 2, 3], [4, 5, 6]],
+  "cube": [[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+  "flags": [true, false, true],
+  "tags": ["a", "bc", ""],
+  "sensors": [{"kind": "flow", "value": 3}, {"value": 4, "kind": "head"}],
+  "mixed": [1, "two", [3, 4], {"five": 5}],
+  "ragged": [[1, 2], [3]],
+  "bad key-name": 1,
+  "1st": 2,
+  "for": 3,
+  "dup": 1,
+  "dup": 2,
+  "unicode": "café 😀",
+  "empty_obj": {},
+  "empty_arr": []
+}

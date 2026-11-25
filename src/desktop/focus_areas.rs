@@ -11,6 +11,7 @@ pub(super) enum Area {
     Command,
     Designer,
     Model,
+    App(crate::apps::AppKind),
 }
 impl Area {
     fn rank(self) -> u8 {
@@ -23,12 +24,14 @@ impl Area {
             // Tool tabs follow the document tabs; only the selected one is painted.
             Self::Designer => 5,
             Self::Model => 6,
+            Self::App(_) => 7,
         }
     }
     fn tool(self) -> Option<toolkits::Tool> {
         match self {
             Self::Designer => Some(toolkits::Tool::Designer),
             Self::Model => Some(toolkits::Tool::Model),
+            Self::App(kind) => Some(toolkits::Tool::App(kind)),
             _ => None,
         }
     }
@@ -36,6 +39,7 @@ impl Area {
         match tool {
             toolkits::Tool::Designer => Self::Designer,
             toolkits::Tool::Model => Self::Model,
+            toolkits::Tool::App(kind) => Self::App(kind),
         }
     }
 }
@@ -164,7 +168,7 @@ struct HelpTicket {
 pub(super) struct State {
     pending: Option<Ticket>,
     /// Tool tab selected by traversal; its first area takes focus once painted.
-    deferred: Option<Area>,
+    deferred: Option<(Area, u8)>,
     finished: Option<(Host, u64)>,
     help: Option<Host>,
     help_request: Option<HelpTicket>,
@@ -258,10 +262,22 @@ impl Workspace {
 
     // Painted areas, then every open tool tab in opening order. Tools that are
     // not painted are stand-ins that traversal selects before focusing.
-    fn focus_ring(&self, painted: Entries) -> Entries {
+    fn focus_ring(&self, ctx: &egui::Context, painted: Entries) -> Entries {
         let mut ring = Entries::default();
         for entry in painted.iter().filter(|entry| entry.area.tool().is_none()) {
             ring.push(*entry);
+        }
+        if workspace_dock::inspector::uses_sheet(self, ctx)
+            && !ring.iter().any(|entry| entry.area == Area::Workspace)
+        {
+            ring.push(Entry {
+                area: Area::Workspace,
+                id: egui::Id::NULL,
+                region: egui::Rect::NOTHING,
+                layer: egui::LayerId::background(),
+                hidden: true,
+            });
+            ring.sort_by_area();
         }
         for tool in self.toolkits.tabs() {
             let area = Area::of_tool(tool);
@@ -356,7 +372,7 @@ impl Workspace {
             return;
         }
         previous.sort_by_area();
-        let previous = self.focus_ring(previous);
+        let previous = self.focus_ring(ctx, previous);
         if previous.is_empty() {
             return;
         }
@@ -400,12 +416,21 @@ impl Workspace {
         }
         let host = self.focus_area_host(ctx);
         let key = registry(host);
-        if let Some(area) = self.focus_areas.deferred.take() {
+        if let Some((area, retries)) = self.focus_areas.deferred.take() {
             let painted = ctx
                 .data(|data| data.get_temp::<Painted>(key))
                 .unwrap_or_default();
             if let Some(entry) = painted.entries.iter().find(|entry| entry.area == area) {
                 ctx.memory_mut(|memory| memory.request_focus(entry.id));
+            } else if area == Area::Workspace
+                && retries > 0
+                && self.navigation.inspector_open
+                && workspace_dock::inspector::uses_sheet(self, ctx)
+                && self.focus_areas_allowed(ctx)
+            {
+                // Area's initial sizing pass may not register visible widgets yet.
+                self.focus_areas.deferred = Some((area, retries - 1));
+                ctx.request_repaint();
             }
         }
         let Some(ticket) = self.focus_areas.pending.as_ref() else {
@@ -442,13 +467,19 @@ impl Workspace {
         {
             return;
         }
+        if ticket.target.area == Area::Workspace && ticket.target.hidden {
+            self.navigation.inspector_open = true;
+            self.focus_areas.deferred = Some((Area::Workspace, 2));
+            ctx.request_repaint();
+            return;
+        }
         if let Some(tool) = ticket.target.area.tool().filter(|_| ticket.target.hidden) {
             if !self.toolkits.is_open(tool) {
                 return;
             }
             // Same path as clicking the tab; the tool paints next frame.
             self.select_tool_tab(tool);
-            self.focus_areas.deferred = Some(ticket.target.area);
+            self.focus_areas.deferred = Some((ticket.target.area, 0));
             ctx.request_repaint();
             return;
         }
@@ -531,7 +562,7 @@ impl Workspace {
                     ("Files: Up/Down, Home/End, Enter", "Select a file and open it without executing a script."),
                     ("Figure tabs: Left/Right, Home/End", "Select an open figure while its tab has focus."),
                     ("Ctrl+F / Ctrl+H", "Find / replace in the active script."),
-                    ("Ctrl+Enter / F9", "Run the active script / selected code when execution is available."),
+                    ("F5 or Ctrl+Enter / F9", "Run the active script / selected code when execution is available."),
                     ("Ctrl+/ / Escape", "Open this help / close it. Closing help does not restore an older focus owner."),
                 ] { ui.strong(keys); ui.label(meaning); ui.add_space(6.); }
                 ui.label("Traversal visits enabled Files, Workspace filter, visible Editor buffers, the Figure selector, Command input and an open model canvas. Hidden areas are skipped. The separate Editor cycles only its visible buffers. Pending dialogs, operations and drag gestures block traversal. Other toolkit windows retain their ordinary Tab navigation.");

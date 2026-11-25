@@ -49,6 +49,48 @@ pub enum WorkspaceDock {
     #[serde(other)]
     Right,
 }
+/// Where the Editor, figures and apps open. Absent (older sessions included)
+/// means separate OS windows; Docked keeps them in the main window.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowLayout {
+    #[default]
+    Separate,
+    Docked,
+}
+fn recover_window_layout<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<WindowLayout>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value::<WindowLayout>(value).ok())
+}
+/// Outer position and inner size of a native window, logical points.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WindowRect {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+impl WindowRect {
+    pub fn valid(&self) -> bool {
+        [self.x, self.y, self.width, self.height]
+            .iter()
+            .all(|v| v.is_finite())
+            && (-20000. ..=20000.).contains(&self.x)
+            && (-20000. ..=20000.).contains(&self.y)
+            && (200. ..=20000.).contains(&self.width)
+            && (150. ..=20000.).contains(&self.height)
+    }
+}
+fn recover_window_rect<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<WindowRect>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value::<WindowRect>(value)
+        .ok()
+        .filter(WindowRect::valid))
+}
 fn recover_workspace_dock<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<WorkspaceDock>, D::Error> {
@@ -186,31 +228,136 @@ fn recover_editor_columns<'de, D: Deserializer<'de>>(
         .filter(|columns| columns.bounded()))
 }
 
-/// Tools that open as main-area tabs.
+/// Tools that open as main-area tabs: the two built-in tools and the apps.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolTab {
     Designer,
     Model,
+    CurveFitter,
+    SignalAnalyzer,
+    ImportTool,
+    PidTuner,
+    ControlSystemDesigner,
+    LinearSystemAnalyzer,
+    DistributionFitter,
+    DistributionExplorer,
+    DataCleaner,
+    Optimize,
+    SolveOde,
+    BasicFitting,
+    DataStatistics,
+    WindowDesigner,
+    SplineTool,
+    ClassificationLearner,
+    RegressionLearner,
+    ImageSegmenter,
+    ImageRegionAnalyzer,
+    ColorThresholder,
+    ImageViewer,
+    VideoViewer,
+    ImageBatchProcessor,
+    ModelReducer,
+    SystemIdentification,
+    FilterVisualizer,
+    WaveletDenoiser,
+    MultiresAnalyzer,
+    ComparisonTool,
+    WaveletTfAnalyzer,
+    Profiler,
+    NeuralNetFitting,
+    NeuralNetPatternRecognition,
+    NeuralNetClustering,
+    NeuralNetTimeSeries,
+    FuzzyLogicDesigner,
+    BitErrorRateAnalysis,
+    WirelessWaveformGenerator,
+    EconometricModeler,
+    MpcDesigner,
+    DicomBrowser,
+    RegistrationEstimator,
+    CameraCalibrator,
+    VolumeViewer,
+    AppDesigner,
+    PdeModeler,
+}
+
+/// Most tool tabs a session keeps; each tool opens at most once.
+pub const MAX_TOOL_TABS: usize = 64;
+
+/// Tool tabs in opening order. Fixed capacity keeps the layout `Copy`.
+/// Serialized as a list; the older two-slot form (`["model", null]`) reads
+/// too. Nulls may only trail.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct ToolTabList([Option<ToolTab>; MAX_TOOL_TABS]);
+impl ToolTabList {
+    pub fn len(&self) -> usize {
+        self.0.iter().take_while(|tab| tab.is_some()).count()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0[0].is_none()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = ToolTab> + '_ {
+        self.0.iter().map_while(|tab| *tab)
+    }
+    pub fn contains(&self, tab: ToolTab) -> bool {
+        self.iter().any(|t| t == tab)
+    }
+    fn unique(&self) -> bool {
+        let tabs: Vec<ToolTab> = self.iter().collect();
+        tabs.iter()
+            .enumerate()
+            .all(|(i, tab)| !tabs[..i].contains(tab))
+    }
+}
+/// Keeps the first `MAX_TOOL_TABS` tabs.
+impl FromIterator<ToolTab> for ToolTabList {
+    fn from_iter<I: IntoIterator<Item = ToolTab>>(iter: I) -> Self {
+        let mut list = [None; MAX_TOOL_TABS];
+        for (slot, tab) in list.iter_mut().zip(iter) {
+            *slot = Some(tab);
+        }
+        Self(list)
+    }
+}
+impl std::fmt::Debug for ToolTabList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
+}
+impl Serialize for ToolTabList {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter())
+    }
+}
+impl<'de> Deserialize<'de> for ToolTabList {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let slots = Vec::<Option<ToolTab>>::deserialize(deserializer)?;
+        let open = slots.iter().take_while(|tab| tab.is_some()).count();
+        if slots[open..].iter().any(Option::is_some) {
+            return Err(D::Error::custom("open tool tabs must be packed first"));
+        }
+        if open > MAX_TOOL_TABS {
+            return Err(D::Error::custom("too many tool tabs"));
+        }
+        Ok(slots.into_iter().flatten().collect())
+    }
 }
 
 /// Open tool tabs in opening order and the one shown. No tool contents.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolTabs {
-    pub open: [Option<ToolTab>; 2],
+    pub open: ToolTabList,
     pub selected: Option<ToolTab>,
 }
 impl ToolTabs {
-    /// Opened tools are packed first, unique, and the selection is one of them.
+    /// At least one tool is open, each once, and the selection is one of them.
     fn valid(self) -> bool {
-        let [first, second] = self.open;
-        first.is_some()
-            && first != second
-            && (second.is_some() || self.selected.is_none() || self.selected == first)
-            && self
-                .selected
-                .is_none_or(|tool| self.open.contains(&Some(tool)))
+        !self.open.is_empty()
+            && self.open.unique()
+            && self.selected.is_none_or(|tool| self.open.contains(tool))
     }
 }
 fn recover_tool_tabs<'de, D: Deserializer<'de>>(
@@ -299,6 +446,26 @@ pub struct DesktopLayout {
     pub figure_width: Option<f32>,
     /// User scale relative to the operating system's display scale.
     pub ui_scale_percent: Option<u16>,
+    #[serde(
+        default,
+        deserialize_with = "recover_window_layout",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub window_layout: Option<WindowLayout>,
+    /// Last native Editor window placement (separate-window layout).
+    #[serde(
+        default,
+        deserialize_with = "recover_window_rect",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub editor_window: Option<WindowRect>,
+    /// Last native Apps window placement (separate-window layout).
+    #[serde(
+        default,
+        deserialize_with = "recover_window_rect",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub apps_window: Option<WindowRect>,
 }
 impl DesktopLayout {
     /// Visual policy for a fresh desktop or Reset layout. Default remains the
@@ -306,7 +473,8 @@ impl DesktopLayout {
     pub fn fresh_desktop() -> Self {
         Self {
             center: Some(CenterLayout::default()),
-            workspace_dock: Some(WorkspaceDock::BelowFiles),
+            // The Workspace lives in the Inspector at the right.
+            workspace_dock: None,
             ..Self::default()
         }
     }
@@ -343,6 +511,8 @@ impl DesktopLayout {
         {
             self.ui_scale_percent = None;
         }
+        self.editor_window = self.editor_window.filter(WindowRect::valid);
+        self.apps_window = self.apps_window.filter(WindowRect::valid);
     }
 
     pub fn ui_scale_percent(&self) -> u16 {

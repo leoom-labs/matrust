@@ -600,18 +600,6 @@ const KNOWN: &[(usize, &str)] = &[
         "single input: MATLAB runs single-precision LAPACK (ssyev); this engine computes in double and rounds, so the last single digit differs.",
     ),
     (
-        98,
-        "gallery is not implemented in the engine (outside this task).",
-    ),
-    (
-        99,
-        "gallery is not implemented in the engine (outside this task).",
-    ),
-    (
-        100,
-        "gallery is not implemented in the engine (outside this task).",
-    ),
-    (
         108,
         "eigs 'li': the two conjugate pairs tie in |imag| to the last bit; ARPACK's rounding picks the other pair.",
     ),

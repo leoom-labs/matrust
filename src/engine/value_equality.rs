@@ -28,13 +28,102 @@ impl Engine {
         Ok(Value::Logical(LogicalMatrix::scalar(true)))
     }
 
-    fn equal_arrays(&mut self, a: &Array, b: &Array) -> Result<bool> {
+    pub(super) fn equal_arrays(&mut self, a: &Array, b: &Array) -> Result<bool> {
         self.check_cancel()?;
+        if let Some((a, b)) = super::objects::fis_comparison(self, a, b) {
+            if self.functions.classes.equal_depth >= 64 {
+                return Err("isequal: fuzzy object nesting is too deep".into());
+            }
+            self.functions.classes.equal_depth += 1;
+            let equal = super::fuzzy::equal(&a, &b, |a, b| self.equal_arrays(a, b));
+            self.functions.classes.equal_depth -= 1;
+            return equal;
+        }
+        if let Some((a, b)) = super::objects::nnet_comparison(self, a, b)? {
+            if self.functions.classes.equal_depth >= 64 {
+                return Err("isequal: network nesting is too deep".into());
+            }
+            self.functions.classes.equal_depth += 1;
+            let equal = self.equal_arrays(&a, &b);
+            self.functions.classes.equal_depth -= 1;
+            return equal;
+        }
+        if let Some(equal) = super::classdef::enum_equal(a, b) {
+            return Ok(equal);
+        }
         if (a.rows(), a.cols()) != (b.rows(), b.cols()) {
             return Ok(false);
         }
+        // User objects: same class (a hidden field) and every property equal.
+        if super::classdef::is_object(a) != super::classdef::is_object(b)
+            || super::classdef::object_class(a) != super::classdef::object_class(b)
+        {
+            return Ok(false);
+        }
+        // Handle objects: the same object, or equal stored properties.
+        match self.cls_handles_equal(a, b) {
+            Some(super::classdef::HandleEquality::Decided(equal)) => return Ok(equal),
+            Some(super::classdef::HandleEquality::Compare(x, y)) => {
+                if self.functions.classes.equal_depth >= 64 {
+                    return Err(
+                        "isequal: handle objects refer to each other more than 64 levels deep."
+                            .into(),
+                    );
+                }
+                self.functions.classes.equal_depth += 1;
+                let equal = self.equal_arrays(&x, &y);
+                self.functions.classes.equal_depth -= 1;
+                return equal;
+            }
+            None => {}
+        }
+        // Nested struct/cell comparisons bypass the top-level sparse dispatch.
+        // Reuse its CSC equality kernel and charge stored entries, not numel.
+        if let (Array::Sparse(a), Array::Sparse(b)) = (a, b) {
+            self.charge(a.nnz().max(b.nnz()).max(1))?;
+            let equal = a.equals(b, false);
+            self.check_cancel()?;
+            return Ok(equal);
+        }
         self.charge(a.len().max(1))?;
         match (a, b) {
+            (Array::Str(a), Array::Str(b)) => {
+                for (i, (a, b)) in a.data().iter().zip(b.data()).enumerate() {
+                    if i.is_multiple_of(1024) {
+                        self.check_cancel()?;
+                    }
+                    if a.is_none() || a != b {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
+            (Array::Categorical(a), Array::Categorical(b)) => {
+                super::categorical_fns::equal(a, b, false, &self.cancel)
+            }
+            (a @ Array::Datetime(_), b @ Array::Datetime(_))
+            | (a @ Array::Duration(_), b @ Array::Duration(_)) => {
+                Ok(super::datetime_fns::arrays_equal(a, b, false, &self.cancel)?.unwrap_or(false))
+            }
+            (Array::Table(a), Array::Table(b)) => {
+                if a.names() != b.names()
+                    || a.row_names() != b.row_names()
+                    || a.is_timetable() != b.is_timetable()
+                {
+                    return Ok(false);
+                }
+                if let (Some(x), Some(y)) = (a.row_times(), b.row_times())
+                    && !self.equal_arrays(x, y)?
+                {
+                    return Ok(false);
+                }
+                for (x, y) in a.columns().iter().zip(b.columns()) {
+                    if !self.equal_arrays(x, y)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            }
             (Array::Handle(a), Array::Handle(b)) => {
                 Ok(a.same_storage(b) || a.name().is_some_and(|name| b.name() == Some(name)))
             }

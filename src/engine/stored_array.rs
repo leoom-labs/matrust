@@ -12,13 +12,15 @@ pub(super) trait StoredArray: Clone + Display + Send + Sync {
     fn rows(&self) -> usize;
     fn cols(&self) -> usize;
     fn len(&self) -> usize;
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
     fn data(&self) -> &[Self::Element];
     fn reshape(&self, r: usize, c: usize) -> Result<Self>;
     fn from_vec(r: usize, c: usize, v: Vec<Self::Element>) -> Result<Self>;
+    fn inherit_class(self, _source: &Self) -> Self {
+        self
+    }
     fn inherit_contiguous(&mut self, _source: &Self, _start: usize) {}
+    /// Shape metadata only (no copy): `A(idx)` keeps an N-D index's shape.
+    fn with_nd_dims(&self, dims: &[usize]) -> Result<Self>;
     fn inherit_stride(&mut self, _source: &Self, _start: usize, _step: usize) {}
     fn lookup<'a>(e: &'a Engine, n: &str) -> Option<&'a Self>;
     fn lookup_mut<'a>(e: &'a mut Engine, n: &str) -> Option<&'a mut Self>;
@@ -34,6 +36,9 @@ pub(super) trait StoredArray: Clone + Display + Send + Sync {
     ) -> Result<bool>;
 }
 impl StoredArray for Matrix {
+    fn with_nd_dims(&self, dims: &[usize]) -> Result<Self> {
+        self.with_dims(dims)
+    }
     type Element = f64;
     const BYTES: usize = 8;
     const PAR_COPY: usize = 524288;
@@ -86,6 +91,9 @@ impl StoredArray for Matrix {
     }
 }
 impl StoredArray for LogicalMatrix {
+    fn with_nd_dims(&self, dims: &[usize]) -> Result<Self> {
+        self.with_dims(dims)
+    }
     type Element = u8;
     const BYTES: usize = 1;
     const PAR_COPY: usize = 4194304;
@@ -133,6 +141,9 @@ impl StoredArray for LogicalMatrix {
 }
 
 impl StoredArray for crate::ComplexMatrix {
+    fn with_nd_dims(&self, dims: &[usize]) -> Result<Self> {
+        self.with_dims(dims)
+    }
     type Element = crate::Complex64;
     const BYTES: usize = 16;
     const PAR_COPY: usize = 524288;
@@ -158,6 +169,9 @@ impl StoredArray for crate::ComplexMatrix {
     }
     fn from_vec(r: usize, c: usize, v: Vec<Self::Element>) -> Result<Self> {
         Self::from_column_vec(r, c, v, &std::sync::atomic::AtomicBool::new(false))
+    }
+    fn inherit_class(self, source: &Self) -> Self {
+        self.with_single_class(source.is_single())
     }
     fn lookup<'a>(e: &'a Engine, n: &str) -> Option<&'a Self> {
         e.complex_variables.get(n)

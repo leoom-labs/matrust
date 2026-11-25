@@ -25,7 +25,7 @@ y1 =
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -49,7 +49,7 @@ ERR Undefined function 'undefined_zz_fn' for input arguments of type 'double'.
 
 t1 =
 
-     ''
+  0×0 empty char array
 
 
 
@@ -511,7 +511,7 @@ x =
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -1191,7 +1191,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1242,7 +1242,7 @@ ERR Inputs must be character arrays.
 
 x =
 
-     ''
+  0×0 empty char array
 
 
 @@CLASS char [0 0]
@@ -1296,7 +1296,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END

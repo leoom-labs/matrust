@@ -42,7 +42,7 @@ fn legend_location_invalid_calls_are_atomic() {
         "legend('Location','layout')",
         "legend('Location',1)",
         "legend('Location','wrong','Location','north')",
-        "legend('One','Two','Location','south')",
+        "legend('One','Two','Location','nowhere')",
     ] {
         assert!(e.execute(command).is_err(), "{command}");
         assert!(e.figure.as_ref().unwrap().same_snapshot(&before));

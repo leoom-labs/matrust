@@ -6,6 +6,12 @@ use matrust::session::WorkspaceDock;
 /// Room for the list's own padding, so whole rows fit.
 const LIST_SLACK: f32 = 6.;
 
+#[path = "figure_workbench.rs"]
+mod figure_workbench;
+
+#[path = "inspector.rs"]
+pub(super) mod inspector;
+
 /// Height of the selected-value preview body.
 const PREVIEW_BODY: f32 = 64.;
 /// Most lines of the selected-value text; a longer value ends in "... (R x C)".
@@ -29,6 +35,18 @@ pub(super) fn selected_value_display(
     value: &matrust::Array,
     format: &matrust::display_format::DisplayFormat,
 ) -> String {
+    if value.is_nd() {
+        let size = value
+            .dims()
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join("x");
+        return format!(
+            "{size} {}\nN-D array: use indexing, e.g. A(:,:,1)",
+            value.class()
+        );
+    }
     let (rows, cols) = (value.rows(), value.cols());
     let mut cut = false;
     let text = if value.len() <= PREVIEW_ELEMENTS {
@@ -126,15 +144,14 @@ impl Workspace {
             + LIST_SLACK
     }
     /// Space below the list for the selected-value line and its preview.
+    /// Reserved whenever variables exist, so the first click on a row does
+    /// not grow the card and move the row under the pointer.
     fn workspace_preview_reserve(&self, ui: &egui::Ui) -> f32 {
-        let selected = self
-            .selected
-            .as_ref()
-            .is_some_and(|name| self.variables.contains_key(name));
-        if !selected {
+        if self.variables.is_empty() {
             return 0.;
         }
         let line = ui.text_style_height(&egui::TextStyle::Body);
+        let header = line.max(ui.spacing().interact_size.y);
         let spacing = ui.spacing().item_spacing.y;
         let open = egui::collapsing_header::CollapsingState::load_with_default_open(
             ui.ctx(),
@@ -142,34 +159,49 @@ impl Workspace {
             false,
         )
         .is_open();
-        line + spacing
+        header
+            + spacing
             + if open {
                 2. * (line + spacing) + PREVIEW_BODY + spacing
             } else {
                 0.
             }
     }
+    /// Navigator (left, 240 px) and Inspector (right, 300 px) of the current
+    /// mode, both on surface 2 with a 1 px pane_border towards the work area.
     pub(super) fn desktop_side_panels(&mut self, root: &mut egui::Ui) {
         let ctx = root.ctx().clone();
+        let mode = self.mode();
+        if mode == modes::Mode::Figures && self.layout.center.is_some() {
+            figure_workbench::panels(self, root);
+            return;
+        }
         let workspace_minimum = workspace_tools::minimum_dock_width(&ctx);
-        let sidebar_minimum = if self.workspace_on_left() {
+        let sidebar_minimum = if self.workspace_on_left() && mode != modes::Mode::Apps {
             workspace_minimum
         } else {
             170.
         };
-        // The left column: Files above Workspace, two separate cards.
+        let navigator = if tokens::compact(&ctx) {
+            tokens::LEFT_COLUMN_COMPACT
+        } else {
+            tokens::LEFT_COLUMN
+        };
         egui::Panel::left("workspace")
-            .show_separator_line(false)
-            .frame(egui::Frame::NONE)
+            .frame(tokens::side_pane(&ctx))
             .default_size(
                 self.layout
                     .sidebar_width
-                    .unwrap_or(tokens::LEFT_COLUMN.max(sidebar_minimum)),
+                    .unwrap_or(navigator.max(sidebar_minimum)),
             )
             .min_size(sidebar_minimum)
             .max_size((ctx.content_rect().width() * 0.25).max(sidebar_minimum))
             .resizable(true)
-            .show(root, |ui| {
+            .show_pane(root, |ui| {
+                if mode == modes::Mode::Apps {
+                    self.apps_navigator(ui);
+                    return;
+                }
                 if self.workspace_on_left() {
                     let available = ui.available_height().max(1.);
                     let natural = self.workspace_card_height(ui);
@@ -177,9 +209,14 @@ impl Workspace {
                     // Three rows at least; up to 60 % of the column, but never
                     // fewer than twelve rows when the variables need them.
                     let frame = tokens::card(&ctx).inner_margin(1).total_margin().sum().y;
-                    let minimum =
-                        (panels::header_height(&ctx) + 4. * row + frame).min(available * 0.5);
-                    let twelve = panels::header_height(&ctx) + 13. * row + frame + LIST_SLACK;
+                    let minimum = (panels::header_height(&ctx) + 4. * row + frame)
+                        .min(available * 0.5)
+                        .max(available * 0.2);
+                    let twelve = panels::header_height(&ctx)
+                        + 13. * row
+                        + frame
+                        + LIST_SLACK
+                        + self.workspace_preview_reserve(ui);
                     let maximum = (available * 0.6)
                         .max(twelve)
                         .min(available * 0.75)
@@ -201,13 +238,12 @@ impl Workspace {
                         });
                     }
                     egui::Panel::bottom("workspace_variables_left")
-                        .show_separator_line(false)
-                        .frame(tokens::card(&ctx).inner_margin(1))
+                        .frame(tokens::side_pane(&ctx))
                         .default_size(preferred)
                         .min_size(minimum)
                         .max_size(maximum)
                         .resizable(true)
-                        .show(ui, |ui| {
+                        .show_pane(ui, |ui| {
                             ui.set_min_height(ui.available_height());
                             self.workspace_dock_contents(ui);
                         });
@@ -217,19 +253,61 @@ impl Workspace {
                     }
                 }
                 egui::CentralPanel::default()
-                    .frame(tokens::card(&ctx).inner_margin(1))
+                    .frame(tokens::side_pane(&ctx))
                     .show(ui, |ui| self.left_navigation_contents(ui));
             });
-        if !self.workspace_on_left() {
-            egui::Panel::right("workspace_variables")
-                .show_separator_line(false)
-                .frame(tokens::card(&ctx).inner_margin(1))
-                .default_size(self.layout.workspace_width.unwrap_or(workspace_minimum))
-                .min_size(workspace_minimum)
-                .max_size((ctx.content_rect().width() * 0.25).max(workspace_minimum))
-                .resizable(true)
-                .show(root, |ui| self.workspace_dock_contents(ui));
+        // Each app owns its parameter inspector; never duplicate Workspace beside it.
+        if mode == modes::Mode::Apps {
+            return;
         }
+        if inspector::uses_sheet(self, &ctx) {
+            inspector::sheet(self, root);
+            return;
+        }
+        // The current figure previews in the Inspector of Command and Editor.
+        let figure = self.figure_column();
+        let compact = tokens::compact(&ctx);
+        // A compact window gives a tool app the whole width.
+        let workspace = (!self.workspace_on_left() || mode == modes::Mode::Apps)
+            && !(compact && mode == modes::Mode::Apps);
+        if !workspace && !figure {
+            return;
+        }
+        let inspector = if compact {
+            tokens::RIGHT_COLUMN_COMPACT
+        } else {
+            tokens::RIGHT_COLUMN
+        };
+        egui::Panel::right("workspace_variables")
+            .frame(tokens::side_pane(&ctx))
+            .default_size(
+                self.layout
+                    .workspace_width
+                    .unwrap_or(inspector.max(workspace_minimum)),
+            )
+            .min_size(workspace_minimum)
+            .max_size((ctx.content_rect().width() * 0.3).max(workspace_minimum))
+            .resizable(true)
+            .show_pane(root, |ui| {
+                if !figure {
+                    self.workspace_dock_contents(ui);
+                    return;
+                }
+                if !workspace {
+                    self.figure_pane(ui);
+                    return;
+                }
+                let available = ui.available_height().max(1.);
+                egui::Panel::bottom("figure_column")
+                    .frame(tokens::card(&ctx))
+                    .default_size((available * 0.5).max(220.))
+                    .size_range(160.0..=(available * 0.7).max(160.))
+                    .resizable(true)
+                    .show_pane(ui, |ui| self.figure_pane(ui));
+                egui::CentralPanel::default()
+                    .frame(tokens::side_pane(&ctx))
+                    .show(ui, |ui| self.workspace_dock_contents(ui));
+            });
     }
     fn left_navigation_contents(&mut self, ui: &mut egui::Ui) {
         // Capture the finite panel edge before ScrollArea gives its child unbounded height.
@@ -331,6 +409,22 @@ impl Workspace {
                     } else {
                         // Nothing to show: release the cached array's storage.
                         self.selected_display = None;
+                        if !self.variables.is_empty() {
+                            egui::Frame::new()
+                                .inner_margin(egui::Margin {
+                                    left: tokens::M as i8,
+                                    right: tokens::S as i8,
+                                    ..Default::default()
+                                })
+                                .show(ui, |ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new("Click a variable to preview it").weak(),
+                                        )
+                                        .truncate(),
+                                    );
+                                });
+                        }
                     }
                 });
         });
@@ -354,9 +448,9 @@ impl Workspace {
         text
     }
     /// Header tools of the Workspace card: the overflow menu (variable
-    /// actions) and the filter, which is an icon until it is used.
+    /// actions) and the filter, which is a "Filter" button until it is used.
     fn workspace_header_tools(&mut self, ui: &mut egui::Ui) {
-        let more = panels::icon_button(ui, panels::Glyph::More, "Workspace actions");
+        let more = panels::header_tool(ui, "More", "Workspace actions", "Workspace actions");
         let mut export = false;
         egui::Popup::menu(&more).show(|ui| {
             let selected = self.selected.is_some();

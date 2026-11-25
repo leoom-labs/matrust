@@ -374,14 +374,17 @@ fn control_flow_passes_through_try_blocks() {
 #[test]
 fn cancellation_inside_try_still_cancels() {
     let mut e = Engine::default();
+    // Define caught before the canceller starts: on a loaded gate machine the flag can land before
+    // the first statement runs (Windows gate 2026-11-22: "caught is not defined").
+    e.execute("caught = 0;").unwrap();
     let flag = e.cancellation();
     let canceller = std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(80));
+        std::thread::sleep(std::time::Duration::from_millis(400));
         flag.store(true, Ordering::Relaxed);
     });
     // Each pass costs far more than the step budget allows within the delay.
     let error = e
-        .execute("caught = 0; try; while true; y = sin(linspace(0, 1, 200000)); end; catch; caught = 1; end")
+        .execute("try; while true; y = sin(linspace(0, 1, 200000)); end; catch; caught = 1; end")
         .unwrap_err();
     canceller.join().unwrap();
     assert!(error.contains("cancel"), "{error}");
@@ -455,13 +458,11 @@ fn whos_and_workspace_report_struct_shape_and_class() {
 }
 
 #[test]
-fn saving_structs_is_not_supported_yet() {
-    let error = fails("s.a = 1; save('structs_errors_unused.mat', 's')");
-    assert!(error.contains("not supported yet"), "{error}");
-    let error =
-        fails("c = {1}; c{1} = 2; s.a = 1; t = {s}; save('structs_errors_unused.mat', 't')");
-    assert!(error.contains("struct"), "{error}");
-    assert!(!std::path::Path::new("structs_errors_unused.mat").exists());
+fn saving_structs_roundtrips() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut e = Engine::default();
+    e.set_current_folder(dir.path()).unwrap();
+    e.execute("s.a=1; t={s}; save('structs.mat','s','t'); loaded=load('structs.mat'); assert(isequal(s,loaded.s)); assert(isequal(t,loaded.t));").unwrap();
 }
 
 #[test]
@@ -766,14 +767,14 @@ fn struct_displays_align_names_and_leave_no_fields_unindented() {
     assert_eq!(
         out,
         [
-            "1x2 struct array with fields:\n\n     a\n    dd\n",
-            "\ns = \n\n1x2 struct array with fields:\n\n     a\n    dd\n"
+            "1x2 struct array with fields:\n\n    a\n    dd\n",
+            "\ns = \n\n1x2 struct array with fields:\n\n    a\n    dd\n"
         ]
     );
     let (_, out) = ok("s=struct('a',{},'dd',{}); s");
     assert_eq!(
         out,
-        ["\ns = \n\n0x0 struct array with fields:\n\n     a\n    dd\n"]
+        ["\ns = \n\n0x0 struct array with fields:\n\n    a\n    dd\n"]
     );
 }
 

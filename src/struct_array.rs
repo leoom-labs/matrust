@@ -34,6 +34,9 @@ fn storable_field_name(name: &str) -> bool {
 pub struct StructArray {
     names: Arc<Vec<String>>,
     slots: Arc<Vec<Arc<Array>>>,
+    // Box<String> (8 bytes) keeps StructArray within the 48-byte envelope.
+    #[allow(clippy::box_collection)]
+    empty_class: Option<Box<String>>,
     rows: u32,
     cols: u32,
     bytes: u32,
@@ -46,6 +49,23 @@ impl StructArray {
     /// A 1x1 struct without fields.
     pub fn scalar_empty(cancel: &AtomicBool) -> Result<Self> {
         Self::from_slots(1, 1, Vec::new(), Vec::new(), cancel)
+    }
+    /// A user-class object array with zero elements.
+    pub fn empty_object(
+        rows: usize,
+        cols: usize,
+        class: String,
+        cancel: &AtomicBool,
+    ) -> Result<Self> {
+        if rows != 0 && cols != 0 {
+            return Err("Empty object array shape must have zero elements".into());
+        }
+        let mut empty = Self::from_slots(rows, cols, Vec::new(), Vec::new(), cancel)?;
+        empty.empty_class = Some(Box::new(class));
+        Ok(empty)
+    }
+    pub fn empty_object_class(&self) -> Option<&str> {
+        self.empty_class.as_deref().map(String::as_str)
     }
     /// `slots` holds element 0's fields, then element 1's fields, and so on.
     pub fn from_slots(
@@ -140,6 +160,7 @@ impl StructArray {
         Ok(Self {
             names: Arc::new(names),
             slots: Arc::new(slots),
+            empty_class: None,
             rows: narrow(rows)?,
             cols: narrow(cols)?,
             bytes: narrow(bytes)?,
@@ -231,6 +252,12 @@ impl StructArray {
         positions: &[usize],
         cancel: &AtomicBool,
     ) -> Result<Self> {
+        if let Some(class) = self.empty_object_class() {
+            if !positions.is_empty() {
+                return Err("Struct field or element index exceeds shape".into());
+            }
+            return Self::empty_object(rows, cols, class.to_owned(), cancel);
+        }
         let fields = self.field_count();
         if positions.len() > MAX_CELL_SLOTS {
             return Err("Struct array exceeds 65536 elements".into());
@@ -398,6 +425,7 @@ mod tests {
 
     #[test]
     fn value_stays_within_the_shared_array_envelope() {
+        // N-D arrays task: metadata uses a thin pointer; containers do not grow.
         assert!(std::mem::size_of::<StructArray>() <= 48);
         assert_eq!(std::mem::size_of::<Array>(), 56);
     }

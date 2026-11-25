@@ -5,16 +5,7 @@ use matrust::Engine;
 const REFERENCE: &str = include_str!("fixtures/fn/linalg2-expected.txt");
 const SOURCE: &str = include_str!("fixtures/fn/linalg2-cases.txt");
 /// Dependencies outside this task. These entries are checked to fail with the documented error.
-const KNOWN: &[(usize, &str)] = &[
-    (
-        57,
-        "'sparse' is a MATLAB function that MatRust does not support yet.",
-    ),
-    (
-        104,
-        "spline(x,y) would return a piecewise polynomial structure, which is not supported; call spline(x,y,xx)",
-    ),
-];
+const KNOWN: &[(usize, &str)] = &[];
 /// Every relaxed comparison is listed here; unlisted cases are byte-for-byte.
 #[derive(Clone, Copy)]
 enum Rule {

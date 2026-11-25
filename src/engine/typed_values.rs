@@ -2,9 +2,10 @@
 //! concatenation, indexed assignment and the functions that keep or check the
 //! class. Everything else sees these values as doubles (`Value::matrix`).
 use super::{Engine, Execution, Value};
+use crate::matrix::{expanded_2d_index, expansion_shape};
 use crate::syntax::{Expr, Token};
 use crate::typed_array::{NumericClass, TypedArray, divide_round, exact_with_double};
-use crate::{Array, CharacterRow, LogicalMatrix, Matrix, Result};
+use crate::{Array, CharacterRow, ComplexMatrix, LogicalMatrix, Matrix, Result};
 
 const MIXED: &str =
     "Integers can only be combined with integers of the same class, or scalar doubles.";
@@ -97,21 +98,6 @@ fn typed_value(a: TypedArray) -> Value {
     Value::Container(Array::Typed(a))
 }
 
-/// Result shape of an element-wise operation: equal shapes or one scalar.
-fn broadcast(a: &Operand, b: &Operand) -> Result<(usize, usize)> {
-    if a.len() == 1 {
-        Ok(b.shape())
-    } else if b.len() == 1 || a.shape() == b.shape() {
-        Ok(a.shape())
-    } else {
-        Err("Matrix dimensions must agree.".into())
-    }
-}
-
-fn pick(len: usize, i: usize) -> usize {
-    if len == 1 { 0 } else { i }
-}
-
 /// `x^n` for integers, saturating at the `i128` range (the caller saturates
 /// into the class).
 fn int_power(x: i128, n: u128) -> i128 {
@@ -139,7 +125,7 @@ fn int_power(x: i128, n: u128) -> i128 {
 
 /// One element of `a op b` for integers of `class`, where either side may be
 /// a double (`None` for its integer form).
-fn int_element(
+pub(super) fn int_element(
     class: NumericClass,
     op: char,
     a: (Option<i128>, f64),
@@ -235,36 +221,66 @@ fn result_class(a: &Operand, b: &Operand) -> Result<NumericClass> {
     }
 }
 
-fn elementwise(
-    op: char,
-    a: &Operand,
-    b: &Operand,
-    cancel: &std::sync::atomic::AtomicBool,
-) -> Result<TypedArray> {
+fn elementwise(engine: &Engine, op: char, a: &Operand, b: &Operand) -> Result<Value> {
     let class = result_class(a, b)?;
-    let (rows, cols) = broadcast(a, b)?;
+    let (left, right) = (a.shape(), b.shape());
+    let shape @ (rows, cols) = expansion_shape(left, right)?;
     let n = Matrix::checked_len(rows, cols)?;
-    let (la, lb) = (a.len(), b.len());
+    engine.preflight_elements(n.saturating_mul(if class.is_integer() { 2 } else { 1 }))?;
+    let indices = |i| {
+        (
+            expanded_2d_index(i, shape, left),
+            expanded_2d_index(i, shape, right),
+        )
+    };
     if class == NumericClass::Single {
-        // Both sides in single precision; f64 then rounding is exact for + - * /.
-        let to_single = |o: &Operand, i: usize| f64::from(o.real(i) as f32);
-        let mut values = Vec::with_capacity(n);
-        for i in 0..n {
-            if i.is_multiple_of(8192) {
-                crate::dsp::check_cancel(cancel)?;
+        let pair = |i| {
+            let (ia, ib) = indices(i);
+            let (x, y) = (a.real(ia), b.real(ib));
+            if op == '+' {
+                // Mixed addition rounds only its result to single.
+                (x, y)
+            } else {
+                (f64::from(x as f32), f64::from(y as f32))
             }
-            let x = to_single(a, pick(la, i));
-            let y = to_single(b, pick(lb, i));
-            values.push(match op {
+        };
+        if op == '^' {
+            for first in (0..n).step_by(8192) {
+                engine.check_cancel()?;
+                if (first..n.min(first + 8192)).any(|i| {
+                    let (x, y) = pair(i);
+                    super::complex_math::real_power_is_complex(x, y)
+                }) {
+                    ComplexMatrix::checked_len(rows, cols)?;
+                    engine.preflight_elements(2 * n)?;
+                    let mut data = Vec::with_capacity(n);
+                    for first in (0..n).step_by(8192) {
+                        engine.check_cancel()?;
+                        data.extend((first..n.min(first + 8192)).map(|i| {
+                            let (x, y) = pair(i);
+                            ComplexMatrix::round_to_single(super::complex_math::real_power(x, y))
+                        }));
+                    }
+                    let result = ComplexMatrix::from_column_vec(rows, cols, data, &engine.cancel)?;
+                    return Ok(Value::Complex(result.with_single_class(true)));
+                }
+            }
+        }
+        let values = (0..n).map(|i| {
+            if i.is_multiple_of(8192) {
+                engine.check_cancel()?;
+            }
+            let (x, y) = pair(i);
+            Ok(match op {
                 '+' => x + y,
                 '-' => x - y,
                 '*' => x * y,
                 '/' => x / y,
                 '^' => x.powf(y),
                 _ => unreachable!(),
-            });
-        }
-        return TypedArray::from_reals(class, rows, cols, values.into_iter());
+            })
+        });
+        return TypedArray::try_from_reals(class, rows, cols, values).map(typed_value);
     }
     let side = |o: &Operand, i: usize| match o {
         Operand::Typed(t) => (Some(t.int(i)), 0.),
@@ -273,16 +289,12 @@ fn elementwise(
     let mut values = Vec::with_capacity(n);
     for i in 0..n {
         if i.is_multiple_of(8192) {
-            crate::dsp::check_cancel(cancel)?;
+            engine.check_cancel()?;
         }
-        values.push(int_element(
-            class,
-            op,
-            side(a, pick(la, i)),
-            side(b, pick(lb, i)),
-        )?);
+        let (ia, ib) = indices(i);
+        values.push(int_element(class, op, side(a, ia), side(b, ib))?);
     }
-    TypedArray::from_ints(class, rows, cols, values.into_iter())
+    TypedArray::from_ints(class, rows, cols, values.into_iter()).map(typed_value)
 }
 
 fn real_matrix(o: &Operand) -> Result<Matrix> {
@@ -300,15 +312,16 @@ impl Engine {
             .iter()
             .any(|o| matches!(o, Operand::Typed(t) if t.is_integer()));
         let result = match op {
-            Token::Plus => elementwise('+', &a, &b, &self.cancel)?,
-            Token::Minus => elementwise('-', &a, &b, &self.cancel)?,
-            Token::DotStar => elementwise('*', &a, &b, &self.cancel)?,
-            Token::DotSlash => elementwise('/', &a, &b, &self.cancel)?,
-            Token::DotPower => elementwise('^', &a, &b, &self.cancel)?,
-            Token::Star if scalar => elementwise('*', &a, &b, &self.cancel)?,
-            Token::Slash if b.len() == 1 => elementwise('/', &a, &b, &self.cancel)?,
-            Token::Backslash if a.len() == 1 => elementwise('/', &b, &a, &self.cancel)?,
-            Token::Power if a.len() == 1 && b.len() == 1 => elementwise('^', &a, &b, &self.cancel)?,
+            Token::Plus => elementwise(self, '+', &a, &b)?,
+            Token::Minus => elementwise(self, '-', &a, &b)?,
+            Token::DotStar => elementwise(self, '*', &a, &b)?,
+            Token::DotSlash => elementwise(self, '/', &a, &b)?,
+            Token::DotBackslash => elementwise(self, '/', &b, &a)?,
+            Token::DotPower => elementwise(self, '^', &a, &b)?,
+            Token::Star if scalar => elementwise(self, '*', &a, &b)?,
+            Token::Slash if b.len() == 1 => elementwise(self, '/', &a, &b)?,
+            Token::Backslash if a.len() == 1 => elementwise(self, '/', &b, &a)?,
+            Token::Power if a.len() == 1 && b.len() == 1 => elementwise(self, '^', &a, &b)?,
             Token::Star if integer => {
                 return Err("MTIMES is not fully supported for integer classes. At least one input must be scalar.\nTo compute elementwise TIMES, use TIMES (.*) instead.".into());
             }
@@ -334,12 +347,12 @@ impl Engine {
                     Token::Slash => y.transpose().solve(&x.transpose())?.transpose(),
                     _ => x.power(y.as_scalar()?)?,
                 };
-                TypedArray::from_matrix(NumericClass::Single, &m)?
+                typed_value(TypedArray::from_matrix(NumericClass::Single, &m)?)
             }
             _ => return Err("Unsupported operator".into()),
         };
         self.check_cancel()?;
-        Ok(typed_value(result))
+        Ok(result)
     }
 
     pub(super) fn typed_negate(&mut self, a: &TypedArray) -> Result<Value> {
@@ -350,44 +363,6 @@ impl Engine {
         } else {
             TypedArray::from_ints(class, a.rows(), a.cols(), (0..a.len()).map(|i| -a.int(i)))?
         }))
-    }
-
-    /// Comparison with exact integer semantics (`int64(2^53+1) == 2^53` is false).
-    pub(super) fn typed_compare(&mut self, op: &Token, a: Value, b: Value) -> Result<Value> {
-        let (a, b) = (operand(a)?, operand(b)?);
-        let (rows, cols) = broadcast(&a, &b)?;
-        let n = Matrix::checked_len(rows, cols)?;
-        self.charge(n)?;
-        let (la, lb) = (a.len(), b.len());
-        let mut data = Vec::with_capacity(n);
-        for i in 0..n {
-            if i.is_multiple_of(8192) {
-                self.check_cancel()?;
-            }
-            let (x, y) = (&a, &b);
-            let order = compare(x, pick(la, i), y, pick(lb, i));
-            data.push(u8::from(match op {
-                Token::Equal => order == Some(std::cmp::Ordering::Equal),
-                Token::NotEqual => order != Some(std::cmp::Ordering::Equal),
-                Token::Less => order == Some(std::cmp::Ordering::Less),
-                Token::LessEqual => matches!(
-                    order,
-                    Some(std::cmp::Ordering::Less | std::cmp::Ordering::Equal)
-                ),
-                Token::Greater => order == Some(std::cmp::Ordering::Greater),
-                Token::GreaterEqual => matches!(
-                    order,
-                    Some(std::cmp::Ordering::Greater | std::cmp::Ordering::Equal)
-                ),
-                _ => return Err("Unsupported comparison".into()),
-            }));
-        }
-        Ok(Value::Logical(LogicalMatrix::from_column_vec(
-            rows,
-            cols,
-            data,
-            &self.cancel,
-        )?))
     }
 
     /// `start:step:stop` when an operand is an integer or single value.
@@ -402,9 +377,6 @@ impl Engine {
             .flatten()
             .map(operand)
             .collect::<Result<_>>()?;
-        if parts.iter().any(|p| p.len() != 1) {
-            return Err("Colon operands must be scalars".into());
-        }
         let mut class = None;
         for p in &parts {
             if let Operand::Typed(t) = p {
@@ -418,6 +390,13 @@ impl Engine {
             }
         }
         let class = class.expect("a typed operand");
+        if parts.iter().any(|p| p.len() == 0) {
+            return Ok(typed_value(if class == NumericClass::Single {
+                TypedArray::from_reals(class, 1, 0, std::iter::empty())?
+            } else {
+                TypedArray::from_ints(class, 1, 0, std::iter::empty())?
+            }));
+        }
         let (first, step, last) = match parts.as_slice() {
             [a, c] => (a, None, c),
             [a, b, c] => (a, Some(b), c),
@@ -426,23 +405,22 @@ impl Engine {
         if class == NumericClass::Single {
             let s = |o: &Operand| f64::from(o.real(0) as f32);
             let (a, d, b) = (s(first), step.map_or(1., s), s(last));
-            if !a.is_finite() || !b.is_finite() || !d.is_finite() || d == 0. {
-                return Err("Range bounds must be finite and step must be nonzero".into());
+            if !a.is_finite() || !b.is_finite() || !d.is_finite() {
+                return Err("Range bounds and step must be finite".into());
             }
-            let span = ((b - a) / d) as f32;
-            if span >= crate::matrix::MAX_ELEMENTS as f32 {
-                return Err(format!(
-                    "Matrix exceeds the {}-element limit",
-                    crate::matrix::MAX_ELEMENTS
-                ));
-            }
-            let count = if span < 0. {
-                0
+            let count = if d == 0. {
+                0.
             } else {
-                (f64::from(span) + 4. * f64::from(f32::EPSILON) * f64::from(span.abs().max(1.)))
-                    .floor() as usize
-                    + 1
-            };
+                // Octave's range count: Hagerty's tolerant floor (FL5) of
+                // (b - a + d) / d with a tolerance of 3 single eps, so decimal
+                // steps keep their endpoint (single(0):single(0.3):single(0.9)).
+                let ct = 3. * f64::from(f32::EPSILON);
+                let x = (b - a + d) / d;
+                let rmax = 1. / (2. - ct);
+                let tol = (ct * (1. + x.floor()).abs()).min(rmax).max(ct);
+                let t = (x + tol).floor();
+                (if x <= 0. || t - x < rmax { t } else { t - 1. }).max(0.)
+            } as usize;
             Matrix::checked_len(1, count)?;
             self.charge(count)?;
             return Ok(typed_value(TypedArray::from_reals(
@@ -703,6 +681,11 @@ impl Engine {
         out: &mut Execution,
     ) -> Result<bool> {
         use super::indexing::Indices;
+        // Folded typed arrays use the shared N-D assignment path, which
+        // understands their full shape and preserves the native class.
+        if self.array(name).is_some_and(|a| a.is_nd()) {
+            return Ok(false);
+        }
         let original = match self.container_variables.get(name) {
             Some(Array::Typed(t)) => Some((t.rows(), t.cols(), t.class())),
             Some(_) => return Ok(false),
@@ -722,6 +705,10 @@ impl Engine {
                 }
             },
         };
+        if class == NumericClass::Single && matches!(value, Value::Complex(_)) {
+            self.assign_indexed_value(name, args, value, deletion, quiet, out)?;
+            return Ok(true);
+        }
         if args.is_empty() || args.len() > 2 {
             return Err("Indexing supports one or two subscripts".into());
         }
@@ -897,13 +884,14 @@ impl Engine {
             .container_variables
             .get(name)
             .map_or(0, Array::retained_bytes);
-        if self.workspace_bytes() - old_bytes + len * class.size() > 256 * 1024 * 1024 {
+        if self.workspace_bytes() - old_bytes + len * class.size()
+            > super::limits::memory_bytes(&self.limits)
+        {
             let logical: usize = self.obj_workspace_bytes()
                 + self.workspace().values().map(Array::bytes).sum::<usize>();
-            if logical - old_bytes + len * class.size() > 256 * 1024 * 1024 {
-                return Err(
-                    "Workspace exceeds its 256 MiB logical storage limit; use clear".into(),
-                );
+            if logical - old_bytes + len * class.size() > super::limits::memory_bytes(&self.limits)
+            {
+                return Err(super::limits::workspace_error(&self.limits));
             }
         }
         // One native allocation for the grown array, written before it is
@@ -1032,19 +1020,6 @@ fn typed_index_extent(
             }
             Ok(maximum)
         }
-    }
-}
-
-fn compare(a: &Operand, i: usize, b: &Operand, j: usize) -> Option<std::cmp::Ordering> {
-    match (a, b) {
-        (Operand::Typed(x), Operand::Typed(y)) if x.is_integer() && y.is_integer() => {
-            Some(x.int(i).cmp(&y.int(j)))
-        }
-        (Operand::Typed(x), other) if x.is_integer() => int_vs_real(x.int(i), other.real(j)),
-        (other, Operand::Typed(y)) if y.is_integer() => {
-            int_vs_real(y.int(j), other.real(i)).map(std::cmp::Ordering::reverse)
-        }
-        _ => a.real(i).partial_cmp(&b.real(j)),
     }
 }
 

@@ -88,6 +88,8 @@ pub fn highlights(source: &str) -> Vec<(Range<usize>, Style)> {
                     | "elseif"
                     | "end"
                     | "for"
+                    | "parfor"
+                    | "spmd"
                     | "while"
                     | "function"
                     | "return"

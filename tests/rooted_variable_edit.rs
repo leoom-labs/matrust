@@ -240,14 +240,6 @@ fn malformed_paste_type_and_shape_failures_are_atomic_and_never_evaluate_scripts
             );
             unchanged(&e, &before);
         }
-        assert!(
-            variable_edit::paste_tsv(&mut e, &request, Rect::new(0, 0, 2, 2).unwrap(), "1")
-                .is_err()
-        );
-        assert!(
-            variable_edit::paste_tsv(&mut e, &request, Rect::new(3, 3, 1, 1).unwrap(), "1\t2")
-                .is_err()
-        );
         assert!(variable_edit::apply_literal(&mut e, &request, 0, 0, &"1".repeat(257)).is_err());
         assert!(
             variable_edit::paste_tsv(
@@ -273,6 +265,18 @@ fn malformed_paste_type_and_shape_failures_are_atomic_and_never_evaluate_scripts
             assert!(variable_edit::apply_literal(&mut e, &request, 0, 0, "NaN").is_err());
         }
         unchanged(&e, &before);
+        // Spreadsheet paste (owner 2026-11-09): a block lands at the selection's
+        // anchor without broadcast, and a block past the edge grows the array
+        // like MATLAB indexed assignment (A(4,4:5) = [1 2] makes A 4x5).
+        let anchor =
+            variable_edit::paste_tsv(&mut e, &request, Rect::new(0, 0, 2, 2).unwrap(), "1")
+                .unwrap();
+        assert_eq!((anchor.rectangle.rows(), anchor.rectangle.cols()), (1, 1));
+        let grown = target(&e, "A", vec![0, 0]);
+        variable_edit::paste_tsv(&mut e, &grown, Rect::new(3, 3, 1, 1).unwrap(), "1\t2").unwrap();
+        let leaf = target(&e, "A", vec![0, 0]);
+        let leaf = leaf.leaf().unwrap();
+        assert_eq!((leaf.rows(), leaf.cols()), (4, 5), "{kind}");
     }
 }
 
@@ -490,11 +494,11 @@ fn maximum_cell_depth_is_editable_but_empty_numeric_and_graphics_have_no_editabl
             .unwrap();
         let request = target(&e, "Empty", vec![]);
         let before = e.workspace();
-        assert!(
-            variable_edit::paste_tsv(&mut e, &request, Rect::new(0, 0, 1, 1).unwrap(), "7")
-                .is_err()
-        );
         assert!(variable_edit::copy_tsv(&e, &request, Rect::new(0, 0, 1, 1).unwrap()).is_err());
         unchanged(&e, &before);
+        // Pasting into an empty 0x3 grows it like MATLAB `Empty(1,1) = 7` (1x3).
+        variable_edit::paste_tsv(&mut e, &request, Rect::new(0, 0, 1, 1).unwrap(), "7").unwrap();
+        let grown = e.array("Empty").unwrap();
+        assert_eq!((grown.rows(), grown.cols()), (1, 3), "{kind}");
     }
 }

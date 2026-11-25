@@ -214,7 +214,7 @@ fn invalid_options_multiple_output_publication_and_cancel_are_atomic() {
     let original = e.array("b").unwrap();
     for args in [
         "0,1,0.3",
-        "21,1,0.3",
+        "101,1,0.3",
         "1.5,1,0.3",
         "3,0,0.3",
         "3,-1,0.3",

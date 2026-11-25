@@ -748,7 +748,7 @@ fn handle_recursion_fits_a_one_megabyte_stack() {
 }
 
 #[test]
-fn session_recovery_rejects_handles_explicitly() {
+fn session_recovery_skips_handles_and_keeps_the_rest() {
     use matrust::{document::Document, session::Session, simulation::Model};
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("session.json");
@@ -774,11 +774,11 @@ fn session_recovery_rejects_handles_explicitly() {
         model_path: None,
         model_baseline: None,
     };
-    let error = make(e.workspace()).save(&path).unwrap_err();
-    assert!(
-        error.contains("function handles is not supported yet"),
-        "{error}"
-    );
+    // A handle is skipped with a note instead of failing the whole checkpoint.
+    make(e.workspace()).save(&path).unwrap();
+    let manifest = Session::load(&path).unwrap().workspace_manifest.unwrap();
+    assert_eq!(manifest.skipped, ["h"]);
+    assert!(manifest.entries.contains_key("keep"));
     run(&mut e, "clear h; s.f=@sin; c={s};");
     make(e.workspace()).save(&path).unwrap();
     let manifest = Session::load(&path).unwrap().workspace_manifest.unwrap();
@@ -1221,6 +1221,42 @@ fn legacy_cellfun_isreal_follows_matlab_storage_rules() {
 }
 
 #[test]
+fn cellfun_isreal_typed_sparse_review_e1112() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "c = {int8(1), single(1), sparse(1)}; r = cellfun('isreal', c); z = cellfun('isreal', {{}, @sin});",
+    );
+    assert_eq!(row(&e, "r"), vec![1., 1., 1.]);
+    assert_eq!(row(&e, "z"), vec![0., 0.]);
+    let Array::Cell(c) = e.array("c").unwrap() else {
+        panic!("c is not a cell");
+    };
+    assert!(matches!(c.get_linear(0).unwrap().as_ref(), Array::Typed(_)));
+    assert_eq!(c.get_linear(0).unwrap().class(), "int8");
+    assert!(matches!(c.get_linear(1).unwrap().as_ref(), Array::Typed(_)));
+    assert_eq!(c.get_linear(1).unwrap().class(), "single");
+    assert!(matches!(
+        c.get_linear(2).unwrap().as_ref(),
+        Array::Sparse(_)
+    ));
+}
+
+#[test]
+fn isreal_nonnumeric_false_review_e1112() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        r#"no = [isreal({}) isreal(struct('a',1)) isreal(table(1)) isreal(@sin) isreal("s") isreal(["a" "b"]) isreal(datetime(2020,1,1))];
+           yes = [isreal('ab') isreal(true) isreal(int8(1)) isreal(single(1)) isreal(sparse(1)) isreal(seconds(1)) isreal(1) isreal(1+0i)];
+           cx = [isreal(1+2i) isreal(complex(1,0)) isreal(complex(zeros(0,1),0))];"#,
+    );
+    assert_eq!(row(&e, "no"), vec![0., 0., 0., 0., 0., 0., 0.]);
+    assert_eq!(row(&e, "yes"), vec![1., 1., 1., 1., 1., 1., 1., 1.]);
+    assert_eq!(row(&e, "cx"), vec![0., 0., 0.]);
+}
+
+#[test]
 fn struct_fields_call_handles_and_capture_snapshots() {
     let mut e = Engine::default();
     run(
@@ -1340,11 +1376,40 @@ fn struct_handle_persistence_rejects_before_replacing_files() {
                 &mut e,
                 &format!("save('{quoted}','{variable}','{version}')"),
             );
-            assert!(
-                error.contains("saving structs is not supported yet"),
-                "{error}"
-            );
+            assert!(error.contains("function handles"), "{error}");
             assert_eq!(std::fs::read(&path).unwrap(), b"keep existing file");
         }
     }
+}
+
+// An anonymous function keeps the local functions of the code that made it:
+// called on a later line, after that code ended, and next to another
+// function of the same name. Text given to str2func sees no local function
+// (MathWorks str2func page: no access to private or local functions).
+#[test]
+fn anonymous_handles_keep_the_local_functions_of_the_code_that_made_them() {
+    let mut e = Engine::default();
+    run(
+        &mut e,
+        "h = make(3); k = @(x) twice(x) + 1; m = {h, k};\nfunction h = make(a)\nh = @(x) twice(x) + a;\nend\nfunction y = twice(x)\ny = 2 * x;\nend",
+    );
+    run(
+        &mut e,
+        "r = [h(1) k(1) m{1}(2) m{2}(2) feval(h, 1)]; c = cellfun(h, {1, 2}); t = func2str(h); alias = h; same = isequal(h, alias);",
+    );
+    assert_eq!(row(&e, "r"), [5., 3., 7., 5., 5.]);
+    assert_eq!(row(&e, "c"), [5., 7.]);
+    assert_eq!(text(&e, "t"), "@(x)twice(x)+a");
+    assert_eq!(number(&e, "same"), 1.);
+    // Code with its own `twice` calls the handles: each keeps its own.
+    run(
+        &mut e,
+        "q = [h(1) k(1) twice(1)];\nfunction y = twice(x)\ny = -x;\nend",
+    );
+    assert_eq!(row(&e, "q"), [5., 3., -1.]);
+    let error = fails(
+        &mut e,
+        "s = str2func('@(x) twice(x)'); s(1)\nfunction y = twice(x)\ny = 2 * x;\nend",
+    );
+    assert!(error.contains("'twice'"), "{error}");
 }

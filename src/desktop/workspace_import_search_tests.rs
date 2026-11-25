@@ -210,7 +210,7 @@ fn mat_search_real_typed_filter_loads_selected_only_and_preserves_workspace() {
 }
 
 #[test]
-fn mat_search_unsupported_matches_are_not_selected_and_busy_escape_stops() {
+fn mat_search_struct_matches_are_selected_and_busy_escape_stops() {
     let catalog = matrust::files::inspect_workspace(
         std::path::Path::new("tests/fixtures/mat/mat-import-v7.mat"),
         &AtomicBool::new(false),
@@ -219,11 +219,13 @@ fn mat_search_unsupported_matches_are_not_selected_and_busy_escape_stops() {
     let ctx = egui::Context::default();
     let mut app = Workspace::with_context(ctx.clone(), true);
     let mut import = Import::new(catalog);
-    import.query = "three_d".into();
+    // struct_data loads since fix line 1 (struct MAT save/load), like three_d and sparse_data.
+    import.query = "struct_data".into();
     import.update_filter();
     import.select_matching();
     assert_eq!(import.visible.len(), 1);
-    assert!(import.selected.is_empty());
+    assert_eq!(import.selected.len(), 1);
+    assert!(import.selected.contains("struct_data"));
     import.selected.insert("compact".into());
     app.workspace_import = Some(import);
     app.busy = true;

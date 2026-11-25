@@ -1,6 +1,6 @@
 //! Bounded recognition of exact ordinary Bar constructor batches, not source text.
 use super::*;
-use crate::plot::{Axes, MAX_SERIES};
+use crate::plot::Axes;
 use std::ops::Range;
 
 pub(super) struct Plan {
@@ -15,10 +15,7 @@ impl Plan {
         checkpoint: &impl Fn() -> crate::Result<()>,
     ) -> crate::Result<Self> {
         checkpoint()?;
-        if axes.series.len() > MAX_SERIES {
-            return Err("Bar replay exceeds series limit".into());
-        }
-        let mut spacing = [None; MAX_SERIES];
+        let mut spacing = vec![None; axes.series.len()];
         let mut first_bar = None::<usize>;
         let bars = axes
             .series
@@ -81,27 +78,38 @@ impl Plan {
                 continue;
             }
             let rows = axes.series[start].points.len();
+            let layout = axes.series[start].bar_layout;
+            let group_id = axes.series[start].bar_group_id.clone();
             // Preserve the historical .8/1 recipe and its first matching group.
             // Only if all legacy candidate lengths fail do we try recovered factors.
             let mut lengths = Vec::new();
             let mut found = None;
             for count in 1..=axes.series.len() - start {
                 checkpoint()?;
-                if count > 1 && rows == 1 {
+                if count > 1 && rows == 1 && layout != crate::plot::BarLayout::Stacked {
                     break;
                 }
-                if axes.series[start..start + count]
-                    .iter()
-                    .any(|s| s.kind != PlotKind::Bar || s.points.len() != rows)
-                {
+                if axes.series[start..start + count].iter().any(|s| {
+                    s.kind != PlotKind::Bar
+                        || s.points.len() != rows
+                        || s.bar_layout != layout
+                        || match (&group_id, &s.bar_group_id) {
+                            (Some(a), Some(b)) => !a.same_object(b),
+                            (None, None) => false,
+                            _ => true,
+                        }
+                }) {
                     break;
                 }
                 let range = start..start + count;
-                if matches_factors(axes, &spacing, range.clone(), 0.8, 1.) {
+                if layout == crate::plot::BarLayout::Grouped
+                    && matches_factors(axes, &spacing, range.clone(), 0.8, 1.)
+                {
                     found = Some(Group {
                         range,
                         group_width: 0.8,
                         bar_width: 1.,
+                        layout,
                     });
                     break;
                 }
@@ -110,8 +118,13 @@ impl Plan {
             if found.is_none() {
                 for count in lengths {
                     checkpoint()?;
-                    if let Some(group) =
-                        relative_factors(axes, &spacing, start..start + count, checkpoint)?
+                    let range = start..start + count;
+                    if layout == crate::plot::BarLayout::Stacked {
+                        if let Some(group) = stacked_factors(axes, &spacing, range, checkpoint)? {
+                            found = Some(group);
+                            break;
+                        }
+                    } else if let Some(group) = relative_factors(axes, &spacing, range, checkpoint)?
                     {
                         found = Some(group);
                         break;
@@ -161,6 +174,7 @@ pub(super) struct Group {
     range: Range<usize>,
     group_width: f64,
     bar_width: f64,
+    layout: crate::plot::BarLayout,
 }
 
 // Six seeds, each with itself and two adjacent positive floats on either side.
@@ -208,7 +222,7 @@ impl Candidates {
 
 fn matches_factors(
     axes: &Axes,
-    spacing: &[Option<f64>; MAX_SERIES],
+    spacing: &[Option<f64>],
     range: Range<usize>,
     group_width: f64,
     bar_width: f64,
@@ -230,7 +244,7 @@ fn matches_factors(
 
 fn relative_factors(
     axes: &Axes,
-    spacing: &[Option<f64>; MAX_SERIES],
+    spacing: &[Option<f64>],
     range: Range<usize>,
     checkpoint: &impl Fn() -> crate::Result<()>,
 ) -> crate::Result<Option<Group>> {
@@ -283,8 +297,46 @@ fn relative_factors(
                     range,
                     group_width,
                     bar_width,
+                    layout: crate::plot::BarLayout::Grouped,
                 }));
             }
+        }
+    }
+    Ok(None)
+}
+
+fn stacked_factors(
+    axes: &Axes,
+    spacing: &[Option<f64>],
+    range: Range<usize>,
+    checkpoint: &impl Fn() -> crate::Result<()>,
+) -> crate::Result<Option<Group>> {
+    let first = &axes.series[range.start];
+    let step = spacing[range.start].unwrap();
+    let mut bars = Candidates::new();
+    if let Some(rel) = first.bar_relative_width {
+        bars.add(rel);
+    }
+    bars.around(0.8);
+    bars.around(1.);
+    bars.around(first.bar_width / step);
+    for bar_width in bars.iter() {
+        checkpoint()?;
+        let ok = range.clone().all(|index| {
+            let s = &axes.series[index];
+            let width = spacing[index].unwrap() * bar_width;
+            width.is_finite()
+                && width > 0.
+                && width.to_bits() == s.bar_width.to_bits()
+                && s.bar_offset == 0.
+        });
+        if ok {
+            return Ok(Some(Group {
+                range,
+                group_width: 0.8,
+                bar_width,
+                layout: crate::plot::BarLayout::Stacked,
+            }));
         }
     }
     Ok(None)
@@ -351,6 +403,7 @@ pub(super) fn emit_group(
 ) -> fmt::Result {
     let group_width = group.group_width;
     let bar_width = group.bar_width;
+    let layout = group.layout;
     let group = group.range;
     let rows = axes.series[group.start].points.len();
     for (component, name) in [(0, "mr_group_x"), (1, "mr_group_y")] {
@@ -390,7 +443,13 @@ pub(super) fn emit_group(
     // Ordinary documented graphics properties used by this replay.
     // The first-choice legacy recipe remains .8/1; other factors were verified
     // forward against every member using the same public ordered arithmetic.
-    if group_width.to_bits() == 0.8f64.to_bits() && bar_width.to_bits() == 1f64.to_bits() {
+    if layout == crate::plot::BarLayout::Stacked {
+        writeln!(
+            out,
+            "mr_bars = bar(mr_ax{axis},mr_group_x,mr_group_y,'stacked','BarWidth',{},'EdgeColor','none');\nclear mr_group_x mr_group_y;",
+            number(bar_width)
+        )?;
+    } else if group_width.to_bits() == 0.8f64.to_bits() && bar_width.to_bits() == 1f64.to_bits() {
         writeln!(
             out,
             "mr_bars = bar(mr_ax{axis},mr_group_x,mr_group_y,'GroupWidth',0.8,'BarWidth',1,'EdgeColor','none');\nclear mr_group_x mr_group_y;"
@@ -570,7 +629,7 @@ mod tests {
         let plan = Plan::new(&figure, &AtomicBool::new(false)).unwrap();
         assert_eq!(plan.groups.len(), 1);
         let group = &plan.groups[0];
-        let spacing = [Some(1.); MAX_SERIES];
+        let spacing = [Some(1.); crate::plot::MAX_SERIES];
         assert!(matches_factors(
             &figure,
             &spacing,

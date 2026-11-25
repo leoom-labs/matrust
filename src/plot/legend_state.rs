@@ -1,6 +1,7 @@
 //! Bounded ordered legend membership. Tokens retain no graph or sample buffers.
-use super::{Axes, MAX_SERIES, Series};
+use super::{Axes, Series};
 use crate::{ObjectIdentity, Result};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct LegendState {
@@ -14,44 +15,72 @@ pub struct LegendState {
 pub(crate) struct LegendMetadata {
     pub members: Vec<usize>,
     pub auto_update: bool,
+    #[serde(default, skip_serializing_if = "interpreter_is_default")]
+    pub interpreter: super::text_markup::Interpreter,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_columns: Option<usize>,
+    #[serde(default, skip_serializing_if = "super::LegendOrientation::is_default")]
+    pub orientation: super::LegendOrientation,
+    #[serde(default, skip_serializing_if = "super::LegendBox::is_default")]
+    pub r#box: super::LegendBox,
+    #[serde(default, skip_serializing_if = "super::LabelStyle::is_default")]
+    pub style: super::LabelStyle,
+}
+fn interpreter_is_default(value: &super::text_markup::Interpreter) -> bool {
+    *value == super::text_markup::Interpreter::Tex
 }
 
 impl Axes {
     /// Includes empty labels for String queries and exact persistence. Renderer
     /// callers use legend_entries, which omits current-MATLAB empty labels.
+    /// Without explicit legend state, series marked `legend_hidden` (chart
+    /// helpers) are never members.
     pub fn legend_members(&self) -> impl Iterator<Item = (usize, &Series)> {
-        let count = self
-            .legend_state
-            .as_ref()
-            .map_or(self.series.len(), |s| s.members.len())
-            .min(MAX_SERIES);
-        (0..count).filter_map(move |index| {
-            if let Some(state) = &self.legend_state {
-                let token = &state.members[index];
-                self.series
-                    .iter()
-                    .take(MAX_SERIES)
-                    .enumerate()
-                    .find(|(_, s)| s.identity.same_object(token))
-            } else {
-                self.series.get(index).map(|s| (index, s))
+        let explicit = self.legend_state.as_ref().map(|state| {
+            let mut indices = HashMap::with_capacity(self.series.len());
+            for (index, series) in self.series.iter().enumerate() {
+                // Snapshot clones retain identity. Keep the first matching series.
+                indices
+                    .entry(series.identity.recovery_key())
+                    .or_insert(index);
             }
-        })
+            state.members.iter().filter_map(move |token| {
+                let &index = indices.get(&token.recovery_key())?;
+                Some((index, &self.series[index]))
+            })
+        });
+        let implicit = explicit.is_none().then(|| {
+            self.series
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| !s.legend_hidden)
+        });
+        explicit
+            .into_iter()
+            .flatten()
+            .chain(implicit.into_iter().flatten())
     }
     pub fn legend_entries(&self) -> impl Iterator<Item = (usize, &Series)> {
-        self.legend_members().filter(|(_, s)| !s.label.is_empty())
+        self.legend_members()
+            .filter(|(_, s)| !s.label.is_empty() && !s.legend_hidden)
     }
     pub(super) fn validate_legend_state(&self) -> Result<()> {
         if let Some(state) = &self.legend_state {
-            if state.members.len() > MAX_SERIES {
-                return Err("Legend exceeds 64 members".into());
+            if state.members.len() > self.series.len() {
+                return Err("Legend exceeds axes membership".into());
             }
-            for (i, token) in state.members.iter().enumerate() {
-                if !self.series.iter().any(|s| s.identity.same_object(token)) {
-                    return Err("Legend member does not belong to its axes".into());
-                }
-                if state.members[..i].iter().any(|old| old.same_object(token)) {
+            let mut members: HashSet<_> = self
+                .series
+                .iter()
+                .map(|s| s.identity.recovery_key())
+                .collect();
+            let mut seen = HashSet::new();
+            for token in &state.members {
+                if !seen.insert(token.recovery_key()) {
                     return Err("Legend contains a duplicate series".into());
+                }
+                if !members.remove(&token.recovery_key()) {
+                    return Err("Legend member does not belong to its axes".into());
                 }
             }
         }
@@ -86,16 +115,32 @@ impl Axes {
         self.legend_state.as_ref().map(|state| LegendMetadata {
             members: self.legend_members().map(|(i, _)| i).collect(),
             auto_update: state.auto_update,
+            interpreter: self.extras.legend_interpreter,
+            num_columns: self.extras.legend_num_columns,
+            orientation: self.extras.legend_orientation,
+            r#box: self.extras.legend_box,
+            style: self.extras.legend_style,
         })
     }
     pub(crate) fn restore_legend_metadata(
         &mut self,
         metadata: Option<LegendMetadata>,
     ) -> Result<()> {
+        self.extras.legend_interpreter = metadata
+            .as_ref()
+            .map_or(Default::default(), |m| m.interpreter);
+        self.extras.legend_num_columns = metadata
+            .as_ref()
+            .and_then(|m| m.num_columns.filter(|&n| n >= 1));
+        self.extras.legend_orientation = metadata
+            .as_ref()
+            .map_or(Default::default(), |m| m.orientation);
+        self.extras.legend_box = metadata.as_ref().map_or(Default::default(), |m| m.r#box);
+        self.extras.legend_style = metadata.as_ref().map_or(Default::default(), |m| m.style);
         self.legend_state = metadata
             .map(|metadata| -> Result<LegendState> {
-                if metadata.members.len() > MAX_SERIES {
-                    return Err("Legend exceeds 64 members".into());
+                if metadata.members.len() > self.series.len() {
+                    return Err("Legend exceeds axes membership".into());
                 }
                 let members = metadata
                     .members

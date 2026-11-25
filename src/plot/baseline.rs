@@ -140,6 +140,18 @@ impl Axes {
         axes: [AxisTransform; 2],
         cancel: &AtomicBool,
     ) -> Result<Vec<[f64; 2]>> {
+        self.display_series_points_indexed_cancellable(index, max_points, axes, cancel)
+            .map(|(points, _)| points)
+    }
+    /// Same as [`Self::display_series_points_cancellable`], also returning
+    /// original point indices when a Scatter series is decimated.
+    pub fn display_series_points_indexed_cancellable(
+        &self,
+        index: usize,
+        max_points: usize,
+        axes: [AxisTransform; 2],
+        cancel: &AtomicBool,
+    ) -> Result<super::IndexedDisplayPoints> {
         super::display_check(cancel)?;
         let series = self
             .series
@@ -148,9 +160,9 @@ impl Axes {
         if series.kind == PlotKind::Stem && self.baseline_for_series(&series.identity).is_some() {
             let mut descriptor = series.clone();
             descriptor.base_value = Some(self.effective_baseline(index, axes[1])?);
-            descriptor.display_points_axes_cancellable(max_points, axes, cancel)
+            descriptor.display_points_axes_indexed_cancellable(max_points, axes, cancel)
         } else {
-            series.display_points_axes_cancellable(max_points, axes, cancel)
+            series.display_points_axes_indexed_cancellable(max_points, axes, cancel)
         }
     }
     pub fn display_series_points(
@@ -169,8 +181,15 @@ impl Axes {
         check: &impl Fn() -> Result<()>,
     ) -> Result<()> {
         check()?;
-        if records.len() > MAX_BASELINES || self.series.len() > MAX_SERIES {
-            return Err("Axes baseline metadata exceeds 64 objects or 64 series".into());
+        if records.len() > MAX_BASELINES
+            || self
+                .series
+                .iter()
+                .filter(|s| matches!(s.kind, PlotKind::Bar | PlotKind::Stem))
+                .nth(MAX_SERIES)
+                .is_some()
+        {
+            return Err("Axes baseline metadata exceeds 64 objects or chart series".into());
         }
         let mut total = 0usize;
         for baseline in records {
@@ -254,8 +273,8 @@ impl Axes {
         check: &impl Fn() -> Result<()>,
     ) -> Result<()> {
         check()?;
-        if self.series.len() > MAX_SERIES || baselines.len() > MAX_BASELINES {
-            return Err("Axes baseline metadata exceeds 64 objects or 64 series".into());
+        if baselines.len() > MAX_BASELINES {
+            return Err("Axes baseline metadata exceeds 64 objects or chart series".into());
         }
         self.validate_baseline_records(&baselines, check)?;
         let latent = self

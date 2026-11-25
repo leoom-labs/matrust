@@ -1,6 +1,7 @@
 //! Triangulation, hulls, point searches, Voronoi diagrams and scattered
 //! interpolation in two dimensions (delaunay, delaunayn, convhull, convhulln,
-//! dsearchn, tsearchn, voronoin, griddata, griddatan).
+//! dsearchn, tsearchn, voronoin, griddata, griddatan); convhull and convhulln
+//! also take three-dimensional points (`hull3`).
 use super::{Grid, MAX_PAIRS, MAX_POINTS, NO_ND, NOT_ENOUGH, sc2_num, sc2_scalar, sc2_text};
 use crate::engine::{Engine, Execution, Value};
 use crate::matrix::MAX_ELEMENTS;
@@ -8,10 +9,34 @@ use crate::{Array, CellArray, Matrix, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-type P = [f64; 2];
+mod hull3;
+pub(in crate::engine) mod triangulation;
+
+pub(in crate::engine) type P = [f64; 2];
 /// The vertex at infinity of the ghost triangles outside the hull.
 const INF: usize = usize::MAX;
 const NONE: usize = usize::MAX;
+
+/// The outward triangles of the hull of three-dimensional points (each from
+/// its smallest index, rows ascending) and the enclosed volume.
+fn hull3_values(engine: &mut Engine, points: Vec<hull3::P3>) -> Result<Vec<Value>> {
+    engine.charge(points.len().saturating_mul(8))?;
+    let hull = hull3::convex_hull(&points, 16 * MAX_PAIRS as u64, &mut || {
+        engine.check_cancel()
+    })?;
+    engine.charge(hull.triangles.len().saturating_mul(3))?;
+    let m = hull.triangles.len();
+    let mut data = vec![0.; 3 * m];
+    for (i, t) in hull.triangles.iter().enumerate() {
+        for k in 0..3 {
+            data[k * m + i] = f64::from(t[k]) + 1.;
+        }
+    }
+    Ok(vec![
+        sc2_num(m, 3, data)?,
+        sc2_num(1, 1, vec![hull.volume])?,
+    ])
+}
 
 fn orient(a: P, b: P, c: P) -> f64 {
     robust::orient2d(
@@ -76,26 +101,35 @@ fn between(a: P, b: P, p: P) -> bool {
 }
 
 #[derive(Clone)]
-struct Tri {
-    v: [usize; 3],
+pub(in crate::engine) struct Tri {
+    pub(in crate::engine) v: [usize; 3],
     /// n[k]: the neighbour across the edge opposite v[k].
-    n: [usize; 3],
+    pub(in crate::engine) n: [usize; 3],
 }
 
 /// Incremental (Bowyer-Watson) Delaunay triangulation with ghost triangles
 /// `(a, b, INF)` beyond every hull edge; points are inserted in index order.
 /// A point on a circumcircle counts as inside, so four co-circular points
 /// join the later point to its predecessors as the reference's triangulations do.
-pub(super) struct Delaunay {
+pub(in crate::engine) struct Delaunay {
     pts: Vec<P>,
-    tris: Vec<Tri>,
-    alive: Vec<bool>,
+    pub(in crate::engine) tris: Vec<Tri>,
+    pub(in crate::engine) alive: Vec<bool>,
     last: usize,
 }
 
 impl Delaunay {
     /// `None` when the points do not span two dimensions.
     fn build(pts: Vec<P>, order: &[usize], engine: &Engine) -> Result<Option<Self>> {
+        Self::build_bounded(pts, order, engine, usize::MAX)
+    }
+
+    fn build_bounded(
+        pts: Vec<P>,
+        order: &[usize],
+        engine: &Engine,
+        arena_limit: usize,
+    ) -> Result<Option<Self>> {
         let Some(&i0) = order.first() else {
             return Ok(None);
         };
@@ -113,6 +147,9 @@ impl Delaunay {
         } else {
             (i2, i1)
         };
+        if arena_limit < 4 {
+            return Err("Delaunay triangles exceed the workspace limit".into());
+        }
         let mut d = Delaunay {
             pts,
             tris: Vec::new(),
@@ -130,7 +167,7 @@ impl Delaunay {
                 engine.check_cancel()?;
             }
             if i != i0 && i != b && i != c {
-                d.insert(i);
+                d.insert(i, engine, arena_limit)?;
             }
         }
         Ok(Some(d))
@@ -157,7 +194,7 @@ impl Delaunay {
         }
     }
 
-    fn is_ghost(&self, t: usize) -> bool {
+    pub(in crate::engine) fn is_ghost(&self, t: usize) -> bool {
         self.tris[t].v[2] == INF
     }
 
@@ -173,7 +210,7 @@ impl Delaunay {
 
     /// A real triangle containing p (boundary included), or the ghost
     /// triangle of a hull edge that p lies beyond.
-    fn locate(&self, p: P) -> usize {
+    pub(in crate::engine) fn locate(&self, p: P) -> usize {
         let mut t = self.last;
         if !self.alive[t] {
             t = (0..self.tris.len())
@@ -212,7 +249,7 @@ impl Delaunay {
         (0..3).all(|k| orient(self.pts[v[k]], self.pts[v[(k + 1) % 3]], p) >= 0.)
     }
 
-    fn insert(&mut self, i: usize) {
+    fn insert(&mut self, i: usize, engine: &Engine, arena_limit: usize) -> Result<()> {
         let p = self.pts[i];
         let start = self.locate(p);
         let start = if self.conflict(start, p) {
@@ -220,7 +257,7 @@ impl Delaunay {
         } else {
             match (0..self.tris.len()).find(|t| self.alive[*t] && self.conflict(*t, p)) {
                 Some(t) => t,
-                None => return,
+                None => return Ok(()),
             }
         };
         let mut cavity = vec![start];
@@ -231,6 +268,7 @@ impl Delaunay {
         while k < cavity.len() {
             let t = cavity[k];
             k += 1;
+            engine.sc2_poll(k)?;
             for e in 0..3 {
                 let s = self.tris[t].n[e];
                 let inside = match state.get(&s) {
@@ -250,11 +288,22 @@ impl Delaunay {
                 }
             }
         }
+        // The cavity has been fully read and its outside neighbors are disjoint
+        // from its triangles. Bounded callers can recycle the retired slots.
+        let reuse = if arena_limit == usize::MAX {
+            0
+        } else {
+            cavity.len()
+        };
+        let added = boundary.len().saturating_sub(reuse);
+        if self.tris.len().saturating_add(added) > arena_limit {
+            return Err("Delaunay triangles exceed the workspace limit".into());
+        }
         for &t in &cavity {
             self.alive[t] = false;
         }
         let mut new = Vec::with_capacity(boundary.len());
-        for (a, b, outer) in boundary {
+        for (k, (a, b, outer)) in boundary.into_iter().enumerate() {
             let v = if a == INF {
                 [b, i, INF]
             } else if b == INF {
@@ -262,13 +311,21 @@ impl Delaunay {
             } else {
                 [a, b, i]
             };
-            let t = self.tris.len();
             let mut n = [NONE; 3];
             // The edge a-b is opposite the new point.
             let slot = v.iter().position(|x| *x == i).expect("new vertex");
             n[slot] = outer;
-            self.tris.push(Tri { v, n });
-            self.alive.push(true);
+            let t = if k < reuse {
+                let t = cavity[k];
+                self.tris[t] = Tri { v, n };
+                self.alive[t] = true;
+                t
+            } else {
+                let t = self.tris.len();
+                self.tris.push(Tri { v, n });
+                self.alive.push(true);
+                t
+            };
             let ov = self.tris[outer].v;
             for e in 0..3 {
                 if ov[(e + 1) % 3] == b && ov[(e + 2) % 3] == a {
@@ -279,6 +336,7 @@ impl Delaunay {
         }
         self.link(&new);
         self.last = *new.iter().find(|t| !self.is_ghost(**t)).unwrap_or(&new[0]);
+        Ok(())
     }
 
     fn triangles(&self) -> Vec<[usize; 3]> {
@@ -297,24 +355,30 @@ fn ordered_rows(mut rows: Vec<[usize; 3]>) -> Vec<[usize; 3]> {
         let k = (0..3).min_by_key(|k| r[*k]).expect("three");
         r.rotate_left(k);
     }
-    let key = |r: &[usize; 3]| {
-        let mut s = *r;
-        s.sort_unstable();
-        [s[2], s[1], s[0]]
-    };
-    rows.sort_by_key(key);
+    rows.sort_by_key(|r| triangle_order_key(*r));
     rows
 }
 
-fn rows_value(rows: &[[usize; 3]]) -> Result<Value> {
-    let m = rows.len();
+fn triangle_order_key(mut vertices: [usize; 3]) -> [usize; 3] {
+    vertices.sort_unstable();
+    [vertices[2], vertices[1], vertices[0]]
+}
+
+fn connectivity(m: usize, rows: impl IntoIterator<Item = [usize; 3]>) -> Result<Matrix> {
     let mut data = vec![0.; m * 3];
-    for (i, r) in rows.iter().enumerate() {
+    for (i, r) in rows.into_iter().enumerate() {
         for k in 0..3 {
             data[k * m + i] = (r[k] + 1) as f64;
         }
     }
-    sc2_num(m, 3, data)
+    Matrix::from_column_vec(m, 3, data)
+}
+
+fn rows_value(rows: &[[usize; 3]]) -> Result<Value> {
+    Ok(Value::Matrix(connectivity(
+        rows.len(),
+        rows.iter().copied(),
+    )?))
 }
 
 /// Unique points: the index of each point's first occurrence, in order.
@@ -451,7 +515,10 @@ impl Engine {
 
     /// The Delaunay triangulation of 2-D points (first occurrences only);
     /// `None` when the points are collinear.
-    fn sc2_triangulate(&self, pts: &[P]) -> Result<Option<(Delaunay, Vec<[usize; 3]>)>> {
+    pub(in crate::engine) fn sc2_triangulate(
+        &self,
+        pts: &[P],
+    ) -> Result<Option<(Delaunay, Vec<[usize; 3]>)>> {
         if pts.iter().any(|p| !p[0].is_finite() || !p[1].is_finite()) {
             return Err("Data points must be finite.".into());
         }
@@ -575,13 +642,10 @@ impl Engine {
                 let p = self.sc2_points(&args[0], "P")?;
                 match p.cols {
                     2 => self.sc2_rows2(&p),
-                    3 if p.rows < 4 => {
-                        return Err(
-                            "Error computing the convex hull. Not enough unique points specified."
-                                .into(),
-                        );
+                    3 => {
+                        let rows = (0..p.rows).map(|r| [p.at(r, 0), p.at(r, 1), p.at(r, 2)]);
+                        return hull3_values(self, rows.collect());
                     }
-                    3 => return Err(format!("convhull of three-dimensional points: {NO_ND}")),
                     _ => return Err("The input must be a matrix with two or three columns.".into()),
                 }
             }
@@ -593,7 +657,19 @@ impl Engine {
                 }
                 x.data.iter().zip(&y.data).map(|(a, b)| [*a, *b]).collect()
             }
-            3 => return Err(format!("convhull of three-dimensional points: {NO_ND}")),
+            3 => {
+                let x = self.sc2_points(&args[0], "X")?;
+                let y = self.sc2_points(&args[1], "Y")?;
+                let z = self.sc2_points(&args[2], "Z")?;
+                if x.len() != y.len() || x.len() != z.len() {
+                    return Err("Data point coordinates have inconsistent dimension.".into());
+                }
+                if x.len() > MAX_POINTS {
+                    return Err(format!("convhull supports up to {MAX_POINTS} points"));
+                }
+                let rows = (0..x.len()).map(|i| [x.data[i], y.data[i], z.data[i]]);
+                return hull3_values(self, rows.collect());
+            }
             _ => return Err("Too many input arguments.".into()),
         };
         self.charge(pts.len().saturating_mul(2))?;
@@ -644,9 +720,13 @@ impl Engine {
         match x.cols {
             0 | 1 => return Err("X must have at least 2 columns.".into()),
             2 => {}
-            _ => {
+            3 => {
+                let rows = (0..x.rows).map(|r| [x.at(r, 0), x.at(r, 1), x.at(r, 2)]);
+                return hull3_values(self, rows.collect());
+            }
+            n => {
                 return Err(format!(
-                    "convhulln of points in three or more dimensions: {NO_ND}"
+                    "convhulln supports points in two or three dimensions; X has {n} columns."
                 ));
             }
         }

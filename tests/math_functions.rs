@@ -67,7 +67,9 @@ fn mod_and_rem_sign_table() {
     let e = run("a=mod([1 2;3 4],[2 2;2 2]);b=mod(10,[3 4 5]);");
     exact(&get(&e, "a"), (2, 2), &[1., 1., 0., 0.]);
     exact(&get(&e, "b"), (1, 3), &[1., 2., 0.]);
-    assert!(error("mod([1 2 3],[1 2])").contains("dimensions"));
+    // R2016b+ implicit expansion (MathWorks "Compatible Array Sizes for Basic Operations"):
+    // mod([1 2 3],[1 2]) raises MATLAB:sizeDimensionsMustMatch ("Arrays have incompatible sizes for this operation.").
+    assert!(error("mod([1 2 3],[1 2])").contains("incompatible sizes"));
 }
 
 #[test]
@@ -213,11 +215,11 @@ fn circshift_trace_logspace() {
     assert_eq!(e.logical_variables["g"].data(), &[0, 1, 0]);
     exact(&get(&e, "h"), (1, 5), &[1., 2., 3., 4., 5.]);
     assert!(error("circshift([1 2 3],1.5)").contains("integers"));
-    // Reference behavior: a scalar shift without dim shifts dimension 1, even for rows.
+    // A scalar shift without dim uses the first non-singleton dimension.
     let e = run(
         "a=circshift([1 2 3],1);b=circshift([1 2 3],1,2);c=circshift([1;2;3],1);d=circshift([1 2 3],[0 1]);",
     );
-    exact(&get(&e, "a"), (1, 3), &[1., 2., 3.]);
+    exact(&get(&e, "a"), (1, 3), &[3., 1., 2.]);
     exact(&get(&e, "b"), (1, 3), &[3., 1., 2.]);
     exact(&get(&e, "c"), (3, 1), &[3., 1., 2.]);
     exact(&get(&e, "d"), (1, 3), &[3., 1., 2.]);
@@ -249,7 +251,8 @@ fn meshgrid_and_ndgrid_shapes() {
     exact(&get(&e, "P"), (3, 2), &[1., 2., 3., 1., 2., 3.]);
     exact(&get(&e, "Q"), (3, 2), &[10., 10., 10., 20., 20., 20.]);
     exact(&get(&e, "n"), (3, 1), &[1., 2., 3.]);
-    assert!(error("[X,Y,Z]=meshgrid(1:2,1:2,1:2)").contains("not supported yet"));
+    // Three outputs give 3-D grids since N-D part 2 (values in tests/nd_arrays_part2.rs).
+    assert!(error("[a,b,c,d]=meshgrid(1:2)").contains("more outputs"));
 }
 
 #[test]
@@ -346,14 +349,14 @@ fn svd_values_and_reconstruction() {
         &[1., 0., 0., 0., 1., 0., 0., 0., 1.],
         1e-13,
     );
-    assert!(error("[U,S]=svd([1 2;3 4])").contains("outputs"));
+    assert!(error("[U,S,V,W]=svd([1 2;3 4])").contains("outputs"));
 }
 
 #[test]
 fn svd_output_sizes_are_checked_up_front() {
-    // Full U would be 4097x4097: rejected by the element limit before any work.
+    // Full U would be 7095x7095: rejected by the element limit before any work.
     let start = std::time::Instant::now();
-    assert!(error("[U,S,V]=svd(ones(4097,1))").contains("element limit"));
+    assert!(error("[U,S,V]=svd(ones(7095,1))").contains("element limit"));
     assert!(start.elapsed().as_secs_f64() < 5.);
     // Economy outputs are 6000x1, 1x1, 1x1 and fit easily.
     let e =
@@ -406,7 +409,9 @@ fn polyfit_exact_cubic_and_noisy_residual() {
     let e = run("p=polyfit([1 1 1],[1 2 3],1);r=polyval(p,1);");
     assert_eq!((get(&e, "p").rows(), get(&e, "p").cols()), (1, 2));
     assert!((get(&e, "r").data()[0] - 2.).abs() < 1e-12);
-    assert!(error("[p,S]=polyfit([1 2 3],[1 2 3],1)").contains("not supported yet"));
+    let e = run("[p,S]=polyfit([1 2 3],[1 2 3],1); df=S.df; nr=S.normr;");
+    assert_eq!(get(&e, "df").data(), &[1.]);
+    assert!(get(&e, "nr").data()[0] < 1e-12);
 }
 
 #[test]
@@ -527,6 +532,25 @@ fn tic_toc_are_monotone() {
     assert!(error("t=tic;toc").contains("tic"));
 }
 
+#[test]
+fn review_d1112_eps_realmax_matches_mathworks_and_numpy() {
+    // MathWorks eps(X) is the positive distance from abs(X) to the next larger
+    // double. At realmax that next value is Inf, so the distance is the gap
+    // below: 2^971. NumPy np.spacing(np.finfo(float).max) is the same value
+    // (1.99584030953472e+292). eps(0) is 2^-1074 and eps(Inf) is NaN.
+    let e = run("a=eps([realmax -realmax 0 1 -2 Inf -Inf NaN]);");
+    let a = get(&e, "a");
+    assert_eq!((a.rows(), a.cols()), (1, 8));
+    let d = a.data();
+    let gap = 2f64.powi(971);
+    assert_eq!(d[0], gap, "eps(realmax)");
+    assert_eq!(d[1], gap, "eps(-realmax)");
+    assert_eq!(d[2], f64::from_bits(1), "eps(0) = 2^-1074");
+    assert_eq!(d[3], f64::EPSILON, "eps(1)");
+    assert_eq!(d[4], 2. * f64::EPSILON, "eps(-2)");
+    assert!(d[5].is_nan() && d[6].is_nan() && d[7].is_nan(), "{d:?}");
+}
+
 /// Focused release timings: `cargo test --release --test math_functions
 /// round3_path_timings -- --ignored --nocapture` (RAYON_NUM_THREADS=1 or 20).
 #[test]
@@ -579,5 +603,99 @@ fn timing_report() {
         let start = std::time::Instant::now();
         engine.execute(code).unwrap();
         println!("{code:<24} {:>9.1} ms", start.elapsed().as_secs_f64() * 1e3);
+    }
+}
+
+#[test]
+#[allow(clippy::approx_constant)] // round() reference values, not constants
+fn fix14_round_decimal_and_significant() {
+    // Public `round` page: ties are values where X * 10^N has fractional part 0.5 within
+    // roundoff error, rounded away from zero (e.g. round(0.15,1)=0.2, round(2.675,2)=2.68).
+    // Reference values verified with tool/refs/round14/reference.py.
+    let e = run(
+        "a=round(pi,2);b=round(pi,3,'significant');c=round([1.234 -1.234 1.25 -1.25 2.675],2);d=round([1.25 -1.25],1);f=round([1234 -1250 999.9],-2);g=round(0.000123456,6);h=round(123.456,1);j=round(0.1,15);k=round(999.9,-1);l=round([1234 0.01234 -9876],2,'significant');m=round([Inf -Inf NaN],2);n=round([3.14159 -2.71828],3,'decimals');ties1=[round(0.15,1) round(-0.15,1) round(1.15,1)];ties2=round(1.115,2);",
+    );
+    exact(&get(&e, "a"), (1, 1), &[3.14]);
+    exact(&get(&e, "b"), (1, 1), &[3.14]);
+    exact(&get(&e, "c"), (1, 5), &[1.23, -1.23, 1.25, -1.25, 2.68]);
+    exact(&get(&e, "d"), (1, 2), &[1.3, -1.3]);
+    exact(&get(&e, "ties1"), (1, 3), &[0.2, -0.2, 1.2]);
+    exact(&get(&e, "ties2"), (1, 1), &[1.12]);
+    exact(&get(&e, "f"), (1, 3), &[1200., -1300., 1000.]);
+    exact(&get(&e, "g"), (1, 1), &[0.000123]);
+    exact(&get(&e, "h"), (1, 1), &[123.5]);
+    exact(&get(&e, "j"), (1, 1), &[0.1]);
+    exact(&get(&e, "k"), (1, 1), &[1000.]);
+    exact(&get(&e, "l"), (1, 3), &[1200., 0.012, -9900.]);
+    exact(
+        &get(&e, "m"),
+        (1, 3),
+        &[f64::INFINITY, f64::NEG_INFINITY, f64::NAN],
+    );
+    exact(&get(&e, "n"), (1, 2), &[3.142, -2.718]);
+    let e = run(
+        "a=double(round(int32([1234 -1250]),-2));b=double(round(int32([1234 -1250]),2));c=double(round(single([1.25 -1.25]),1));z=round(1.25+2.75i,1);t=round(1234+0.01234i,2,'significant');ic=isa(round(int32(125),-1),'int32');sc=isa(round(single(1.25),1),'single');big=isequal(round(int64(9007199254740992)+int64(1),-1),int64(9007199254740990));",
+    );
+    exact(&get(&e, "a"), (1, 2), &[1200., -1300.]);
+    exact(&get(&e, "b"), (1, 2), &[1234., -1250.]);
+    close(&get(&e, "c"), (1, 2), &[1.3, -1.3], 1e-6);
+    assert_eq!(e.logical_variables["ic"].data(), &[1]);
+    assert_eq!(e.logical_variables["sc"].data(), &[1]);
+    assert_eq!(e.logical_variables["big"].data(), &[1]);
+    let z = &e.complex_variables["z"].data()[0];
+    assert_eq!((z.re, z.im), (1.3, 2.8));
+    let z = &e.complex_variables["t"].data()[0];
+    assert_eq!((z.re, z.im), (1200., 0.012));
+    assert!(error("round(1,1.5)").contains("integer"));
+    assert!(error("round(1,0,'significant')").contains("positive"));
+    assert!(error("round(1,2,'other')").contains("mode"));
+    let e = run(
+        "s1=isequal(round(1.234e-30,3,'significant'),1.23e-30);s2=isequal(round(-1.320931669505373e31,3,'significant'),-1.32e31);s3=isequal(round(6.62607015e-34,3,'significant'),6.63e-34);",
+    );
+    assert_eq!(e.logical_variables["s1"].data(), &[1]);
+    assert_eq!(e.logical_variables["s2"].data(), &[1]);
+    assert_eq!(e.logical_variables["s3"].data(), &[1]);
+    let e = run(
+        "s4=isequal(round(single(1.15),1),single(1.2));s5=isequal(round(single(-1.15),1),single(-1.2));s6=isequal(round(single(2.675),2),single(2.68));s7=isequal(round(single(1.15),2,'significant'),single(1.2));r1=isequal(round(realmax,-7),realmax);r2=isequal(round(realmax,-23),realmax);",
+    );
+    for name in ["s4", "s5", "s6", "s7", "r1", "r2"] {
+        assert_eq!(e.logical_variables[name].data(), &[1], "{name}");
+    }
+    // Item 3: MathWorks round version history (R2022a) decimal tie-breaking & other examples.
+    let e = run(
+        "r_1015=round(1.015,2); r_vector=round(1.015:5.015,2); r_pi=round(pi,2); r_neg=round(-2.5); r_1234=round(1234,-2); r_sig=round(1.015,3,'significant'); r_s1015=isequal(round(single(1.015),2),single(1.02));",
+    );
+    exact(&get(&e, "r_1015"), (1, 1), &[1.02]);
+    exact(
+        &get(&e, "r_vector"),
+        (1, 5),
+        &[1.02, 2.02, 3.02, 4.02, 5.02],
+    );
+    exact(&get(&e, "r_pi"), (1, 1), &[3.14]);
+    exact(&get(&e, "r_neg"), (1, 1), &[-3.0]);
+    exact(&get(&e, "r_1234"), (1, 1), &[1200.0]);
+    exact(&get(&e, "r_sig"), (1, 1), &[1.02]);
+    assert_eq!(e.logical_variables["r_s1015"].data(), &[1]);
+}
+
+#[test]
+#[ignore]
+fn fix14_round_shift_timing() {
+    println!("workers {}", rayon::current_num_threads());
+    for code in [
+        "r=round(x,2);",
+        "r=round(x,3,'significant');",
+        "r=round(a,-1);",
+        "r=round(b,1);",
+        "r=round(b,2,'significant');",
+        "r=circshift(x,123);",
+    ] {
+        let mut e = run("x=(1:1000000)/123; a=uint8(x); b=single(x); ");
+        e.execute(code).unwrap();
+        let start = std::time::Instant::now();
+        for _ in 0..5 {
+            e.execute(code).unwrap();
+        }
+        println!("{code} {:.3} ms/call", start.elapsed().as_secs_f64() * 200.);
     }
 }

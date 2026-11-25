@@ -9,7 +9,9 @@ mod folder_text_search_cases {
         for _ in 0..3 {
             frame_at(&mut app, ctx, egui::vec2(960., 650.), vec![]);
         }
-        click_label_at(&mut app, ctx, egui::vec2(960., 650.), "Search text");
+        // At this width Find (Search text) waits in the Files header's More.
+        click_label_at(&mut app, ctx, egui::vec2(960., 650.), "Folder actions");
+        click_label_at(&mut app, ctx, egui::vec2(960., 650.), "Find text in files…");
         app
     }
     fn query(app: &mut Workspace, ctx: &egui::Context, text: &str) {

@@ -1604,7 +1604,7 @@ x =
 
 x =
 
-   Empty matrix: 1-by-0
+  1×0 empty double matrix
 
 @@CLASS double [1 0]
 @@END

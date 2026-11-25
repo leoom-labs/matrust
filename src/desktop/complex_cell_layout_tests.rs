@@ -131,7 +131,7 @@ fn complex_display_attribute_is_visible_for_empty_zero_imaginary_and_nonempty_va
             let header=format!("{} rows \u{00d7} {} columns \u{00b7} complex double",value.rows(),value.cols());
             assert!(output.shapes.iter().any(|s|text_position(&s.shape,&header).is_some()),"{name} at {size:?}");
             if value.is_empty() {
-                assert!(output.shapes.iter().any(|s|text_position(&s.shape,"Empty matrix").is_some()));
+                assert!(output.shapes.iter().any(|s|text_position(&s.shape,"0\u{00d7}3 empty double matrix").is_some()));
             }
             let detail=format!("complex double | {} bytes",value.bytes());
             app.editing_variable=None;

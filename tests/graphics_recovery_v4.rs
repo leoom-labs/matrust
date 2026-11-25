@@ -86,6 +86,23 @@ fn fixture() -> Engine {
     e
 }
 #[test]
+fn wide_plot_recovers_series_handles_past_column_64() {
+    let mut engine = Engine::default();
+    engine.execute("h=plot(rand(3,70));last=h(70);").unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("session.json");
+    SessionStore::new(&path).save(snapshot(&engine)).unwrap();
+    let (mut recovered, warnings) = recover(&path);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    recovered
+        .execute("alive=isgraphics(last);same=isequal(last,h(70));")
+        .unwrap();
+    assert_eq!(recovered.figure.as_ref().unwrap().series_count(), 70);
+    assert_eq!(recovered.logical_variables["alive"].data(), &[1]);
+    assert_eq!(recovered.logical_variables["same"].data(), &[1]);
+}
+
+#[test]
 fn all_live_kinds_rebind_fresh_identities_and_aliases_including_nested_cells() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("session.json");
@@ -638,4 +655,21 @@ fn baseline_default_policy_survives_real_checkpoint_recovery_and_observation() {
         );
         assert!(source.figure.as_ref().unwrap().same_snapshot(&original));
     }
+}
+
+#[test]
+fn ticks_axes_ruler_handle_recovers_and_rebinds() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("session.json");
+    let mut source = Engine::default();
+    source
+        .execute("plot(1:3); ax=gca; r=ax.XAxis; r.Exponent=3;")
+        .unwrap();
+    SessionStore::new(&path).save(snapshot(&source)).unwrap();
+    let (mut got, warnings) = recover(&path);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    got.execute("v=r.Exponent; r.TickValues=[1 2]; t=ax.XTick;")
+        .unwrap();
+    assert_eq!(got.variables["v"].data(), &[3.]);
+    assert_eq!(got.variables["t"].data(), &[1., 2.]);
 }

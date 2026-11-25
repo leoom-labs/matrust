@@ -132,7 +132,6 @@ fn complex_shadowing_clear_and_real_only_errors_preserve_targets() {
     for source in [
         "R=Z^2;",
         "R=logical(Z);",
-        "R(1)=Z(1);",
         "R=atan2(Z,1);",
         "R=complex(Z,1);",
         "R=Z(complex(1,0));",

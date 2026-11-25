@@ -430,11 +430,6 @@ const REFERENCE: &[Case] = &[
     ),
     ("mb4", "r=min([],5);", &[("r", "double", (0, 0), &[], &[])]),
     (
-        "mb6",
-        "r=max('ab','b');",
-        &[("r", "double", (1, 2), &[98.0, 98.0], &[])],
-    ),
-    (
         "mb7",
         "r=max(true,false);",
         &[("r", "logical", (1, 1), &[1.0], &[])],
@@ -969,8 +964,8 @@ const REFERENCE_REV2: &[Case] = &[
 const REFERENCE_ERRORS: &[(&str, &str)] = &[
     ("mx22", "r=max([1 2;3 4],[],0);"), // Dimension argument must be a positive integer scalar within indexing range.
     ("mx23", "r=max([1 2;3 4],5,2);"), // MAX with two matrices to compare and a working dimension is not supported.
-    ("mb3", "r=min([1 2 3],[2;1]);"),  // Matrix dimensions must agree.
     ("mb5", "[m,k]=min([1 2],3);"), // MIN with two matrices to compare and two output arguments is not supported.
+    ("mb6", "r=max('ab','b');"),    // A character second input is rejected as of R2024b.
     ("sm19", "r=sum([1 2;3 4],0);"), // Dimension argument must be a positive integer scalar within indexing range.
     ("sm26", "r=sum([1 2;3 4],1.5);"), // Dimension argument must be a positive integer scalar within indexing range.
     ("an25", "r=any([0 1],0);"), // Dimension argument must be a positive integer scalar within indexing range.
@@ -1034,13 +1029,12 @@ const NOT_IN_REFERENCE: &[Case] = &[
     ),
 ];
 
-/// Invalid in every MATLAB release (too many outputs) or only valid from R2018 on (flags).
+/// Invalid sizes and output arities.
 const ERRORS: &[&str] = &[
+    "r=min([1 2 3],[2 1]);",
     "[a,b,c]=max([1 2]);",
     "[a,b]=sum([1 2]);",
     "[a,b,c,d]=find([1 2]);",
-    "r=sum([1 2],1,'omitnan');",
-    "r=max([1 2],[],2,'omitnan');",
 ];
 
 fn class(array: &Array) -> &'static str {
@@ -1049,6 +1043,7 @@ fn class(array: &Array) -> &'static str {
         Array::Logical(_) => "logical",
         Array::Complex(_) => "complex",
         Array::Character(_) => "char",
+        Array::Typed(a) => a.class().name(),
         _ => "other",
     }
 }
@@ -1062,6 +1057,7 @@ fn parts(array: &Array) -> (Vec<f64>, Vec<f64>) {
             a.units().iter().map(|&u| f64::from(u)).collect(),
             Vec::new(),
         ),
+        Array::Typed(a) => ((0..a.len()).map(|i| a.real(i)).collect(), Vec::new()),
         _ => panic!("array result"),
     }
 }
@@ -1112,7 +1108,7 @@ fn recorded_reference_values_match() {
 #[test]
 fn reference_values_match_nan_empty_complex_dim3_and_index_outputs() {
     assert_eq!(verify(REFERENCE), REFERENCE.len());
-    assert_eq!((REFERENCE.len(), REFERENCE_ERRORS.len()), (130, 11));
+    assert_eq!((REFERENCE.len(), REFERENCE_ERRORS.len()), (129, 11));
 }
 
 #[test]
@@ -1313,5 +1309,384 @@ fn cancellation_stops_every_kernel() {
         "r=mean(A,2);",
     ] {
         assert!(engine.execute(source).is_err(), "{source}");
+    }
+}
+
+// Numeric values from GNU Octave 10.3 (tool/refs/reductions/fix14.m).
+// The public MathWorks pages specify output classes, missing-value identities,
+// complex order and indexing when Octave has a different calling convention.
+#[test]
+fn fix14_dimensions_and_missing_flags() {
+    verify(&[
+        (
+            "sum-all",
+            "r=sum([1 NaN;3 4],'all','omitnan');",
+            &[("r", "double", (1, 1), &[8.], &[])],
+        ),
+        (
+            "mean-vecdim",
+            "r=mean([1 2;3 4],[1 2]);",
+            &[("r", "double", (1, 1), &[2.5], &[])],
+        ),
+        (
+            "prod-missing",
+            "a=[1 NaN;3 4]; r=prod(a,'omitmissing',[44 2 1]); s=prod(a,'all','includenan');",
+            &[
+                ("r", "double", (1, 1), &[12.], &[]),
+                ("s", "double", (1, 1), &[NAN], &[]),
+            ],
+        ),
+        (
+            "truth",
+            "a=[0 NaN;0 0]; r=any(a,'omitnan','all'); s=any(a,[1 2 95],'includemissing'); t=all([1 NaN;3 4],'all','omitmissing'); u=all(a,'includenan',[2 43]);",
+            &[
+                ("r", "logical", (1, 1), &[0.], &[]),
+                ("s", "logical", (1, 1), &[1.], &[]),
+                ("t", "logical", (1, 1), &[1.], &[]),
+                ("u", "logical", (2, 1), &[0., 0.], &[]),
+            ],
+        ),
+        (
+            "statistics",
+            "a=[1 NaN;3 4]; m=median(a,'omitnan',[2 1]); n=median(a,'includemissing','all'); s=std([1 NaN;3 NaN],1,'omitmissing','all'); v=var([2 NaN;4 6],[],[4 1 2],'omitnan'); w=var(a,0,'includenan',2); [q,f]=mode([3 2 3;NaN NaN 2],'omitnan','all'); [z,g]=mode(a,[1 2],'includenan'); r=range(a,'all','omitmissing'); t=range(a,'includenan',[2 1]);",
+            &[
+                ("m", "double", (1, 1), &[3.], &[]),
+                ("n", "double", (1, 1), &[NAN], &[]),
+                ("s", "double", (1, 1), &[1.], &[]),
+                ("v", "double", (1, 1), &[4.], &[]),
+                ("w", "double", (2, 1), &[NAN, 0.5], &[]),
+                ("q", "double", (1, 1), &[2.], &[]),
+                ("f", "double", (1, 1), &[2.], &[]),
+                ("z", "double", (1, 1), &[NAN], &[]),
+                ("g", "double", (1, 1), &[1.], &[]),
+                ("r", "double", (1, 1), &[3.], &[]),
+                ("t", "double", (1, 1), &[NAN], &[]),
+            ],
+        ),
+        (
+            "singleton-and-empty-slices",
+            "a=[1 NaN;3 4]; s=sum(a,'omitnan',[3 700]); r=range(a,[3 700]); e=sum([],'omitnan'); p=prod([NaN NaN],'omitnan'); q=mean([NaN NaN],'omitnan');",
+            &[
+                ("s", "double", (2, 2), &[1., 3., 0., 4.], &[]),
+                ("r", "double", (2, 2), &[0., 0., NAN, 0.], &[]),
+                ("e", "double", (1, 1), &[0.], &[]),
+                ("p", "double", (1, 1), &[1.], &[]),
+                ("q", "double", (1, 1), &[NAN], &[]),
+            ],
+        ),
+    ]);
+}
+
+#[test]
+fn fix14_extreme_indices_and_pair_expansion() {
+    verify(&[
+        (
+            "max-all",
+            "[m,i]=max([1 9;7 2],[],'all');",
+            &[
+                ("m", "double", (1, 1), &[9.], &[]),
+                ("i", "double", (1, 1), &[3.], &[]),
+            ],
+        ),
+        (
+            "min-and-max-missing",
+            "a=[1 NaN;3 4]; [m,i]=min(a,[],'omitmissing',2); [n,j]=max(a,[],'includenan',[2 17]);",
+            &[
+                ("m", "double", (2, 1), &[1., 3.], &[]),
+                ("i", "double", (2, 1), &[1., 1.], &[]),
+                ("n", "double", (2, 1), &[NAN, 4.], &[]),
+                ("j", "double", (2, 1), &[2., 2.], &[]),
+            ],
+        ),
+        (
+            "max-vecdim-relative-and-linear",
+            "a=reshape([0 5 9 1 2 8 3 7],2,2,2); [m,i]=max(a,[],[3 1]); [~,j]=max(a,[],[1 3],'linear');",
+            &[
+                ("m", "double", (1, 2), &[8., 9.], &[]),
+                ("i", "double", (1, 2), &[4., 1.], &[]),
+                ("j", "double", (1, 2), &[6., 3.], &[]),
+            ],
+        ),
+        (
+            "pair-expansion",
+            "u=max([NaN;2],[1 3],\"omitnan\"); v=min([NaN;2],[1 3],'includemissing'); t=max(true,false,'omitnan');",
+            &[
+                ("u", "double", (2, 2), &[1., 2., 3., 3.], &[]),
+                ("v", "double", (2, 2), &[NAN, 1., NAN, 2.], &[]),
+                ("t", "logical", (1, 1), &[1.], &[]),
+            ],
+        ),
+    ]);
+    for expression in [
+        "max([1 NaN],'omitnan')",
+        "min([1 NaN],'includemissing')",
+        "max([1 NaN],1,'all')",
+        "sum([1 2], [1 2;3 4])",
+        "std([1 2], 'all')",
+    ] {
+        assert!(
+            Engine::default().execute(expression).is_err(),
+            "{expression}"
+        );
+    }
+}
+
+#[test]
+fn fix14_output_types() {
+    verify(&[
+        (
+            "integers",
+            "a=int8([120 120 -120]); s=sum(a,'native'); p=prod(int8([120 2 -1]),'native'); m=mean(int8([1 2]),'native'); k=median(int8([1 2;3 4]),[1 2]); d=sum(a,'default'); q=prod(int8([2 3]),'double'); n=mean(int8([1 2]),'default');",
+            &[
+                ("s", "int8", (1, 1), &[7.], &[]),
+                ("p", "int8", (1, 1), &[-127.], &[]),
+                ("m", "int8", (1, 1), &[2.], &[]),
+                ("k", "int8", (1, 1), &[3.], &[]),
+                ("d", "double", (1, 1), &[120.], &[]),
+                ("q", "double", (1, 1), &[6.], &[]),
+                ("n", "double", (1, 1), &[1.5], &[]),
+            ],
+        ),
+        (
+            "char-products-and-empty-mode",
+            "a=prod('AB','all'); b=prod('AB','double'); c=prod('AB','default'); [m,f]=mode(int8(zeros(0,3))); n=mode(logical(zeros(0,3))); q=mode(char(zeros(0,3)));",
+            &[
+                ("a", "double", (1, 1), &[4290.], &[]),
+                ("b", "double", (1, 1), &[4290.], &[]),
+                ("c", "double", (1, 1), &[4290.], &[]),
+                ("m", "int8", (1, 3), &[0., 0., 0.], &[]),
+                ("f", "double", (1, 3), &[0., 0., 0.], &[]),
+                ("n", "logical", (1, 3), &[0., 0., 0.], &[]),
+                ("q", "char", (1, 3), &[0., 0., 0.], &[]),
+            ],
+        ),
+        (
+            "single",
+            "a=single([1 NaN;3 4]); s=sum(a,'omitnan','native',[1 2]); d=sum(a,'double','all','omitnan'); p=prod(a,'default','omitmissing','all'); m=mean(a,'native','omitmissing',[2 1]); t=mean(a,'double','omitnan',1);",
+            &[
+                ("s", "single", (1, 1), &[8.], &[]),
+                ("d", "double", (1, 1), &[8.], &[]),
+                ("p", "single", (1, 1), &[12.], &[]),
+                ("m", "single", (1, 1), &[(8f32 / 3.) as f64], &[]),
+                ("t", "double", (1, 2), &[2., 4.], &[]),
+            ],
+        ),
+        (
+            "logical-and-char",
+            "a=[true true false]; s=sum(a,'native'); d=sum(a,'default'); p=prod(a,'native'); q=prod(a,'double'); m=mean(a,'native'); c=sum('AB','default'); e=mean(char([65 66]),'double');",
+            &[
+                ("s", "logical", (1, 1), &[1.], &[]),
+                ("d", "double", (1, 1), &[2.], &[]),
+                ("p", "logical", (1, 1), &[0.], &[]),
+                ("q", "double", (1, 1), &[0.], &[]),
+                ("m", "double", (1, 1), &[2. / 3.], &[]),
+                ("c", "double", (1, 1), &[131.], &[]),
+                ("e", "double", (1, 1), &[65.5], &[]),
+            ],
+        ),
+    ]);
+    for expression in [
+        "sum('AB','native')",
+        "mean('AB','native')",
+        "prod('AB','native')",
+    ] {
+        assert!(
+            Engine::default().execute(expression).is_err(),
+            "{expression}"
+        );
+    }
+}
+
+#[test]
+fn fix14_cumulative_and_complex() {
+    verify(&[
+        (
+            "cumulative",
+            "s=cumsum([NaN 2 3],'omitnan',2); t=cumsum([NaN 2 3],'includenan'); p=cumprod([2 NaN 3],'reverse','omitnan'); q=cumprod([2 NaN 3],'includenan'); [m,i]=cummax([NaN 2 NaN 3],'omitnan'); [n,j]=cummin([1 NaN 2],'includenan','reverse');",
+            &[
+                ("s", "double", (1, 3), &[0., 2., 5.], &[]),
+                ("t", "double", (1, 3), &[NAN, NAN, NAN], &[]),
+                ("p", "double", (1, 3), &[6., 3., 3.], &[]),
+                ("q", "double", (1, 3), &[2., NAN, NAN], &[]),
+                ("m", "double", (1, 4), &[NAN, 2., 2., 3.], &[]),
+                ("i", "double", (1, 4), &[1., 2., 2., 4.], &[]),
+                ("n", "double", (1, 3), &[NAN, NAN, 2.], &[]),
+                ("j", "double", (1, 3), &[2., 2., 3.], &[]),
+            ],
+        ),
+        (
+            "integer-cumulative-saturation",
+            "s=cumsum(int8([100 100 -100]),'omitnan'); p=cumprod(int8([100 2 -1]),'includenan');",
+            &[
+                ("s", "int8", (1, 3), &[100., 127., 27.], &[]),
+                ("p", "int8", (1, 3), &[100., 127., -127.], &[]),
+            ],
+        ),
+        (
+            "complex-reductions",
+            "a=[1+2i complex(NaN,1);3+4i 2]; s=sum(a,'all','omitnan'); m=mean(a,'omitnan',[1 2]); p=prod(a,[1 2],'omitnan'); e=median(a,'all','omitmissing'); v=var([1+2i 3+2i],0,'omitnan',[1 2]); [x,j]=max(a,[],'all','omitnan'); [y,f]=mode([1i 1i 2 NaN],'all','omitnan'); t=max(2i,complex(NaN,1),'omitnan');",
+            &[
+                ("s", "complex", (1, 1), &[6.], &[6.]),
+                ("m", "complex", (1, 1), &[2.], &[2.]),
+                ("p", "complex", (1, 1), &[-10.], &[20.]),
+                ("e", "complex", (1, 1), &[1.], &[2.]),
+                ("v", "double", (1, 1), &[2.], &[]),
+                ("x", "complex", (1, 1), &[3.], &[4.]),
+                ("j", "double", (1, 1), &[2.], &[]),
+                ("y", "complex", (1, 1), &[0.], &[1.]),
+                ("f", "double", (1, 1), &[2.], &[]),
+                ("t", "complex", (1, 1), &[0.], &[2.]),
+            ],
+        ),
+        (
+            "complex-cumulative",
+            "a=[1+2i complex(NaN,1) 3+4i]; s=cumsum(a,'omitnan'); p=cumprod(a,'omitmissing'); m=cummax(a,'reverse','omitnan'); n=cummin(a,'omitnan');",
+            &[
+                ("s", "complex", (1, 3), &[1., 1., 4.], &[2., 2., 6.]),
+                ("p", "complex", (1, 3), &[1., 1., -5.], &[2., 2., 10.]),
+                ("m", "complex", (1, 3), &[3., 3., 3.], &[4., 4., 4.]),
+                ("n", "complex", (1, 3), &[1., 1., 1.], &[2., 2., 2.]),
+            ],
+        ),
+    ]);
+}
+
+#[test]
+fn fix14_folded_slices_through_function_handles() {
+    verify(&[(
+        "folded-handle-and-scan",
+        "a=reshape([1 2 3 NaN 4 5 6 7],2,2,2); h=@median; m=h(a,[1 3],'omitmissing'); p=cumprod(a,3,'reverse','omitnan'); r=reshape(p,1,8);",
+        &[
+            ("m", "double", (1, 2), &[3., 6.], &[]),
+            (
+                "r",
+                "double",
+                (1, 8),
+                &[4., 10., 18., 7., 4., 5., 6., 7.],
+                &[],
+            ),
+        ],
+    )]);
+}
+
+// Review repros: GNU Octave 10.3 and the public MathWorks reduction pages.
+#[test]
+fn fix14d_review_reductions() {
+    verify(&[
+        (
+            "single-mean",
+            "r=realmax('single'); a=mean([r r],'all'); b=mean(reshape([r r],1,1,2),3);",
+            &[
+                ("a", "single", (1, 1), &[f32::MAX as f64], &[]),
+                ("b", "single", (1, 1), &[f32::MAX as f64], &[]),
+            ],
+        ),
+        (
+            "single-default",
+            "a=single([2^24 1 -2^24]); x=sum(a); y=sum(a,'default'); z=sum(a,'all'); \
+             d=sum(a,2); v=sum(a,[1 2]); t=sum(a,2,'default'); n=sum(a,2,'native'); w=sum(a,2,'double');",
+            &[
+                ("x", "single", (1, 1), &[0.], &[]),
+                ("y", "single", (1, 1), &[0.], &[]),
+                ("z", "single", (1, 1), &[0.], &[]),
+                ("d", "single", (1, 1), &[0.], &[]),
+                ("v", "single", (1, 1), &[0.], &[]),
+                ("t", "single", (1, 1), &[0.], &[]),
+                ("n", "single", (1, 1), &[0.], &[]),
+                ("w", "double", (1, 1), &[1.], &[]),
+            ],
+        ),
+        (
+            "single-matrix",
+            "a=single([2^24 1;1 2;-2^24 3]); x=sum(a); y=sum(a,1);",
+            &[
+                ("x", "single", (1, 2), &[0., 6.], &[]),
+                ("y", "single", (1, 2), &[0., 6.], &[]),
+            ],
+        ),
+        (
+            "other-default-classes",
+            "a=sum(int8([1 2])); b=sum(int8([1 2]),'default'); c=sum(logical([1 0])); d=sum(logical([1 0]),'default'); e=sum([1 2]); f=sum([1 2],'default');",
+            &[
+                ("a", "double", (1, 1), &[3.], &[]),
+                ("b", "double", (1, 1), &[3.], &[]),
+                ("c", "double", (1, 1), &[1.], &[]),
+                ("d", "double", (1, 1), &[1.], &[]),
+                ("e", "double", (1, 1), &[3.], &[]),
+                ("f", "double", (1, 1), &[3.], &[]),
+            ],
+        ),
+        (
+            "logical-median",
+            "x=median(logical([0 1]),'all'); y=median(logical([0 1])); z=median(logical(zeros(0,3)));",
+            &[
+                ("x", "logical", (1, 1), &[1.], &[]),
+                ("y", "logical", (1, 1), &[1.], &[]),
+                ("z", "logical", (1, 3), &[0., 0., 0.], &[]),
+            ],
+        ),
+        (
+            "complex-angle",
+            "a=[complex(-1,-0.0) 1i]; [x,i]=max(a,[],'all'); [y,j]=max(a); [z,k]=min(a,[],[1 2]); [v,n]=min(a);",
+            &[
+                ("x", "double", (1, 1), &[-1.], &[]),
+                ("i", "double", (1, 1), &[1.], &[]),
+                ("y", "double", (1, 1), &[-1.], &[]),
+                ("j", "double", (1, 1), &[1.], &[]),
+                ("z", "complex", (1, 1), &[0.], &[1.]),
+                ("k", "double", (1, 1), &[2.], &[]),
+                ("v", "complex", (1, 1), &[0.], &[1.]),
+                ("n", "double", (1, 1), &[2.], &[]),
+            ],
+        ),
+        (
+            "char-first",
+            "x=max('ab',97.5); y=max('ab');",
+            &[
+                ("x", "double", (1, 2), &[97.5, 98.], &[]),
+                ("y", "double", (1, 1), &[98.], &[]),
+            ],
+        ),
+        (
+            "range-singleton",
+            "a=[Inf 2 NaN]; x=range(a,3); y=range(a,3,'omitnan');",
+            &[
+                ("x", "double", (1, 3), &[0., 0., NAN], &[]),
+                ("y", "double", (1, 3), &[0., 0., NAN], &[]),
+            ],
+        ),
+        (
+            "range-wide",
+            "h=intmax('uint64'); x=range([h-1 h],'all'); w=range([h-1 h]); g=intmax('int64'); y=range([g-1 g],'all');",
+            &[
+                ("x", "uint64", (1, 1), &[1.], &[]),
+                ("w", "uint64", (1, 1), &[1.], &[]),
+                ("y", "int64", (1, 1), &[1.], &[]),
+            ],
+        ),
+        (
+            "mode-nan",
+            "[x,f]=mode(NaN); [y,g]=mode([NaN NaN]);",
+            &[
+                ("x", "double", (1, 1), &[NAN], &[]),
+                ("f", "double", (1, 1), &[1.], &[]),
+                ("y", "double", (1, 1), &[NAN], &[]),
+                ("g", "double", (1, 1), &[1.], &[]),
+            ],
+        ),
+    ]);
+    for (name, expression) in [
+        ("max", "max(1,'A')"),
+        ("min", "min(1,'A')"),
+        ("max", "max(1,'A','omitnan')"),
+        ("min", "min(1,'A','includenan')"),
+        ("max", "c=char([65;66]); max(1,c)"),
+        ("min", "a=reshape(1:8,2,2,2); min(a,'A')"),
+    ] {
+        let error = Engine::default().execute(expression).unwrap_err();
+        assert!(
+            error.contains(&format!("{name} does not accept a character second input")),
+            "{expression}: {error}"
+        );
     }
 }

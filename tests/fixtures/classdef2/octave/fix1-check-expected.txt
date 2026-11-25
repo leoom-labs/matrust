@@ -1,0 +1,3 @@
+1 quiet: runs=1 args=0 note=obj@Mark(5)
+1 loud: runs=1 args=1
+2 cycles: n=2000 list=3

@@ -65,7 +65,7 @@ impl super::super::Workspace {
         // unrelated calculation. Keep that behavior; existing model I/O cannot
         // overlap and the common predicate excludes foreign file/modal work.
         ctx.viewport_id() == egui::ViewportId::ROOT
-            && ctx.input(|i| i.focused && !i.viewport().close_requested())
+            && self.command_window_focused(ctx)
             && ctx.memory(|m| m.top_modal_layer().is_none())
             && !egui::Popup::is_any_open(ctx)
             && !self.file_action_pending()

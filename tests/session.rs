@@ -139,6 +139,14 @@ fn layout_recovery_is_backward_compatible_and_cannot_hide_unsaved_work() {
         editor_fraction: Some(0.6),
         figure_width: None,
         ui_scale_percent: Some(150),
+        window_layout: Some(session::WindowLayout::Docked),
+        editor_window: Some(session::WindowRect {
+            x: 40.,
+            y: 60.,
+            width: 900.,
+            height: 640.,
+        }),
+        apps_window: None,
     };
     state.layout = layout;
     state.clone().save(&path).unwrap();
@@ -322,6 +330,10 @@ fn history_navigation_retains_draft_and_bounds_storage() {
 }
 #[test]
 fn unicode_selection_and_cursor_completion_use_character_offsets() {
+    assert_eq!(
+        session::completions("implay", [].into_iter()),
+        vec!["implay"]
+    );
     assert_eq!(session::selected_text("αβ\nx=2;", 3..7).unwrap(), "x=2;");
     assert!(session::selected_text("αβ", 1..9).is_err());
     assert!(session::selected_text("x=1", 0..0).is_err());
@@ -330,8 +342,60 @@ fn unicode_selection_and_cursor_completion_use_character_offsets() {
     assert_eq!(prefix, "si");
     command.replace_range(range, "sin");
     assert_eq!(command, "α + sin(1)");
+    assert_eq!(
+        session::completions("qam", std::iter::empty()),
+        vec!["qamdemod", "qammod"]
+    );
+    assert_eq!(
+        session::completions("ofd", [].into_iter()),
+        vec!["ofdmdemod", "ofdmmod"]
+    );
+    assert_eq!(session::completions("garch", [].into_iter()), vec!["garch"]);
+    assert!(session::completions("ber", [].into_iter()).contains(&"bertool".to_owned()));
+    assert_eq!(
+        session::completions("wireless", [].into_iter()),
+        vec!["wirelessWaveformGenerator"]
+    );
+    assert_eq!(
+        session::completions("autoc", [].into_iter()),
+        vec!["autocorr"]
+    );
+    assert_eq!(
+        session::completions("lagmat", [].into_iter()),
+        vec!["lagmatrix"]
+    );
+    for name in [
+        "econometricModeler",
+        "mpcDesigner",
+        "dicomBrowser",
+        "registrationEstimator",
+        "mpcsimopt",
+        "review",
+        "parcorr",
+        "crosscorr",
+        "lbqtest",
+        "archtest",
+        "adftest",
+        "kpsstest",
+        "pptest",
+    ] {
+        assert!(session::completions(name, [].into_iter()).contains(&name.to_owned()));
+    }
+    assert_eq!(session::completions("arim", [].into_iter()), vec!["arima"]);
+    assert_eq!(session::completions("aicb", [].into_iter()), vec!["aicbic"]);
     let results = session::completions("sig", ["signal", "sigma", "signal"].into_iter());
-    assert_eq!(results, vec!["sigma", "sign", "signal"]);
+    assert_eq!(
+        results,
+        vec![
+            "sigma",
+            "sigmf",
+            "sign",
+            "signal",
+            "signalAnalyzer",
+            "signalMultiresolutionAnalyzer",
+            "signrank"
+        ]
+    );
     let mut command = "sin(1)".to_string();
     let (prefix, range) = session::completion_at(&command, 2).unwrap();
     assert_eq!(prefix, "si");
@@ -496,10 +560,10 @@ fn workspace_dock_preferences_preserve_legacy_layout_and_bad_optional_values() {
 
 #[test]
 fn fresh_desktop_policy_is_explicit_and_does_not_reinterpret_legacy_sessions() {
-    use session::{DesktopLayout, WorkspaceDock};
+    use session::DesktopLayout;
     assert_eq!(DesktopLayout::default().workspace_dock, None);
     let fresh = DesktopLayout::fresh_desktop();
-    assert_eq!(fresh.workspace_dock, Some(WorkspaceDock::BelowFiles));
+    assert_eq!(fresh.workspace_dock, None);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("layout.json");
     let mut state = snapshot();
@@ -1021,7 +1085,7 @@ fn tool_tab_layout_round_trips_and_older_or_malformed_values_open_nothing() {
     assert_eq!(older.tools, None);
     assert!(!serde_json::to_string(&older).unwrap().contains("\"tools\""));
     let tools = ToolTabs {
-        open: [Some(ToolTab::Model), Some(ToolTab::Designer)],
+        open: [ToolTab::Model, ToolTab::Designer].into_iter().collect(),
         selected: Some(ToolTab::Designer),
     };
     let saved = DesktopLayout {
@@ -1043,4 +1107,25 @@ fn tool_tab_layout_round_trips_and_older_or_malformed_values_open_nothing() {
         assert_eq!(restored.tools, None);
         assert_eq!(restored.workspace_width, Some(265.));
     }
+    // The older two-slot form still loads; apps add any number of tabs.
+    let old: DesktopLayout =
+        serde_json::from_str(r#"{"tools":{"open":["model",null],"selected":"model"}}"#).unwrap();
+    let tabs = old.tools.unwrap();
+    assert_eq!(tabs.open.iter().collect::<Vec<_>>(), [ToolTab::Model]);
+    assert_eq!(tabs.selected, Some(ToolTab::Model));
+    let many = DesktopLayout {
+        tools: Some(ToolTabs {
+            open: [ToolTab::PidTuner, ToolTab::Designer, ToolTab::Model]
+                .into_iter()
+                .collect(),
+            selected: Some(ToolTab::PidTuner),
+        }),
+        ..DesktopLayout::default()
+    };
+    let text = serde_json::to_string(&many).unwrap();
+    assert!(
+        text.contains(r#""open":["pid_tuner","designer","model"]"#),
+        "{text}"
+    );
+    assert_eq!(serde_json::from_str::<DesktopLayout>(&text).unwrap(), many);
 }

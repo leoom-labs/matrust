@@ -1,8 +1,58 @@
 use super::*;
 use crate::theme::ThemedScrollArea;
 
+/// Dimensions and entry-to-row offsets for immutable console entries. Length changes
+/// invalidate naturally; replacement/retention also explicitly invalidates the cache.
+#[derive(Default)]
+pub(super) struct ConsoleRows {
+    key: Option<(usize, usize)>,
+    first_rows: Vec<usize>,
+    rows: usize,
+    columns: usize,
+    #[cfg(test)]
+    rebuilds: usize,
+}
+
+impl ConsoleRows {
+    pub(super) fn has_length(&self, len: usize) -> bool {
+        self.key.is_some_and(|(cached, _)| cached == len)
+    }
+
+    pub(super) fn invalidate(&mut self) {
+        self.key = None;
+    }
+
+    fn update(&mut self, console: &[String], skip: usize) {
+        if self.key == Some((console.len(), skip)) {
+            return;
+        }
+        #[cfg(test)]
+        {
+            self.rebuilds += 1;
+        }
+        self.first_rows.clear();
+        self.rows = 0;
+        self.columns = 0;
+        for entry in &console[skip..] {
+            self.first_rows.push(self.rows);
+            for line in entry.split('\n') {
+                self.rows += 1;
+                self.columns = self.columns.max(line.chars().count());
+            }
+        }
+        self.key = Some((console.len(), skip));
+    }
+
+    fn entry_at(&self, row: usize) -> usize {
+        self.first_rows
+            .partition_point(|&first| first <= row)
+            .saturating_sub(1)
+    }
+}
+
 impl Workspace {
     pub(super) fn command_window(&mut self, ui: &mut egui::Ui) {
+        let collapsed = self.navigation.drawer_collapsed && self.mode() != modes::Mode::Command;
         ui.scope_builder(
             egui::UiBuilder::new().id(egui::Id::new("command_window_contents")),
             |ui| {
@@ -10,12 +60,13 @@ impl Workspace {
                 // handle coincide, including when the output log is short.
                 ui.set_min_height(ui.available_height());
 
-                if panels::header(ui, "Command Window", None, |ui| {
+                if !collapsed && panels::header(ui, "Command Window", None, |ui| {
                     let clear = panels::tool_link(ui, "Clear").clicked();
                     self.command_history_menu(ui);
                     clear
                 }) {
                     self.console.clear();
+                    self.console_rows.invalidate();
                 }
                 if self.welcome_visible() {
                     self.welcome(ui);
@@ -31,7 +82,7 @@ impl Workspace {
                         sw: tokens::PANEL_RADIUS,
                         se: tokens::PANEL_RADIUS,
                     },
-                    palette.surface_sunken,
+                    palette.surface,
                 );
                 let console_font = egui::FontId::monospace(tokens::CONSOLE);
                 let line_height = tokens::CONSOLE * tokens::CONSOLE_LINE;
@@ -45,6 +96,9 @@ impl Workspace {
                     console_font.clone(),
                     egui::Color32::WHITE,
                 );
+                let row_height = ui.painter().layout_job(console_line(
+                    "0", 0, "0", &console_font, line_height, palette,
+                )).size().y;
                 // One line is the 34 px field; a multi-line block grows it
                 // upward by the rows the input painted last frame (up to 8),
                 // within the room the card leaves above for the history.
@@ -59,14 +113,15 @@ impl Workspace {
                 // The input sits at the bottom of the card; the history
                 // scrolls above it. Both get explicit rects, so the card's
                 // content height never depends on its own size.
+                let input_margin = if collapsed { 2. } else { tokens::M };
                 let input_rect = egui::Rect::from_min_max(
                     egui::pos2(
                         body.left() + tokens::M,
-                        body.bottom() - tokens::M - completion_height - field_height,
+                        body.bottom() - input_margin - completion_height - field_height,
                     ),
                     egui::pos2(
                         body.right() - tokens::M,
-                        body.bottom() - tokens::M - completion_height,
+                        body.bottom() - input_margin - completion_height,
                     ),
                 );
                 let history_rect = egui::Rect::from_min_max(
@@ -76,8 +131,10 @@ impl Workspace {
                         (input_rect.top() - tokens::S).max(body.top() + tokens::M + 40.),
                     ),
                 );
-                // The engine wraps wide matrices to the characters that fit this pane.
-                self.worker.console_width = ((history_rect.width() - 24.0) / glyph.size().x.max(1.0))
+                // The engine wraps wide matrices to the characters that fit this pane:
+                // 16 px output indent, the vertical scrollbar and 12 px right padding,
+                // so wrapped rows never reach under the scrollbar or scroll sideways.
+                self.worker.console_width = ((history_rect.width() - 40.0) / glyph.size().x.max(1.0))
                     .floor()
                     .clamp(20.0, 400.0) as usize;
                 #[cfg(test)]
@@ -96,12 +153,25 @@ impl Workspace {
                 }
                 // Lines keep the width they were printed at, like MATLAB: a pane
                 // that narrows later scrolls sideways instead of re-wrapping rows.
-                let _command_scroll = ui.scope_builder(egui::UiBuilder::new().max_rect(history_rect), |ui| egui::ScrollArea::both()
+                // Count text rows without copying the output or laying out hidden text.
+                // An entry can contain many matrix rows, including trailing blank lines.
+                let banner = chrome::banner();
+                let skip = if self.welcome_visible() && self.console.starts_with(&banner) {
+                    banner.len()
+                } else {
+                    0
+                };
+                self.console_rows.update(&self.console, skip);
+                let (rows, columns) = (self.console_rows.rows, self.console_rows.columns);
+                let _command_scroll = if collapsed { None } else { Some(ui.scope_builder(egui::UiBuilder::new().max_rect(history_rect), |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.;
+                    egui::ScrollArea::both()
                     .auto_shrink([false, false])
                     .stick_to_bottom(true)
                     .max_height(history_rect.height())
-                    .show_themed(ui, |ui| {
-                        ui.spacing_mut().item_spacing.y = 0.;
+                    .show_rows_themed(ui, row_height, rows, |ui, visible| {
+                        // Keep the horizontal extent stable when wide rows scroll out of view.
+                        ui.set_min_width(tokens::L + columns as f32 * glyph.size().x);
                         // Output is indented under the prompt.
                         egui::Frame::new()
                             .inner_margin(egui::Margin {
@@ -109,18 +179,16 @@ impl Workspace {
                                 ..Default::default()
                             })
                             .show(ui, |ui| {
-                                // The welcome block already names the product.
-                                let banner = chrome::banner();
-                                let skip = if self.welcome_visible()
-                                    && self.console.starts_with(&banner)
-                                {
-                                    banner.len()
-                                } else {
-                                    0
-                                };
-                                for line in self.console.iter().skip(skip) {
+                                let first_entry = self.console_rows.entry_at(visible.start);
+                                let first_row = self.console_rows.first_rows.get(first_entry).copied().unwrap_or(0);
+                                for (entry, row, line) in self.console.iter().skip(skip + first_entry)
+                                    .flat_map(|entry| entry.split('\n').enumerate()
+                                        .map(move |(row, line)| (entry.as_str(), row, line)))
+                                    .skip(visible.start - first_row).take(visible.len()) {
                                     ui.add(
                                         egui::Label::new(console_line(
+                                            entry,
+                                            row,
                                             line,
                                             &console_font,
                                             line_height,
@@ -130,11 +198,17 @@ impl Workspace {
                                     );
                                 }
                             });
-                    })).inner;
+                    })}).inner) };
                 ui.scope_builder(egui::UiBuilder::new().max_rect(input_rect).layout(egui::Layout::left_to_right(egui::Align::Center)), |ui| {
-                        // 34 px input with a 1.5 px accent outline.
+                        // 34 px input: border colour by default, the 1.5 px
+                        // accent frame only while the prompt has focus.
+                        let prompt_focused = ui.memory(|m| m.has_focus(egui::Id::new("command_input")));
                         egui::Frame::new()
-                            .stroke(egui::Stroke::new(1.5, palette.accent))
+                            .stroke(if prompt_focused {
+                                egui::Stroke::new(1.5, palette.accent)
+                            } else {
+                                egui::Stroke::new(1.5, palette.border)
+                            })
                             .corner_radius(tokens::CONTROL_RADIUS)
                             .fill(palette.surface)
                             .inner_margin(egui::Margin::symmetric(tokens::M as i8, 0))
@@ -186,7 +260,8 @@ impl Workspace {
                                 });
                             }
                             let mut enter = None;
-                            if focused && !self.busy {
+                            let answering = self.answer.waiting();
+                            if focused && (!self.busy || answering) {
                                 let mut after = Vec::new();
                                 ui.input_mut(|i| {
                                     let Some(at) = i.events.iter().position(|e| {
@@ -320,7 +395,7 @@ impl Workspace {
                                 .min_scrolled_height(0.)
                                 .show_themed(ui, |ui| {
                                     ui.add_enabled(
-                                        !self.busy,
+                                        !self.busy || answering,
                                         egui::TextEdit::multiline(&mut self.command)
                                             .id(command_id)
                                             .lock_focus(true)
@@ -330,7 +405,11 @@ impl Workspace {
                                             .font(console_font.clone())
                                             .frame(egui::Frame::NONE)
                                             .desired_width(f32::INFINITY)
-                                            .hint_text(if self.history.entries.is_empty() {
+                                            .hint_text(if answering {
+                                                RichText::new("Answer for input")
+                                                    .font(console_font.clone())
+                                                    .color(palette.text_disabled)
+                                            } else if self.history.entries.is_empty() {
                                                 RichText::new("A = [1 2; 3 4]; A * A")
                                                     .font(console_font.clone())
                                                     .color(palette.text_disabled)
@@ -352,6 +431,19 @@ impl Workspace {
                                 ui.ctx().request_repaint();
                             }
                             focus_areas::register(ui, &input, focus_areas::Area::Command);
+                            if !self.busy
+                                && ui.data_mut(|d| d.remove_temp::<bool>(command_id.with("refocus")))
+                                    == Some(true)
+                                && ui.memory(|m| m.focused().is_none())
+                            {
+                                // Unless the user moved focus elsewhere during the run.
+                                input.request_focus();
+                            }
+                            // A script's prompt moves focus to the line once.
+                            if answering && self.answer.take_focus() {
+                                input.request_focus();
+                                input.scroll_to_me(None);
+                            }
                             // Reveal the prompt for explicit focus/history actions, not
                             // every focused frame: users can still inspect older output.
                             if input.gained_focus()
@@ -364,9 +456,14 @@ impl Workspace {
                             }
                             // Enter is decided on the text as edited by the keys before it.
                             if let Some(modifiers) = enter {
-                                if modifiers.command
+                                // An answer is one line: Enter always sends it.
+                                if answering
+                                    || modifiers.command
                                     || (!modifiers.shift
-                                        && !matrust::syntax::is_incomplete(&self.command))
+                                        && !matrust::syntax::is_incomplete_in_workspace(
+                                            &self.command,
+                                            &|name| self.variables.contains_key(name),
+                                        ))
                                 {
                                     run_now = true;
                                 } else {
@@ -388,7 +485,16 @@ impl Workspace {
                                     ui.ctx().request_repaint();
                                 }
                             }
-                            if run_now && !self.command.trim().is_empty() {
+                            if run_now && answering {
+                                let text = std::mem::take(&mut self.command);
+                                if let Some(text) = self.answer.answer(&mut self.console, text) {
+                                    // The echo extends the last line in place.
+                                    self.console_rows.invalidate();
+                                    let _ = self.worker.answers.send(text);
+                                }
+                                self.suggestions.clear();
+                                input.scroll_to_me(None);
+                            } else if run_now && !self.command.trim().is_empty() {
                                 let command = std::mem::take(&mut self.command);
                                 for (n, line) in command.lines().enumerate() {
                                     self.console.push(if n == 0 {
@@ -403,6 +509,9 @@ impl Workspace {
                                 self.run(command);
                                 input.scroll_to_me(None);
                                 input.request_focus();
+                                // The field is disabled while the run is busy and
+                                // egui drops its focus; hand it back afterwards.
+                                ui.data_mut(|d| d.insert_temp(command_id.with("refocus"), true));
                             }
                             if input.changed()
                                 || input.clicked()
@@ -457,7 +566,7 @@ impl Workspace {
                 }
                 ui.allocate_rect(body, egui::Sense::hover());
                 #[cfg(test)]
-                if trace_command_scroll {
+                if trace_command_scroll && let Some(_command_scroll) = _command_scroll {
                     eprintln!("COMMAND_SCROLL after frame={} discard={} scroll_id={:?} inner={:?} content={:?} state={:?} remaining_smooth={:?}",
                         ui.ctx().cumulative_frame_nr(), ui.ctx().will_discard(), _command_scroll.id,
                         _command_scroll.inner_rect, _command_scroll.content_size, _command_scroll.state,
@@ -506,27 +615,178 @@ impl Workspace {
 /// One Command Window line: `>>` in accent, errors in the error colour,
 /// `name =` headers muted and values in text.
 fn console_line(
+    entry: &str,
+    row: usize,
     line: &str,
     font: &egui::FontId,
     line_height: f32,
     palette: &tokens::Palette,
 ) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
+    // Empty labels still need the same explicit height as every virtual row.
+    let line = if line.is_empty() { " " } else { line };
     let format = |color| egui::TextFormat {
         font_id: font.clone(),
         color,
         line_height: Some(line_height),
         ..Default::default()
     };
-    if let Some(command) = line.strip_prefix(">>") {
+    if row == 0
+        && let Some(command) = line.strip_prefix(">>")
+    {
         job.append(">>", 0., format(palette.accent));
         job.append(command, 0., format(palette.text));
-    } else if line.starts_with("Error:") {
+    } else if entry.starts_with(">>") {
+        job.append(line, 0., format(palette.text));
+    } else if entry.starts_with("Error:") {
         job.append(line, 0., format(palette.error));
-    } else if line.trim_end().ends_with(" =") || line.trim().is_empty() {
+    } else if entry.trim_end().ends_with(" =") || entry.trim().is_empty() {
         job.append(line, 0., format(palette.text_muted));
     } else {
         job.append(line, 0., format(palette.text));
     }
     job
+}
+
+/// The command line answers a running script's `input` or `pause` instead of
+/// running commands. The prompt is the last console line; the answer is
+/// appended to it as MATLAB echoes typed text after the prompt.
+#[derive(Default)]
+pub(super) struct AnswerState {
+    prompt: Option<String>,
+    focus: bool,
+}
+
+impl AnswerState {
+    pub(super) fn waiting(&self) -> bool {
+        self.prompt.is_some()
+    }
+    /// Show the script's output so far, then its prompt, and wait.
+    pub(super) fn begin(&mut self, console: &mut Vec<String>, request: worker::InputRequest) {
+        if request.clear {
+            console.clear();
+        }
+        console.extend(request.output);
+        let mut lines = request.prompt.split('\n');
+        let mut last = lines.next().unwrap_or_default().to_owned();
+        for line in lines {
+            console.push(std::mem::replace(&mut last, line.to_owned()));
+        }
+        console.push(last.clone());
+        self.prompt = Some(last);
+        self.focus = true;
+    }
+    /// Echo the answer after its prompt; the text to send to the worker.
+    pub(super) fn answer(&mut self, console: &mut Vec<String>, text: String) -> Option<String> {
+        let prompt = self.prompt.take()?;
+        self.focus = false;
+        let echo = text.replace('\n', " ");
+        match console.last_mut() {
+            Some(line) if *line == prompt => line.push_str(&echo),
+            _ => console.push(prompt + &echo),
+        }
+        Some(text)
+    }
+    /// The run ended or was stopped: the command line runs commands again.
+    pub(super) fn cancel(&mut self) {
+        self.prompt = None;
+        self.focus = false;
+    }
+    /// Whether the command line should take focus this frame (once per prompt).
+    pub(super) fn take_focus(&mut self) -> bool {
+        std::mem::take(&mut self.focus)
+    }
+}
+
+#[cfg(test)]
+mod answer_tests {
+    use super::{AnswerState, worker::InputRequest};
+
+    fn request(output: &[&str], prompt: &str) -> InputRequest {
+        InputRequest {
+            output: output.iter().map(|s| (*s).to_owned()).collect(),
+            clear: false,
+            prompt: prompt.into(),
+        }
+    }
+
+    #[test]
+    fn answering_input_shows_output_then_prompt_and_echoes_the_answer() {
+        let mut state = AnswerState::default();
+        let mut console = vec![">> x = input('n? ')".to_owned()];
+        assert!(!state.waiting());
+        state.begin(&mut console, request(&["Hello"], "n? "));
+        assert!(state.waiting());
+        assert!(state.take_focus());
+        assert!(!state.take_focus(), "focus moves once per prompt");
+        assert_eq!(console, [">> x = input('n? ')", "Hello", "n? "]);
+        assert_eq!(state.answer(&mut console, "3".into()).as_deref(), Some("3"));
+        assert!(!state.waiting());
+        assert_eq!(console.last().unwrap(), "n? 3");
+        // No prompt is open any more: a second Enter sends nothing.
+        assert_eq!(state.answer(&mut console, "4".into()), None);
+    }
+
+    #[test]
+    fn answering_input_splits_multiline_prompts_clears_and_cancels() {
+        let mut state = AnswerState::default();
+        let mut console = vec!["old".to_owned()];
+        let mut first = request(&["after clc"], "Line one\nValue: ");
+        first.clear = true;
+        state.begin(&mut console, first);
+        assert_eq!(console, ["after clc", "Line one", "Value: "]);
+        state.cancel();
+        assert!(!state.waiting() && !state.take_focus());
+        // A bare pause has an empty prompt; any answer, even empty, ends it.
+        state.begin(&mut console, request(&[], ""));
+        assert_eq!(console.last().unwrap(), "");
+        assert_eq!(
+            state.answer(&mut console, String::new()).as_deref(),
+            Some("")
+        );
+        assert!(!state.waiting());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_window_cache_updates_after_push_and_twenty_thousand_entry_trim() {
+        let mut console = vec!["one\ntwo".into()];
+        let mut cache = ConsoleRows::default();
+        cache.update(&console, 0);
+        assert_eq!((cache.rows, cache.columns), (2, 3));
+        console.push("longer".into());
+        cache.update(&console, 0);
+        assert_eq!((cache.rows, cache.columns), (3, 6));
+        assert_eq!(cache.first_rows, [0, 2]);
+        assert_eq!(cache.entry_at(2), 1);
+        console.extend((0..19_998).map(|_| "x".into()));
+        cache.update(&console, 0);
+        // Retention can restore the previous length, so invalidate explicitly.
+        console.extend(["new".into(), "newest".into()]);
+        worker::keep_newest_output(&mut console);
+        cache.invalidate();
+        cache.update(&console, 0);
+        assert_eq!(console.len(), 20_001);
+        assert!(console[0].starts_with("... 3 earlier output lines"));
+        assert_eq!(cache.rows, 20_001);
+        assert_eq!(cache.columns, console[0].len());
+        assert_eq!(cache.entry_at(20_000), 20_000);
+        assert_eq!(console[cache.entry_at(20_000)], "newest");
+        // A later trim keeps the same length but changes the entries and dimensions.
+        console.push("z".repeat(100));
+        worker::keep_newest_output(&mut console);
+        assert_eq!(console.len(), 20_001);
+        cache.invalidate();
+        cache.update(&console, 0);
+        assert_eq!((cache.rows, cache.columns), (20_001, 100));
+        assert!(console[0].starts_with("... 4 earlier output lines"));
+        // An unchanged frame reuses the index rather than rebuilding it.
+        let rebuilds = cache.rebuilds;
+        cache.update(&console, 0);
+        assert_eq!(cache.rebuilds, rebuilds);
+    }
 }

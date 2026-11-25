@@ -39,7 +39,8 @@ impl Workspace {
             .documents
             .iter()
             .enumerate()
-            .filter_map(|(i, d)| (i != index).then(|| d.path.clone()).flatten())
+            .filter(|(i, _)| *i != index)
+            .filter_map(|(_, doc)| doc.default_save_path().map(Path::to_path_buf))
             .collect();
         self.begin_script_io(
             index,
@@ -51,6 +52,22 @@ impl Workspace {
         );
         // Success is reported only after the worker publishes the file.
         false
+    }
+
+    /// File names of the unsaved scripts a close would lose: every dirty tab
+    /// on quit, else only the tab being closed.
+    pub(super) fn unsaved_script_names(&self, quit: bool) -> Vec<String> {
+        self.documents
+            .iter()
+            .enumerate()
+            .filter(|(i, d)| d.dirty && (quit || self.pending_close == Some(*i)))
+            .map(|(_, d)| {
+                d.path.as_ref().and_then(|p| p.file_name()).map_or_else(
+                    || "Untitled.mr".into(),
+                    |n| n.to_string_lossy().into_owned(),
+                )
+            })
+            .collect()
     }
 
     pub(super) fn save_pending_scripts(&mut self, ctx: &egui::Context) {
@@ -267,7 +284,8 @@ impl Workspace {
             .documents
             .iter()
             .enumerate()
-            .filter_map(|(i, d)| (i != index).then(|| d.path.clone()).flatten())
+            .filter(|(i, _)| *i != index)
+            .filter_map(|(_, doc)| doc.default_save_path().map(Path::to_path_buf))
             .collect();
         self.begin_script_io(
             index,

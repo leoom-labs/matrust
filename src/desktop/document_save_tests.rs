@@ -13,7 +13,11 @@ fn document_save_heading(app: &mut Workspace, ctx: &egui::Context, size: egui::V
     let mut position = None;
     for _ in 0..3 {
         position = frame_at(app, ctx, size, vec![]).shapes.iter().rev()
-            .find_map(|shape| text_position(&shape.shape, label));
+            .find_map(|shape| {
+                // Pane headers are uppercase captions.
+                text_position(&shape.shape, label)
+                    .or_else(|| text_position(&shape.shape, &label.to_uppercase()))
+            });
     }
     position.unwrap_or_else(|| panic!("Missing document heading {label}"))
 }
@@ -538,6 +542,10 @@ mod explicit_root_figure_save_cases {
         app.layout.mode = layout::PaneMode::Figure;
         finish_folder(&mut app);
         for _ in 0..3 { frame_at(&mut app, &ctx, size, vec![]); }
+        if workspace_dock::inspector::uses_sheet(&app, &ctx) {
+            click_label_at(&mut app, &ctx, size, "Workspace");
+            for _ in 0..4 { frame_at(&mut app, &ctx, size, vec![]); }
+        }
         (ctx, app, dir)
     }
     fn point(output: &egui::FullOutput, label: &str) -> egui::Pos2 {
@@ -557,9 +565,18 @@ mod explicit_root_figure_save_cases {
         point(&output, if save_as { "Save as\u{2026}" } else { "Save figure" })
     }
     fn ribbon(app: &mut Workspace, ctx: &egui::Context, size: egui::Vec2) -> egui::Pos2 {
-        click_label_at(app, ctx, size, "Plots");
+        click_label_at(app, ctx, size, "Figures");
         let mut output = frame_at(app, ctx, size, vec![]);
         for _ in 0..2 { output = frame_at(app, ctx, size, vec![]); }
+        // The compact action row can move Save into More beside the Inspector toggle.
+        // Prefer the toolbar over the wide Inspector's duplicate action.
+        if let Some(point) = output.shapes.iter().filter_map(|s|
+            text_position(&s.shape, "Save figure").filter(|p| s.clip_rect.contains(*p)))
+            .min_by(|a, b| a.y.total_cmp(&b.y)) {
+            return point;
+        }
+        click_label_at(app, ctx, size, "More");
+        let output = frame_at(app, ctx, size, vec![]);
         point(&output, "Save figure")
     }
     fn release_discarded(app: &mut Workspace, ctx: &egui::Context, size: egui::Vec2,

@@ -144,13 +144,7 @@ fn handle_concatenation_selection_and_replacement_preserve_order_without_numeric
         );
     }
     let before = e.workspace();
-    for source in [
-        "H=double(H);",
-        "H=H+1;",
-        "H=repmat(H,1,1);",
-        "H=sort(H);",
-        "H={H}{1};",
-    ] {
+    for source in ["H=H+1;", "H=repmat(H,1,1);", "H=sort(H);", "H={H}{1};"] {
         assert!(e.execute(source).is_err());
         for (name, value) in &before {
             assert!(value.same_snapshot(&e.array(name).unwrap()));
@@ -199,14 +193,15 @@ fn duplicate_model_tokens_and_excess_external_structure_reject_without_lookup_or
     // Public Rust fields can bypass constructors. The lookup guard checks a
     // vector length before traversing externally supplied series metadata.
     let mut invalid = original.clone();
-    invalid.series = vec![invalid.series[0].clone(); 65];
+    let over_budget = matrust::plot::MAX_PLOT_SERIES + 1;
+    invalid.series = vec![invalid.series[0].clone(); over_budget];
     e.figure = Some(invalid);
     assert!(
         e.execute("set(h,'Visible','off');")
             .unwrap_err()
-            .contains("64")
+            .contains("storage budget")
     );
-    assert_eq!(e.figure.as_ref().unwrap().series.len(), 65);
+    assert_eq!(e.figure.as_ref().unwrap().series.len(), over_budget);
     assert!(e.figure.as_ref().unwrap().series.iter().all(|s| s.visible));
     e.figure = Some(original.clone());
     e.execute("set(h,'Visible','off');").unwrap();
@@ -549,4 +544,610 @@ fn individual_stem_baselines_survive_complete_inline_and_companion_files_twice()
         }
         assert!(original.same_snapshot(&before));
     }
+}
+
+fn figure_number(e: &Engine, id: u32) -> matrust::plot::Figure {
+    e.figures()
+        .find(|(n, _)| *n == id)
+        .unwrap_or_else(|| panic!("missing figure {id}"))
+        .1
+        .clone()
+}
+
+fn scalar_prop(e: &mut Engine, expr: &str, name: &str) -> f64 {
+    e.execute(&format!("bulk_prop=get({expr},'{name}');"))
+        .unwrap_or_else(|err| panic!("get({expr}, {name}): {err}"));
+    e.variables["bulk_prop"].as_scalar().unwrap()
+}
+
+fn near(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() <= 1e-9, "{actual} != {expected}");
+}
+
+fn saved_handles(e: &Engine, name: &str) -> Vec<Arc<matrust::GraphicsHandle>> {
+    let value = handles(e, name);
+    (0..value.len())
+        .map(|i| value.get_linear(i).unwrap().clone())
+        .collect()
+}
+
+/// Stored title, label, subtitle and legend sizes stay unset. Their displayed
+/// points follow the axes font (1.1, 1.1 and 0.9). A text() object keeps its
+/// own 10 pt default and does not follow the axes font.
+fn assert_font_inheritance(figure: &matrust::plot::Figure) {
+    assert!(figure.extras.title_style.font_size.is_none());
+    assert!(
+        figure
+            .extras
+            .label_styles
+            .iter()
+            .all(|style| style.font_size.is_none())
+    );
+    assert!(figure.extras.subtitle.font_size.is_none());
+    assert!(figure.extras.legend_style.font_size.is_none());
+    assert_eq!(figure.extras.texts.len(), 1);
+    assert_eq!(figure.extras.texts[0].font_size, 10.);
+    assert!(!figure.extras.texts[0].font_size_explicit);
+}
+
+#[test]
+fn bulk_set_changes_every_matched_line_and_leaves_the_other_figure() {
+    let mut e = Engine::default();
+    e.execute(
+        "f=figure(1);a=gca;set(a,'FontSize',11);set(a,'NextPlot','add');h1=plot(a,[1 2],[3 4],'LineWidth',1);h2=plot(a,[1 2],[5 6],'LineWidth',1.5);g=figure(2);h3=plot([0 1],[8 9],'LineWidth',0.5);",
+    )
+    .unwrap();
+    assert_eq!(e.current_figure, 2);
+    e.execute("set(h1,'LineWidth',3);").unwrap();
+    assert_eq!(e.current_figure, 2);
+    assert_eq!(
+        figure_number(&e, 1)
+            .series
+            .iter()
+            .map(|s| s.line_width)
+            .collect::<Vec<_>>(),
+        vec![Some(3.), Some(1.5)]
+    );
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+    assert_eq!(figure_number(&e, 1).extras.font_size, Some(11.));
+    assert_eq!(scalar_prop(&mut e, "h1", "LineWidth"), 3.);
+    assert_eq!(scalar_prop(&mut e, "h2", "LineWidth"), 1.5);
+    assert_eq!(scalar_prop(&mut e, "h3", "LineWidth"), 0.5);
+    assert_eq!(scalar_prop(&mut e, "a", "FontSize"), 11.);
+
+    let fig1 = figure_number(&e, 1);
+    let ids = (
+        fig1.identity.clone(),
+        fig1.axes.identity.clone(),
+        fig1.series[0].identity.clone(),
+        fig1.series[1].identity.clone(),
+        figure_number(&e, 2).series[0].identity.clone(),
+    );
+    let h1 = handles(&e, "h1").scalar_handle().unwrap().clone();
+    let h2 = handles(&e, "h2").scalar_handle().unwrap().clone();
+    e.execute("set([h1 h2],'LineWidth',2);").unwrap();
+    assert_eq!(e.current_figure, 2);
+    let fig1 = figure_number(&e, 1);
+    assert_eq!(fig1.series[0].line_width, Some(2.));
+    assert_eq!(fig1.series[1].line_width, Some(2.));
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+    assert_eq!(fig1.extras.font_size, Some(11.));
+    assert!(fig1.identity.same_object(&ids.0));
+    assert!(fig1.axes.identity.same_object(&ids.1));
+    assert!(fig1.series[0].identity.same_object(&ids.2));
+    assert!(fig1.series[1].identity.same_object(&ids.3));
+    assert!(figure_number(&e, 2).series[0].identity.same_object(&ids.4));
+    assert!(handles(&e, "h1").scalar_handle().unwrap().same_object(&h1));
+    assert!(handles(&e, "h2").scalar_handle().unwrap().same_object(&h2));
+    assert_eq!(scalar_prop(&mut e, "h1", "LineWidth"), 2.);
+    assert_eq!(scalar_prop(&mut e, "h2", "LineWidth"), 2.);
+    assert_eq!(scalar_prop(&mut e, "h3", "LineWidth"), 0.5);
+    assert_eq!(scalar_prop(&mut e, "a", "FontSize"), 11.);
+
+    e.execute("lines=findall(f,'type','line');").unwrap();
+    let found = saved_handles(&e, "lines");
+    assert_eq!(found.len(), 2);
+    assert!(found.iter().any(|h| h.same_object(&h1)));
+    assert!(found.iter().any(|h| h.same_object(&h2)));
+    let before = figure_number(&e, 1);
+    let other = figure_number(&e, 2);
+    e.execute("set(lines,'linewidth',4);").unwrap();
+    assert_eq!(e.current_figure, 2);
+    assert_same_array(&found, &handles(&e, "lines"));
+    for i in 1..=2 {
+        assert_eq!(scalar_prop(&mut e, &format!("lines({i})"), "LineWidth"), 4.);
+    }
+    let fig1 = figure_number(&e, 1);
+    assert_eq!(fig1.series[0].line_width, Some(4.));
+    assert_eq!(fig1.series[1].line_width, Some(4.));
+    assert_eq!(fig1.extras.font_size, Some(11.));
+    assert_eq!(scalar_prop(&mut e, "a", "FontSize"), 11.);
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+    assert!(
+        fig1.series[0]
+            .identity
+            .same_object(&before.series[0].identity)
+    );
+    assert!(
+        fig1.series[1]
+            .identity
+            .same_object(&before.series[1].identity)
+    );
+    assert!(figure_number(&e, 2).same_snapshot(&other));
+    assert_eq!(e.figures().count(), 2);
+}
+
+fn assert_same_array(before: &[Arc<matrust::GraphicsHandle>], after: &GraphicsArray) {
+    assert_eq!(before.len(), after.len());
+    for (i, handle) in before.iter().enumerate() {
+        assert!(
+            after.get_linear(i).unwrap().same_object(handle),
+            "handle {i} was replaced"
+        );
+    }
+}
+
+#[test]
+fn bulk_font_size_set_mutates_matches_without_replacing_handles() {
+    let mut e = Engine::default();
+    e.execute(
+        "f=figure(1);a=gca;set(a,'NextPlot','add');h1=plot(a,[1 2],[3 4],'LineWidth',1);h2=plot(a,[1 2],[5 6],'LineWidth',1.5);title('Hello');xlabel('Time');tx=text(1,4,'note');lg=legend(a,'one','two');th=get(a,'Title');xh=get(a,'XLabel');",
+    )
+    .unwrap();
+    let fig = figure_number(&e, 1);
+    assert_eq!(e.figures().count(), 1);
+    assert_eq!(fig.extras.font_size, None);
+    assert_font_inheritance(&fig);
+    assert_eq!(fig.title, "Hello");
+    assert_eq!(fig.extras.texts[0].string, "note");
+    assert!(fig.legend_state.is_some());
+    near(scalar_prop(&mut e, "a", "FontSize"), 10.);
+    near(scalar_prop(&mut e, "th", "FontSize"), 11.);
+    near(scalar_prop(&mut e, "xh", "FontSize"), 11.);
+    near(scalar_prop(&mut e, "lg", "FontSize"), 9.);
+    near(scalar_prop(&mut e, "tx", "FontSize"), 10.);
+
+    let ids = figure_number(&e, 1);
+    let title_id = ids.extras.title_identity.clone();
+    let xlabel_id = ids.extras.xlabel_identity.clone();
+    let ylabel_id = ids.extras.ylabel_identity.clone();
+    let zlabel_id = ids.extras.zlabel_identity.clone();
+    let subtitle_id = ids.extras.subtitle_identity.clone();
+    let text_id = ids.extras.texts[0].identity.clone();
+    let legend_id = ids.legend_state.as_ref().unwrap().identity.clone();
+    let axes_id = ids.axes.identity.clone();
+    let figure_id = ids.identity.clone();
+    let line_ids = [
+        ids.series[0].identity.clone(),
+        ids.series[1].identity.clone(),
+    ];
+    let anchors = [
+        saved_handles(&e, "f"),
+        saved_handles(&e, "a"),
+        saved_handles(&e, "th"),
+        saved_handles(&e, "xh"),
+        saved_handles(&e, "tx"),
+        saved_handles(&e, "lg"),
+        saved_handles(&e, "h1"),
+        saved_handles(&e, "h2"),
+    ];
+
+    let before_axes = figure_number(&e, 1);
+    e.execute("axes_matches=findall(f,'type','axes');set(axes_matches,'FontSize',20);")
+        .unwrap();
+    assert_eq!(handles(&e, "axes_matches").len(), 1);
+    assert!(
+        handles(&e, "axes_matches")
+            .scalar_handle()
+            .unwrap()
+            .same_object(handles(&e, "a").scalar_handle().unwrap())
+    );
+    let fig = figure_number(&e, 1);
+    assert_eq!(fig.extras.font_size, Some(20.));
+    assert_font_inheritance(&fig);
+    near(scalar_prop(&mut e, "a", "FontSize"), 20.);
+    near(scalar_prop(&mut e, "th", "FontSize"), 22.);
+    near(scalar_prop(&mut e, "xh", "FontSize"), 22.);
+    near(scalar_prop(&mut e, "lg", "FontSize"), 18.);
+    near(scalar_prop(&mut e, "tx", "FontSize"), 10.);
+    assert_eq!(fig.series[0].line_width, Some(1.));
+    assert_eq!(fig.series[1].line_width, Some(1.5));
+    assert!(!fig.same_snapshot(&before_axes));
+    assert_identities(
+        &fig,
+        &figure_id,
+        &axes_id,
+        &title_id,
+        &xlabel_id,
+        &ylabel_id,
+        &zlabel_id,
+        &subtitle_id,
+        &text_id,
+        &legend_id,
+        &line_ids,
+    );
+    assert_parents(&mut e);
+
+    e.execute("texts=findall(f,'type','text');").unwrap();
+    let texts = saved_handles(&e, "texts");
+    assert!(texts.len() >= 2);
+    assert!(
+        texts
+            .iter()
+            .any(|h| h.same_object(handles(&e, "th").scalar_handle().unwrap()))
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|h| h.same_object(handles(&e, "tx").scalar_handle().unwrap()))
+    );
+    let before_text = figure_number(&e, 1);
+    e.execute("set(texts,'FontSize',14);").unwrap();
+    assert_same_array(&texts, &handles(&e, "texts"));
+    for i in 1..=texts.len() {
+        assert_eq!(scalar_prop(&mut e, &format!("texts({i})"), "FontSize"), 14.);
+    }
+    let fig = figure_number(&e, 1);
+    assert_eq!(fig.extras.font_size, Some(20.));
+    assert_eq!(fig.extras.title_style.font_size, Some(14.));
+    assert!(
+        fig.extras
+            .label_styles
+            .iter()
+            .all(|style| style.font_size == Some(14.))
+    );
+    assert_eq!(fig.extras.subtitle.font_size, Some(14.));
+    assert!(fig.extras.legend_style.font_size.is_none());
+    assert_eq!(fig.extras.texts[0].font_size, 14.);
+    assert!(fig.extras.texts[0].font_size_explicit);
+    near(scalar_prop(&mut e, "lg", "FontSize"), 18.);
+    near(scalar_prop(&mut e, "th", "FontSize"), 14.);
+    near(scalar_prop(&mut e, "tx", "FontSize"), 14.);
+    assert_eq!(fig.title, before_text.title);
+    assert_eq!(fig.extras.texts[0].string, "note");
+    assert_eq!(fig.series[0].line_width, Some(1.));
+    assert_eq!(fig.series[1].line_width, Some(1.5));
+    assert_identities(
+        &fig,
+        &figure_id,
+        &axes_id,
+        &title_id,
+        &xlabel_id,
+        &ylabel_id,
+        &zlabel_id,
+        &subtitle_id,
+        &text_id,
+        &legend_id,
+        &line_ids,
+    );
+    assert_parents(&mut e);
+    assert_anchor_handles(&e, &anchors);
+
+    let before_legend = figure_number(&e, 1);
+    e.execute("legends=findall(f,'type','legend');set(legends,'FontSize',13);")
+        .unwrap();
+    assert_eq!(handles(&e, "legends").len(), 1);
+    assert!(
+        handles(&e, "legends")
+            .scalar_handle()
+            .unwrap()
+            .same_object(handles(&e, "lg").scalar_handle().unwrap())
+    );
+    let fig = figure_number(&e, 1);
+    assert_eq!(fig.extras.legend_style.font_size, Some(13.));
+    near(scalar_prop(&mut e, "lg", "FontSize"), 13.);
+    assert_eq!(fig.extras.font_size, Some(20.));
+    assert_eq!(fig.extras.title_style.font_size, Some(14.));
+    assert_eq!(fig.extras.texts[0].font_size, 14.);
+    assert!(fig.extras.texts[0].font_size_explicit);
+    assert_eq!(fig.series[0].line_width, before_legend.series[0].line_width);
+    assert_eq!(e.figures().count(), 1);
+    assert_identities(
+        &fig,
+        &figure_id,
+        &axes_id,
+        &title_id,
+        &xlabel_id,
+        &ylabel_id,
+        &zlabel_id,
+        &subtitle_id,
+        &text_id,
+        &legend_id,
+        &line_ids,
+    );
+    assert_parents(&mut e);
+    assert_anchor_handles(&e, &anchors);
+    e.execute("one=isgraphics([f a th xh tx lg h1 h2]);live=isgraphics(texts);")
+        .unwrap();
+    assert!(e.logical_variables["one"].data().iter().all(|v| *v == 1));
+    assert!(e.logical_variables["live"].data().iter().all(|v| *v == 1));
+}
+
+fn assert_anchor_handles(e: &Engine, anchors: &[Vec<Arc<matrust::GraphicsHandle>>]) {
+    for (name, saved) in ["f", "a", "th", "xh", "tx", "lg", "h1", "h2"]
+        .into_iter()
+        .zip(anchors)
+    {
+        assert_same_array(saved, &handles(e, name));
+    }
+}
+
+fn assert_parents(e: &mut Engine) {
+    let axes = handles(e, "a").scalar_handle().unwrap().clone();
+    let figure = handles(e, "f").scalar_handle().unwrap().clone();
+    for expr in ["th", "xh", "tx"] {
+        e.execute(&format!("bulk_parent=get({expr},'Parent');"))
+            .unwrap();
+        assert!(
+            handles(e, "bulk_parent")
+                .scalar_handle()
+                .unwrap()
+                .same_object(&axes),
+            "{expr} was reparented"
+        );
+    }
+    e.execute("bulk_parent=get(a,'Parent');").unwrap();
+    assert!(
+        handles(e, "bulk_parent")
+            .scalar_handle()
+            .unwrap()
+            .same_object(&figure)
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn assert_identities(
+    fig: &matrust::plot::Figure,
+    figure_id: &matrust::ObjectIdentity,
+    axes_id: &matrust::ObjectIdentity,
+    title_id: &matrust::ObjectIdentity,
+    xlabel_id: &matrust::ObjectIdentity,
+    ylabel_id: &matrust::ObjectIdentity,
+    zlabel_id: &matrust::ObjectIdentity,
+    subtitle_id: &matrust::ObjectIdentity,
+    text_id: &matrust::ObjectIdentity,
+    legend_id: &matrust::ObjectIdentity,
+    line_ids: &[matrust::ObjectIdentity; 2],
+) {
+    assert!(fig.identity.same_object(figure_id));
+    assert!(fig.axes.identity.same_object(axes_id));
+    assert!(fig.extras.title_identity.same_object(title_id));
+    assert!(fig.extras.xlabel_identity.same_object(xlabel_id));
+    assert!(fig.extras.ylabel_identity.same_object(ylabel_id));
+    assert!(fig.extras.zlabel_identity.same_object(zlabel_id));
+    assert!(fig.extras.subtitle_identity.same_object(subtitle_id));
+    assert_eq!(fig.extras.texts.len(), 1);
+    assert!(fig.extras.texts[0].identity.same_object(text_id));
+    assert!(
+        fig.legend_state
+            .as_ref()
+            .unwrap()
+            .identity
+            .same_object(legend_id)
+    );
+    assert!(fig.series[0].identity.same_object(&line_ids[0]));
+    assert!(fig.series[1].identity.same_object(&line_ids[1]));
+}
+
+#[test]
+fn empty_legend_set_is_noop_and_bad_targets_do_not_publish() {
+    let mut e = Engine::default();
+    e.execute(
+        "f=figure(1);a=gca;set(a,'FontSize',11);set(a,'NextPlot','add');h1=plot(a,[1 2],[3 4],'LineWidth',1);h2=plot(a,[1 2],[5 6],'LineWidth',1.5);g=figure(2);h3=plot([0 1],[8 9],'LineWidth',0.5);empty=findall(g,'type','legend');",
+    )
+    .unwrap();
+    assert_eq!(handles(&e, "empty").len(), 0);
+    assert!(figure_number(&e, 2).legend_state.is_none());
+    assert!(figure_number(&e, 2).extras.texts.is_empty());
+    assert_eq!(figure_number(&e, 2).series.len(), 1);
+    let snap: Vec<_> = e.figures().map(|(id, f)| (id, f.clone())).collect();
+    let current = e.current_figure;
+    e.execute("set(findall(g,'type','legend'),'FontSize',12);")
+        .unwrap();
+    assert_eq!(e.current_figure, current);
+    assert_eq!(e.figures().count(), snap.len());
+    for (id, before) in &snap {
+        let after = figure_number(&e, *id);
+        assert!(before.same_snapshot(&after), "figure {id} changed");
+        assert!(before.identity.same_object(&after.identity));
+    }
+    assert!(figure_number(&e, 2).legend_state.is_none());
+    assert!(figure_number(&e, 2).extras.texts.is_empty());
+    assert_eq!(handles(&e, "empty").len(), 0);
+    assert_eq!(e.figures().count(), 2);
+
+    let before = figure_number(&e, 1);
+    assert!(e.execute("set([h1 h2],'NoSuchProperty',1);").is_err());
+    assert!(figure_number(&e, 1).same_snapshot(&before));
+    assert!(
+        e.execute("set([h1 h2],'LineWidth',4,'NoSuchProperty',1);")
+            .is_err()
+    );
+    assert_eq!(figure_number(&e, 1).series[0].line_width, Some(1.));
+    assert_eq!(figure_number(&e, 1).series[1].line_width, Some(1.5));
+    assert_eq!(figure_number(&e, 1).extras.font_size, Some(11.));
+
+    assert!(e.execute("set([a h1],'FontSize',12);").is_err());
+    assert_eq!(figure_number(&e, 1).extras.font_size, Some(11.));
+    assert_eq!(figure_number(&e, 1).series[0].line_width, Some(1.));
+    assert_eq!(scalar_prop(&mut e, "a", "FontSize"), 11.);
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+
+    let snap: Vec<_> = e.figures().map(|(id, f)| (id, f.clone())).collect();
+    let numeric = e.execute("set([1 2],'LineWidth',2);").unwrap_err();
+    assert!(numeric.contains("typed graphics handle"), "{numeric}");
+    for (id, before) in &snap {
+        assert!(figure_number(&e, *id).same_snapshot(before));
+    }
+    assert!(e.execute("set({h1,h2},'LineWidth',2);").is_err());
+    assert!(e.execute("set([h1 h2],'LineWidth',{2,3});").is_err());
+    assert_eq!(figure_number(&e, 1).series[0].line_width, Some(1.));
+    assert_eq!(figure_number(&e, 1).series[1].line_width, Some(1.5));
+
+    e.execute("delete(h2);").unwrap();
+    assert_eq!(figure_number(&e, 1).series.len(), 1);
+    assert!(e.execute("set(h2,'LineWidth',9);").is_err());
+    assert!(e.execute("set([h1 h2],'LineWidth',9);").is_err());
+    assert_eq!(figure_number(&e, 1).series.len(), 1);
+    assert_eq!(figure_number(&e, 1).series[0].line_width, Some(1.));
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+    assert_eq!(figure_number(&e, 1).extras.font_size, Some(11.));
+
+    e.execute("set(h1,'LineWidth',3);").unwrap();
+    assert_eq!(figure_number(&e, 1).series[0].line_width, Some(3.));
+    assert_eq!(scalar_prop(&mut e, "h1", "LineWidth"), 3.);
+    assert_eq!(figure_number(&e, 2).series[0].line_width, Some(0.5));
+    assert_eq!(figure_number(&e, 1).extras.font_size, Some(11.));
+}
+
+#[test]
+fn bulk_rejected_figure_defaults_leave_inheritance_unchanged() {
+    let mut e = Engine::default();
+    e.execute("f=figure(1); a=gca; set(f,'DefaultLineLineWidth',1);")
+        .unwrap();
+    assert_eq!(scalar_prop(&mut e, "f", "DefaultLineLineWidth"), 1.);
+    assert!(e.execute("set([f a],'DefaultLineLineWidth',7);").is_err());
+    assert_eq!(scalar_prop(&mut e, "f", "DefaultLineLineWidth"), 1.);
+    e.execute("h=plot(1:2);").unwrap();
+    assert_eq!(scalar_prop(&mut e, "h", "LineWidth"), 1.);
+}
+
+#[test]
+fn bulk_rejected_figure_visibility_preserves_membership_and_current_figure() {
+    let mut e = Engine::default();
+    e.execute("f=figure(1); a=gca; g=figure(2); z=figure(3); set(z,'Visible','off'); figure(f); before_all=findall(groot,'type','figure'); before_ordinary=findobj(groot,'type','figure');").unwrap();
+    let all = saved_handles(&e, "before_all");
+    let ordinary = saved_handles(&e, "before_ordinary");
+    let current = e.current_figure;
+    let first = figure_number(&e, 1);
+    let second = figure_number(&e, 2);
+    assert!(
+        e.execute("set([f a],'Visible','off','NumberTitle','off');")
+            .is_err()
+    );
+    assert_eq!(e.current_figure, current);
+    assert!(figure_number(&e, 1).same_snapshot(&first));
+    assert!(figure_number(&e, 2).same_snapshot(&second));
+    e.execute("still_on=strcmp(get(f,'Visible'),'on'); still_off=strcmp(get(z,'Visible'),'off'); visible=findall(groot,'type','figure'); ordinary=findobj(groot,'type','figure');").unwrap();
+    assert_eq!(e.logical_variables["still_on"].data(), &[1]);
+    assert_eq!(e.logical_variables["still_off"].data(), &[1]);
+    assert_same_array(&all, &handles(&e, "visible"));
+    assert_same_array(&ordinary, &handles(&e, "ordinary"));
+}
+
+#[test]
+fn bulk_rejected_surface_edit_preserves_side_record_and_other_figure() {
+    let mut e = Engine::default();
+    e.execute("f=figure(1); s=surf([1 2;3 4]); g=figure(2); tx=text(1,1,'note');")
+        .unwrap();
+    let first = figure_number(&e, 1);
+    let second = figure_number(&e, 2);
+    let current = e.current_figure;
+    assert_eq!(scalar_prop(&mut e, "s", "LineWidth"), 0.5);
+    assert!(e.execute("set([s tx],'LineWidth',4);").is_err());
+    assert_eq!(scalar_prop(&mut e, "s", "LineWidth"), 0.5);
+    assert_eq!(e.current_figure, current);
+    assert!(figure_number(&e, 1).same_snapshot(&first));
+    assert!(figure_number(&e, 2).same_snapshot(&second));
+    e.execute("set(s,'LineWidth',2);").unwrap();
+    assert_eq!(scalar_prop(&mut e, "s", "LineWidth"), 2.);
+    e.execute("figure(f); hold on; s2=surf([2 3;4 5]); set([s s2],'LineWidth',3);")
+        .unwrap();
+    assert_eq!(scalar_prop(&mut e, "s", "LineWidth"), 3.);
+    assert_eq!(scalar_prop(&mut e, "s2", "LineWidth"), 3.);
+}
+
+#[test]
+fn bulk_mixed_valid_targets_are_published_together() {
+    let mut e = Engine::default();
+    e.execute("f=figure(1); a=gca; h=plot(1:2,'LineWidth',0.5); tx=text(1,1,'note'); lg=legend('line'); set([a tx lg],'FontSize',14);").unwrap();
+    for name in ["a", "tx", "lg"] {
+        assert_eq!(scalar_prop(&mut e, name, "FontSize"), 14.);
+    }
+    assert_eq!(scalar_prop(&mut e, "h", "LineWidth"), 0.5);
+}
+
+fn current_axes_is(e: &mut Engine, name: &str) -> bool {
+    e.execute(&format!("probe_current_axes_tf=isequal(gca,{name});"))
+        .unwrap();
+    e.logical_variables["probe_current_axes_tf"].data() == [1]
+}
+
+#[test]
+fn movegui_on_current_axes_is_a_validated_no_op() {
+    let mut e = Engine::default();
+    e.execute("figure; plot([1 2],[3 4]); a=gca; lim=xlim(a);")
+        .unwrap();
+    let id = e.current_figure;
+    let before = figure_number(&e, id);
+    e.execute("movegui(gca); after=xlim(a);").unwrap();
+    assert_eq!(e.figure_ids().len(), 1, "movegui must not create a figure");
+    assert_eq!(e.current_figure, id);
+    assert!(figure_number(&e, id).same_snapshot(&before));
+    assert_eq!(e.figure.as_ref().unwrap().axes.series.len(), 1);
+    assert_eq!(
+        e.figure.as_ref().unwrap().axes.series[0]
+            .points
+            .get(1)
+            .unwrap(),
+        [2., 4.]
+    );
+    e.execute("same_lim=isequal(lim,after);").unwrap();
+    assert_eq!(e.logical_variables["same_lim"].data(), &[1]);
+}
+
+#[test]
+fn movegui_accepts_other_figure_handles_without_changing_selection() {
+    let mut e = Engine::default();
+    e.execute("f1=figure(1); plot([1 2],[3 4]); a1=gca; f2=figure(2); plot([5 6],[7 8]); a2=gca;")
+        .unwrap();
+    let first = figure_number(&e, 1);
+    let second = figure_number(&e, 2);
+    e.execute("movegui(a1); movegui(f1); movegui(f1,'center'); movegui(a1,'northeast'); movegui(f2,\"onscreen\"); movegui(f2,[10 -20]);")
+        .unwrap();
+    assert_eq!(e.current_figure, 2, "movegui must not select its target");
+    assert_eq!(e.figure_ids().len(), 2);
+    assert!(figure_number(&e, 1).same_snapshot(&first));
+    assert!(figure_number(&e, 2).same_snapshot(&second));
+    assert!(current_axes_is(&mut e, "a2"));
+}
+
+#[test]
+fn movegui_rejects_stale_invalid_and_unsupported_forms() {
+    let mut e = Engine::default();
+    e.execute(
+        "f1=figure(1); plot([1 2],[3 4]); a1=gca; f2=figure(2); plot(1:3); a2=gca; close(f1);",
+    )
+    .unwrap();
+    let second = figure_number(&e, 2);
+    for bad in [
+        "movegui(f1)",
+        "movegui(a1)",
+        "movegui(5)",
+        "movegui(2)",
+        "movegui('center')",
+        "movegui()",
+        "movegui",
+        "movegui(groot)",
+        "movegui(0)",
+        "movegui([f2 f2])",
+        "movegui(f2,'middle')",
+        "movegui(f2,[1 2 3])",
+        "movegui(f2,[NaN 1])",
+        "movegui(f2,{1})",
+        "movegui(f2,'center',1)",
+        "x=movegui(f2)",
+    ] {
+        let err = e.execute(&format!("{bad};")).unwrap_err();
+        assert!(
+            err.contains("movegui") || bad.starts_with("x="),
+            "{bad}: {err}"
+        );
+    }
+    assert_eq!(e.figure_ids(), vec![2]);
+    assert_eq!(e.current_figure, 2);
+    assert!(figure_number(&e, 2).same_snapshot(&second));
+    assert!(current_axes_is(&mut e, "a2"));
+    e.execute("hasx=exist('x','var')==1;").unwrap();
+    assert_eq!(e.logical_variables["hasx"].data(), &[0]);
 }

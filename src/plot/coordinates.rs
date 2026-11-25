@@ -609,7 +609,9 @@ impl GeometryCost {
             retained_bytes,
         };
         if general_faces > MAX_GENERAL_FACES {
-            return Err("Patch face budget exceeds 10,000 faces".into());
+            return Err(format!(
+                "Patch face budget exceeds {MAX_GENERAL_FACES} faces (a figure holds at most {MAX_GENERAL_FACES} patch faces)"
+            ));
         }
         if rectangles > MAX_RECTANGLES {
             return Err("Compact rectangle face budget exceeds 10,000 faces".into());
@@ -660,6 +662,16 @@ impl GeometryCost {
             0,
             vertices / width,
             vertices.checked_mul(16).ok_or("Point capacity overflow")?,
+        )
+    }
+    /// Account for shared indexed attributes and expanded Z/color streams.
+    pub(crate) fn with_additional_storage(self, bytes: usize) -> Result<Self> {
+        Self::from_counts(
+            self.source_units.saturating_add(bytes.div_ceil(16)),
+            self.vertices,
+            self.rectangles,
+            self.general_faces,
+            self.retained_bytes.saturating_add(bytes),
         )
     }
     /// Dense faces use the general bank; no compact provenance is inferred.
@@ -726,8 +738,8 @@ impl GeometryLedger {
             .series
             .checked_add(other.series)
             .ok_or("Series count overflow")?;
-        if series > super::MAX_SERIES {
-            return Err("Figure exceeds 64 series".into());
+        if series > super::MAX_PLOT_SERIES {
+            return Err("Figure exceeds series storage budget".into());
         }
         let add = |a: usize, b: usize| {
             a.checked_add(b)
@@ -751,8 +763,8 @@ impl GeometryLedger {
             .series
             .checked_add(1)
             .ok_or("Series count overflow")?;
-        if candidate.series > super::MAX_SERIES {
-            return Err("Figure exceeds 64 series".into());
+        if candidate.series > super::MAX_PLOT_SERIES {
+            return Err("Figure exceeds series storage budget".into());
         }
         let sum = |a: usize, b: usize| {
             a.checked_add(b)

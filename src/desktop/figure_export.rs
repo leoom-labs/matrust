@@ -46,6 +46,8 @@ impl Dialog {
     }
     pub fn new(id: u32, figure: &Figure, view: Option<[f64; 4]>, settings: Settings) -> Self {
         let mut figure = figure.clone();
+        // A 3-D axes has no x/y zoom view: keep its own limits.
+        let view = view.filter(|_| !matrust::plot::view3d::is_3d(figure.view));
         if let Some([a, b, c, d]) = view {
             figure.xlim = Some([a, b]);
             figure.ylim = Some([c, d]);

@@ -58,7 +58,7 @@ fn workspace_v73_save_formats_are_visible_in_wide_and_compact_toolstrips() {
         let mut app = legacy_sample_desktop(ctx.clone(), true);
         app.layout.toolstrip_collapsed = false;
         if size.x < 1100. {
-            click_label_at(&mut app, &ctx, size, "Home");
+            click_label_at(&mut app, &ctx, size, "Command");
         }
         click_label_at(&mut app, &ctx, size, "Save workspace");
         let output = frame_at(&mut app, &ctx, size, vec![]);
@@ -80,7 +80,7 @@ fn complex_workspace_v73_menu_saves_and_imports_in_wide_and_compact_views() {
         finish(&mut app);
         let before = app.variables.clone();
         app.layout.toolstrip_collapsed = false;
-        if size.x < 1100. { click_label_at(&mut app, &ctx, size, "Home"); }
+        if size.x < 1100. { click_label_at(&mut app, &ctx, size, "Command"); }
         {
             let choice = toolstrip::workspace_save_choice_for_test(Some("menu.mat".into()));
             click_label_at(&mut app, &ctx, size, "Save workspace");

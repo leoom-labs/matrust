@@ -169,7 +169,7 @@ fn best_validated(
     if stopped() {
         return Err("Cancelled".into());
     }
-    if axes.series.len() > super::MAX_SERIES
+    if axes.series.len() > super::MAX_PLOT_SERIES
         || !view.extent.iter().all(|v| v.is_finite() && *v > 0.)
         || !view.frame.valid()
         || view.frame.width() > 1e6

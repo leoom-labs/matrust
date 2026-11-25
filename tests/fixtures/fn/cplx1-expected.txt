@@ -1084,7 +1084,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1393,7 +1393,7 @@ x =
 
 x =
 
-   Empty matrix: 2-by-0
+  2×0 empty double matrix
 
 @@CLASS double [2 0]
 @@END

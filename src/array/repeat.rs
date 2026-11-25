@@ -125,12 +125,18 @@ impl Array {
         }
         let count = rows * cols;
         let out = match self {
-            Self::Character(_)
+            Self::Str(_)
+            | Self::Character(_)
             | Self::Cell(_)
             | Self::Graphics(_)
             | Self::Struct(_)
             | Self::Handle(_)
-            | Self::Typed(_) => {
+            | Self::Typed(_)
+            | Self::Categorical(_)
+            | Self::Datetime(_)
+            | Self::Duration(_)
+            | Self::Table(_)
+            | Self::Sparse(_) => {
                 return Err("Repetition of character, cell, struct, function handle or graphics handle arrays is not implemented".into());
             }
             Self::Numeric(a) => {

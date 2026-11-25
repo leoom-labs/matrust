@@ -10,11 +10,11 @@ const REFERENCE: &str = include_str!("fixtures/fn/arrays-expected.txt");
 const KNOWN: &[(&str, &str)] = &[
     (
         "114",
-        "table-only in the reference; MatRust says not supported yet",
+        "reference lacks ismissing for double; supported behavior is tested in string_class",
     ),
     (
         "115",
-        "table-only in the reference; MatRust says not supported yet",
+        "reference lacks ismissing for cell; supported behavior is tested in string_class",
     ),
     (
         "116",

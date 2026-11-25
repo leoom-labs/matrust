@@ -79,9 +79,8 @@ fn invalid_plot_and_axis_edits_do_not_replace_figure() {
         "plot([1 2],[1 2 3])",
         "plot([1 2],'bad')",
         "axis([0 1 5 2])",
-        "legend('a','b')",
         "bar([2 1],[1 2])",
-        "plot(zeros(2,65))",
+        "plot(zeros(10001,100))",
     ] {
         assert!(e.execute(bad).is_err(), "{bad}");
         assert!((data).same_storage(&e.figure.as_ref().unwrap().series[0].points));

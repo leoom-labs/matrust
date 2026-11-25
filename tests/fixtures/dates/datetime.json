@@ -1,0 +1,1017 @@
+{
+ "source": "tool/refs/dates/datetime_ref.py (Python datetime, numpy datetime64)",
+ "cases": [
+  {
+   "code": "char(datetime(2024, 2, 29, 12, 30, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2024-02-29 12:30:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 2, 29, 12, 30, 0))",
+   "num": 739311.5208333334,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 2, 29, 12, 30, 0))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 2, 29, 12, 30, 0), 'dayofyear')",
+   "num": 60,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 2, 29, 12, 30, 0))",
+   "num": 2460370.0208333335,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 2, 29, 12, 30, 0))",
+   "num": 1709209800.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 2, 29, 12, 30, 0))",
+   "num": 45351.520833333336,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 2, 29, 12, 30, 0), '1904')",
+   "num": 43889.520833333336,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 3, 1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2024-03-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 3, 1))",
+   "num": 739312.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 3, 1))",
+   "num": 6,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 3, 1), 'dayofyear')",
+   "num": 61,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 3, 1))",
+   "num": 2460370.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 3, 1))",
+   "num": 1709251200.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 3, 1))",
+   "num": 45352.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 3, 1), '1904')",
+   "num": 43890.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2000, 2, 29, 23, 59, 59.5, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2000-02-29 23:59:59.500000"
+  },
+  {
+   "code": "datenum(datetime(2000, 2, 29, 23, 59, 59.5))",
+   "num": 730545.999994213,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2000, 2, 29, 23, 59, 59.5))",
+   "num": 3,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2000, 2, 29, 23, 59, 59.5), 'dayofyear')",
+   "num": 60,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2000, 2, 29, 23, 59, 59.5))",
+   "num": 2451604.4999942128,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2000, 2, 29, 23, 59, 59.5))",
+   "num": 951868799.5,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2000, 2, 29, 23, 59, 59.5))",
+   "num": 36585.999994212965,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2000, 2, 29, 23, 59, 59.5), '1904')",
+   "num": 35123.999994212965,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1900, 2, 28, 6, 0, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1900-02-28 06:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1900, 2, 28, 6, 0, 0))",
+   "num": 694020.25,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1900, 2, 28, 6, 0, 0))",
+   "num": 4,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1900, 2, 28, 6, 0, 0), 'dayofyear')",
+   "num": 59,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1900, 2, 28, 6, 0, 0))",
+   "num": 2415078.75,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1900, 2, 28, 6, 0, 0))",
+   "num": -2203956000.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1900, 2, 28, 6, 0, 0))",
+   "num": 59.25,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1900, 3, 1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1900-03-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1900, 3, 1))",
+   "num": 694021.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1900, 3, 1))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1900, 3, 1), 'dayofyear')",
+   "num": 60,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1900, 3, 1))",
+   "num": 2415079.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1900, 3, 1))",
+   "num": -2203891200.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1900, 3, 1))",
+   "num": 61.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1, 1, 1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "0001-01-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1, 1, 1))",
+   "num": 367.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1, 1, 1))",
+   "num": 2,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1, 1, 1), 'dayofyear')",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1, 1, 1))",
+   "num": 1721425.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "char(datetime(1, 1, 1, 0, 0, 1e-06, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "0001-01-01 00:00:00.000001"
+  },
+  {
+   "code": "datenum(datetime(1, 1, 1, 0, 0, 1e-06))",
+   "num": 367.0000000000116,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1, 1, 1, 0, 0, 1e-06))",
+   "num": 2,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1, 1, 1, 0, 0, 1e-06), 'dayofyear')",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1, 1, 1, 0, 0, 1e-06))",
+   "num": 1721425.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "char(datetime(9999, 12, 31, 23, 59, 59.999999, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "9999-12-31 23:59:59.999999"
+  },
+  {
+   "code": "datenum(datetime(9999, 12, 31, 23, 59, 59.999999))",
+   "num": 3652426.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(9999, 12, 31, 23, 59, 59.999999))",
+   "num": 6,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(9999, 12, 31, 23, 59, 59.999999), 'dayofyear')",
+   "num": 365,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(9999, 12, 31, 23, 59, 59.999999))",
+   "num": 5373484.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "exceltime(datetime(9999, 12, 31, 23, 59, 59.999999), '1904')",
+   "num": 2957004.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1969, 12, 31, 23, 59, 59.25, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1969-12-31 23:59:59.250000"
+  },
+  {
+   "code": "datenum(datetime(1969, 12, 31, 23, 59, 59.25))",
+   "num": 719528.9999913195,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1969, 12, 31, 23, 59, 59.25))",
+   "num": 4,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1969, 12, 31, 23, 59, 59.25), 'dayofyear')",
+   "num": 365,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1969, 12, 31, 23, 59, 59.25))",
+   "num": 2440587.4999913196,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1969, 12, 31, 23, 59, 59.25))",
+   "num": -0.75,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1969, 12, 31, 23, 59, 59.25))",
+   "num": 25568.999991319444,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(1969, 12, 31, 23, 59, 59.25), '1904')",
+   "num": 24106.999991319444,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1950, 6, 15, 8, 45, 30.125, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1950-06-15 08:45:30.125000"
+  },
+  {
+   "code": "datenum(datetime(1950, 6, 15, 8, 45, 30.125))",
+   "num": 712389.3649320023,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1950, 6, 15, 8, 45, 30.125))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1950, 6, 15, 8, 45, 30.125), 'dayofyear')",
+   "num": 166,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1950, 6, 15, 8, 45, 30.125))",
+   "num": 2433447.8649320025,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1950, 6, 15, 8, 45, 30.125))",
+   "num": -616864469.875,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1950, 6, 15, 8, 45, 30.125))",
+   "num": 18429.364932002314,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(1950, 6, 15, 8, 45, 30.125), '1904')",
+   "num": 16967.364932002314,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1970, 1, 1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1970-01-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1970, 1, 1))",
+   "num": 719529.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1970, 1, 1))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1970, 1, 1), 'dayofyear')",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1970, 1, 1))",
+   "num": 2440587.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1970, 1, 1))",
+   "num": 0.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1970, 1, 1))",
+   "num": 25569.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(1970, 1, 1), '1904')",
+   "num": 24107.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2100, 12, 31, 12, 0, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2100-12-31 12:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2100, 12, 31, 12, 0, 0))",
+   "num": 767375.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2100, 12, 31, 12, 0, 0))",
+   "num": 6,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2100, 12, 31, 12, 0, 0), 'dayofyear')",
+   "num": 365,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2100, 12, 31, 12, 0, 0))",
+   "num": 2488434.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2100, 12, 31, 12, 0, 0))",
+   "num": 4133937600.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2100, 12, 31, 12, 0, 0))",
+   "num": 73415.5,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2100, 12, 31, 12, 0, 0), '1904')",
+   "num": 71953.5,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1600, 2, 29, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "1600-02-29 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1600, 2, 29))",
+   "num": 584448.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1600, 2, 29))",
+   "num": 3,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1600, 2, 29), 'dayofyear')",
+   "num": 60,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1600, 2, 29))",
+   "num": 2305506.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "char(datetime(2023, 1, 31, 0, 0, 2592005, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2023-03-02 00:00:05.000000"
+  },
+  {
+   "code": "datenum(datetime(2023, 1, 31, 0, 0, 2592005))",
+   "num": 738947.0000578704,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2023, 1, 31, 0, 0, 2592005))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2023, 1, 31, 0, 0, 2592005), 'dayofyear')",
+   "num": 61,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2023, 1, 31, 0, 0, 2592005))",
+   "num": 2460005.5000578705,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2023, 1, 31, 0, 0, 2592005))",
+   "num": 1677715205.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2023, 1, 31, 0, 0, 2592005))",
+   "num": 44987.00005787037,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2023, 1, 31, 0, 0, 2592005), '1904')",
+   "num": 43525.00005787037,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 1, 1, 0, 0, -1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2023-12-31 23:59:59.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 1, 1, 0, 0, -1))",
+   "num": 739251.9999884259,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 1, 1, 0, 0, -1))",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 1, 1, 0, 0, -1), 'dayofyear')",
+   "num": 365,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 1, 1, 0, 0, -1))",
+   "num": 2460310.499988426,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 1, 1, 0, 0, -1))",
+   "num": 1704067199.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 1, 0, 0, -1))",
+   "num": 45291.99998842592,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 1, 0, 0, -1), '1904')",
+   "num": 43829.99998842592,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 1, 1, 48, 0, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2024-01-03 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 1, 1, 48, 0, 0))",
+   "num": 739254.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 1, 1, 48, 0, 0))",
+   "num": 4,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 1, 1, 48, 0, 0), 'dayofyear')",
+   "num": 3,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 1, 1, 48, 0, 0))",
+   "num": 2460312.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 1, 1, 48, 0, 0))",
+   "num": 1704240000.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 1, 48, 0, 0))",
+   "num": 45294.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 1, 48, 0, 0), '1904')",
+   "num": 43832.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2023, 14, 1, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2024-02-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2023, 14, 1))",
+   "num": 739283.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2023, 14, 1))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2023, 14, 1), 'dayofyear')",
+   "num": 32,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2023, 14, 1))",
+   "num": 2460341.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2023, 14, 1))",
+   "num": 1706745600.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2023, 14, 1))",
+   "num": 45323.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2023, 14, 1), '1904')",
+   "num": 43861.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 1, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2023-12-31 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 1, 0))",
+   "num": 739251.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 1, 0))",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 1, 0), 'dayofyear')",
+   "num": 365,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 1, 0))",
+   "num": 2460309.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 1, 0))",
+   "num": 1703980800.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 0))",
+   "num": 45291.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 1, 0), '1904')",
+   "num": 43829.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 3, 0, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2024-02-29 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(2024, 3, 0))",
+   "num": 739311.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(2024, 3, 0))",
+   "num": 5,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(2024, 3, 0), 'dayofyear')",
+   "num": 60,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(2024, 3, 0))",
+   "num": 2460369.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(2024, 3, 0))",
+   "num": 1709164800.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(2024, 3, 0))",
+   "num": 45351.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(2024, 3, 0), '1904')",
+   "num": 43889.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(1999, 12, 31, 23, 59, 60, 'Format', 'yyyy-MM-dd HH:mm:ss.SSSSSS'))",
+   "text": "2000-01-01 00:00:00.000000"
+  },
+  {
+   "code": "datenum(datetime(1999, 12, 31, 23, 59, 60))",
+   "num": 730486.0,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "weekday(datetime(1999, 12, 31, 23, 59, 60))",
+   "num": 7,
+   "tol": 0
+  },
+  {
+   "code": "day(datetime(1999, 12, 31, 23, 59, 60), 'dayofyear')",
+   "num": 1,
+   "tol": 0
+  },
+  {
+   "code": "juliandate(datetime(1999, 12, 31, 23, 59, 60))",
+   "num": 2451544.5,
+   "tol": 1.1574074074074074e-09
+  },
+  {
+   "code": "posixtime(datetime(1999, 12, 31, 23, 59, 60))",
+   "num": 946684800.0,
+   "tol": 1e-06
+  },
+  {
+   "code": "exceltime(datetime(1999, 12, 31, 23, 59, 60))",
+   "num": 36526.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "exceltime(datetime(1999, 12, 31, 23, 59, 60), '1904')",
+   "num": 35064.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyy-MM-dd')",
+   "text": "2024-03-05"
+  },
+  {
+   "code": "char(datetime('2024-03-05', 'InputFormat', 'yyyy-MM-dd'), 'yyyy-MM-dd')",
+   "text": "2024-03-05"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yy/M/d')",
+   "text": "24/3/5"
+  },
+  {
+   "code": "char(datetime('24/3/5', 'InputFormat', 'yy/M/d'), 'yy/M/d')",
+   "text": "24/3/5"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'uuuu MMM dd')",
+   "text": "2024 Mar 05"
+  },
+  {
+   "code": "char(datetime('2024 Mar 05', 'InputFormat', 'uuuu MMM dd'), 'uuuu MMM dd')",
+   "text": "2024 Mar 05"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'MMMM d, yyyy')",
+   "text": "March 5, 2024"
+  },
+  {
+   "code": "char(datetime('March 5, 2024', 'InputFormat', 'MMMM d, yyyy'), 'MMMM d, yyyy')",
+   "text": "March 5, 2024"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'DDD yyyy')",
+   "text": "065 2024"
+  },
+  {
+   "code": "char(datetime('065 2024', 'InputFormat', 'DDD yyyy'), 'DDD yyyy')",
+   "text": "065 2024"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'eee dd-MMM-yyyy')",
+   "text": "Tue 05-Mar-2024"
+  },
+  {
+   "code": "char(datetime('Tue 05-Mar-2024', 'InputFormat', 'eee dd-MMM-yyyy'), 'eee dd-MMM-yyyy')",
+   "text": "Tue 05-Mar-2024"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'eeee, dd MMMM yyyy')",
+   "text": "Tuesday, 05 March 2024"
+  },
+  {
+   "code": "char(datetime('Tuesday, 05 March 2024', 'InputFormat', 'eeee, dd MMMM yyyy'), 'eeee, dd MMMM yyyy')",
+   "text": "Tuesday, 05 March 2024"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'HH:mm:ss')",
+   "text": "14:07:09"
+  },
+  {
+   "code": "char(datetime('14:07:09', 'InputFormat', 'HH:mm:ss'), 'HH:mm:ss')",
+   "text": "14:07:09"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'hh:mm a')",
+   "text": "02:07 PM"
+  },
+  {
+   "code": "char(datetime('02:07 PM', 'InputFormat', 'hh:mm a'), 'hh:mm a')",
+   "text": "02:07 PM"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyy-MM-dd HH:mm:ss.S')",
+   "text": "2024-03-05 14:07:09.1"
+  },
+  {
+   "code": "char(datetime('2024-03-05 14:07:09.1', 'InputFormat', 'yyyy-MM-dd HH:mm:ss.S'), 'yyyy-MM-dd HH:mm:ss.S')",
+   "text": "2024-03-05 14:07:09.1"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyy-MM-dd HH:mm:ss.SSS')",
+   "text": "2024-03-05 14:07:09.123"
+  },
+  {
+   "code": "char(datetime('2024-03-05 14:07:09.123', 'InputFormat', 'yyyy-MM-dd HH:mm:ss.SSS'), 'yyyy-MM-dd HH:mm:ss.SSS')",
+   "text": "2024-03-05 14:07:09.123"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 14:07:09.123456"
+  },
+  {
+   "code": "char(datetime('2024-03-05 14:07:09.123456', 'InputFormat', 'yyyy-MM-dd HH:mm:ss.SSSSSS'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 14:07:09.123456"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyy-MM-dd''T''HH:mm:ss')",
+   "text": "2024-03-05T14:07:09"
+  },
+  {
+   "code": "char(datetime('2024-03-05T14:07:09', 'InputFormat', 'yyyy-MM-dd''T''HH:mm:ss'), 'yyyy-MM-dd''T''HH:mm:ss')",
+   "text": "2024-03-05T14:07:09"
+  },
+  {
+   "code": "char(datetime(2024, 3, 5, 14, 7, 9.123456), 'yyyyMMddHHmmss')",
+   "text": "20240305140709"
+  },
+  {
+   "code": "char(datetime('20240305140709', 'InputFormat', 'yyyyMMddHHmmss'), 'yyyyMMddHHmmss')",
+   "text": "20240305140709"
+  },
+  {
+   "code": "char(datetime('2024-03-05'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime('2024-03-05 14:07:09'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 14:07:09.000000"
+  },
+  {
+   "code": "char(datetime('2024-03-05T14:07:09.123456'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 14:07:09.123456"
+  },
+  {
+   "code": "char(datetime('05-Mar-2024'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime('05-Mar-2024 14:07:09'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 14:07:09.000000"
+  },
+  {
+   "code": "char(datetime('03/05/2024'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-03-05 00:00:00.000000"
+  },
+  {
+   "code": "milliseconds(datetime('2024-03-01 00:00:00') - datetime('2024-02-01 00:00:00'))",
+   "num": 2505600000.0,
+   "tol": 4.76837158203125e-07
+  },
+  {
+   "code": "char(datetime('2024-03-01 00:00:00'), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')",
+   "text": "2024-03-01 00:00:00.000000000"
+  },
+  {
+   "code": "milliseconds(datetime('1969-12-31 23:59:59.123456789') - datetime('1970-01-01 00:00:00.000000001'))",
+   "num": -876.543212,
+   "tol": 1.1368683772161603e-13
+  },
+  {
+   "code": "char(datetime('1969-12-31 23:59:59.123456789'), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')",
+   "text": "1969-12-31 23:59:59.123456789"
+  },
+  {
+   "code": "milliseconds(datetime('2000-02-29 12:00:00.5') - datetime('1900-02-28 00:00:00'))",
+   "num": 3155803200499.9995,
+   "tol": 0.00048828125
+  },
+  {
+   "code": "char(datetime('2000-02-29 12:00:00.5'), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')",
+   "text": "2000-02-29 12:00:00.500000000"
+  },
+  {
+   "code": "milliseconds(datetime('2261-12-31 23:59:59.999999999') - datetime('1970-01-01 00:00:00'))",
+   "num": 9214646400000.0,
+   "tol": 0.001953125
+  },
+  {
+   "code": "char(datetime('2261-12-31 23:59:59.999999999'), 'yyyy-MM-dd HH:mm:ss.SSSSSSSSS')",
+   "text": "2261-12-31 23:59:59.999999999"
+  },
+  {
+   "code": "char(datetime(0.0, 'ConvertFrom', 'posixtime'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1970-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(1.5, 'ConvertFrom', 'posixtime'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1970-01-01 00:00:01.500000"
+  },
+  {
+   "code": "char(datetime(31557600.0, 'ConvertFrom', 'posixtime'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1971-01-01 06:00:00.000000"
+  },
+  {
+   "code": "char(datetime(-1.25, 'ConvertFrom', 'posixtime'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1969-12-31 23:59:58.750000"
+  },
+  {
+   "code": "char(datetime(1700000000.123456, 'ConvertFrom', 'posixtime'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2023-11-14 22:13:20.123456"
+  },
+  {
+   "code": "char(datetime(367.0, 'ConvertFrom', 'datenum'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "0001-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(719529.0, 'ConvertFrom', 'datenum'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1970-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(738000.25, 'ConvertFrom', 'datenum'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2020-07-28 06:00:00.000000"
+  },
+  {
+   "code": "char(datetime(693962.5, 'ConvertFrom', 'datenum'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1900-01-01 12:00:00.000000"
+  },
+  {
+   "code": "char(datetime(3652425.0, 'ConvertFrom', 'datenum'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "9999-12-31 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(1.0, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1900-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(59.0, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1900-02-28 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(61.0, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1900-03-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(45292.5, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-01-01 12:00:00.000000"
+  },
+  {
+   "code": "char(datetime(2958465.0, 'ConvertFrom', 'excel'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "9999-12-31 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(0.0, 'ConvertFrom', 'excel1904'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1904-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(43830.75, 'ConvertFrom', 'excel1904'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-01-01 18:00:00.000000"
+  },
+  {
+   "code": "char(datetime(20240229, 'ConvertFrom', 'yyyymmdd'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2024-02-29 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(19000301, 'ConvertFrom', 'yyyymmdd'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1900-03-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(10101, 'ConvertFrom', 'yyyymmdd'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "0001-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(2451545.0, 'ConvertFrom', 'juliandate'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2000-01-01 12:00:00.000000"
+  },
+  {
+   "code": "char(datetime(2440587.5, 'ConvertFrom', 'juliandate'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1970-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(1721425.5, 'ConvertFrom', 'juliandate'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "0001-01-01 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(2299160.5, 'ConvertFrom', 'juliandate'), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "1582-10-15 00:00:00.000000"
+  },
+  {
+   "code": "char(datetime(2024, 2, 29) + years(1), 'yyyy-MM-dd HH:mm:ss.SSSSSS')",
+   "text": "2025-02-28 05:49:12.000000"
+  },
+  {
+   "code": "seconds(duration(1, 30, 0))",
+   "num": 5400.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "seconds(duration(0, 0, 59.5))",
+   "num": 59.5,
+   "tol": 1e-09
+  },
+  {
+   "code": "seconds(duration(123, 4, 5))",
+   "num": 443045.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "seconds(duration(-1, -30, 0))",
+   "num": -5400.0,
+   "tol": 1e-09
+  },
+  {
+   "code": "seconds(duration(25, 0, 0.125))",
+   "num": 90000.125,
+   "tol": 1e-09
+  }
+ ]
+}

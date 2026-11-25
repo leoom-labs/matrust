@@ -472,8 +472,9 @@ impl Engine {
                 shifts[dim - 1] = reduce(amount.data()[0], dim - 1);
             }
         } else if amount.len() == 1 {
-            // Reference behavior: a scalar shift without dim always shifts dimension 1
-            shifts[0] = reduce(amount.data()[0], 0);
+            // A scalar shift uses the first non-singleton dimension.
+            let dim = usize::from(rows == 1 && cols != 1);
+            shifts[dim] = reduce(amount.data()[0], dim);
         } else if amount.is_empty() {
             return Err("circshift: the shift must be a nonempty scalar or vector".into());
         } else if amount.rows() != 1 && amount.cols() != 1 {
@@ -543,11 +544,11 @@ impl Engine {
         args: &[Value],
         count: usize,
     ) -> Result<Vec<Value>> {
-        if args.is_empty() || args.len() > 3 {
+        if args.is_empty() || (name == "meshgrid" && args.len() > 3) || args.len() > 32 {
             return Err(format!("{name} expects 1 or 2 input arguments"));
         }
-        if args.len() == 3 || count > 2 {
-            return Err(format!("{name}: the 3-D form is not supported yet"));
+        if args.len() >= 3 || count > 2 {
+            return super::nd_shape::grid(self, name, args, count);
         }
         if name == "meshgrid" && super::cplx_poly::complex_input(args) {
             return self.cxp_meshgrid(args, count);

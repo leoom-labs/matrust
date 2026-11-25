@@ -5,12 +5,9 @@ use matrust::Engine;
 const REFERENCE: &str = include_str!("fixtures/fn/cells-expected.txt");
 const SOURCES: &str = include_str!("fixtures/fn/cells-cases.txt");
 const ND: &str = "no N-D arrays";
-const WARNING_STATE: &str =
-    "warning state save/restore is not implemented; separate warning API work";
 const EMPTY_DISPLAY: &str =
     "cell display alignment of empty numeric slots; separate display follow-up";
 const KNOWN: &[(usize, &str)] = &[
-    (26, WARNING_STATE),
     (59, ND),
     (63, ND),
     (64, ND),
@@ -28,9 +25,6 @@ const KNOWN: &[(usize, &str)] = &[
     (257, ND),
     (270, ND),
     (290, ND),
-    (369, WARNING_STATE),
-    (370, WARNING_STATE),
-    (400, WARNING_STATE),
 ];
 const LOCATION: &str = "Remove MatRust diagnostic location prefix; error message remains exact";
 const LINKS: &str = "Remove MATLAB evalc struct help hyperlinks, retaining their text";

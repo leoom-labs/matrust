@@ -85,7 +85,7 @@ fn empty_model_guidance_disables_run_then_constant_runs_and_undo_restores_guidan
     assert!(app.toolkits.model.validate().is_err()); // Engine policy is unchanged.
     let (send, receive) = std::sync::mpsc::sync_channel(1);
     let original = std::mem::replace(&mut app.worker.send, send);
-    click_label(&mut app, &ctx, "\u{25b6} Run model");
+    click_label(&mut app, &ctx, "Run model");
     assert!(matches!(receive.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
     assert!(!app.busy && !app.variables.contains_key("sim_t"));
     app.worker.send = original;
@@ -111,7 +111,7 @@ fn empty_model_guidance_disables_run_then_constant_runs_and_undo_restores_guidan
     click_label(&mut app, &ctx, &source_label);
     assert_eq!(app.toolkits.model.nodes[1].inputs, vec![0]);
     assert!(app.toolkits.model.validate().is_ok());
-    click_label(&mut app, &ctx, "\u{25b6} Run model");
+    click_label(&mut app, &ctx, "Run model");
     finish(&mut app);
     assert_eq!(app.variables["sim_t"].len(), 1000);
     let signal = app.variables["sim_1"].as_numeric().expect("numeric Scope output");

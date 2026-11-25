@@ -9,7 +9,9 @@
 //! and Circuits (1985), trapezoidal/BDF composition (ode23tb). The trapezoidal
 //! rule underlies ode23t. Adaptive meshes and statistics are implementation choices.
 #![allow(clippy::needless_range_loop)]
-use super::num::{Lu, R, eps_of, matvec, mmax, mmin, norm_inf, norm2, numjac, odezero, sign};
+use super::num::{
+    Located, Lu, R, eps_of, matvec, mmax, mmin, norm_inf, norm2, numjac, odezero, sign,
+};
 
 /// f(t, y) through the model, as the implicit solvers call it.
 type FCall<'a> = dyn FnMut(&mut dyn Model, f64, &[f64]) -> R<Vec<f64>> + 'a;
@@ -23,6 +25,13 @@ pub trait Model {
     fn mass(&mut self, t: f64, y: &[f64]) -> R<Vec<f64>>;
     /// Event values, terminal flags and directions.
     fn events(&mut self, t: f64, y: &[f64]) -> R<(Vec<f64>, Vec<f64>, Vec<f64>)>;
+    /// OutputFcn step callback; returns true to stop integration.
+    fn has_output(&self) -> bool {
+        false
+    }
+    fn output(&mut self, _t: &[f64], _y: &[Vec<f64>]) -> R<bool> {
+        Ok(false)
+    }
     fn check_cancel(&self) -> R<()>;
 }
 
@@ -62,6 +71,7 @@ pub struct Opts {
     pub mass_singular: String,
     pub initial_slope: Option<Vec<f64>>,
     pub events: bool,
+    pub non_negative: Vec<usize>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -97,9 +107,7 @@ pub struct Out {
     pub data: Vec<StepData>,
     pub data_dropped: bool,
     data_elements: usize,
-    pub te: Vec<f64>,
-    pub ye: Vec<Vec<f64>>,
-    pub ie: Vec<usize>,
+    pub events: Located,
     /// nsteps, nfailed, nfevals, npds, ndecomps, nsolves.
     pub stats: [usize; 6],
     /// Time and smallest step when the tolerances could not be met.
@@ -130,9 +138,7 @@ impl Out {
             data: Vec::new(),
             data_dropped: false,
             data_elements: 0,
-            te: Vec::new(),
-            ye: Vec::new(),
-            ie: Vec::new(),
+            events: Located::default(),
             stats: [0; 6],
             failure: None,
             warnings: Vec::new(),
@@ -152,6 +158,7 @@ impl Out {
     #[allow(clippy::too_many_arguments)]
     fn step_output(
         &mut self,
+        m: &mut dyn Model,
         at: OutAt,
         tspan: &[f64],
         next: &mut usize,
@@ -162,12 +169,39 @@ impl Out {
         stop: bool,
         data: Option<StepData>,
         ntrp: &mut dyn FnMut(f64) -> Vec<f64>,
-    ) -> R<()> {
+    ) -> R<bool> {
+        let start = self.t.len();
         match at {
             OutAt::Sol => {
                 self.push(tnew, ynew.to_vec())?;
                 if let Some(d) = data {
                     self.push_data(d, 16 * 1024 * 1024);
+                }
+                if m.has_output() && tspan.len() > 2 {
+                    let mut out_t = Vec::new();
+                    let mut out_y = Vec::new();
+                    while *next < tspan.len() {
+                        let tout = tspan[*next];
+                        if tdir * (tnew - tout) < 0. {
+                            break;
+                        }
+                        out_t.push(tout);
+                        out_y.push(if tout == tnew {
+                            ynew.to_vec()
+                        } else {
+                            ntrp(tout)
+                        });
+                        *next += 1;
+                    }
+                    if stop && out_t.last() != Some(&tnew) {
+                        out_t.push(tnew);
+                        out_y.push(ynew.to_vec());
+                    }
+                    return if out_t.is_empty() {
+                        Ok(false)
+                    } else {
+                        m.output(&out_t, &out_y)
+                    };
                 }
             }
             OutAt::Steps => self.push(tnew, ynew.to_vec())?,
@@ -175,6 +209,9 @@ impl Out {
                 for i in 1..refine {
                     let s = i as f64 / refine as f64;
                     let tref = t + (tnew - t) * s;
+                    if stop && (tref == tnew || self.t.last() == Some(&tref)) {
+                        continue;
+                    }
                     let yref = ntrp(tref);
                     self.push(tref, yref)?;
                 }
@@ -184,9 +221,6 @@ impl Out {
                 while *next < tspan.len() {
                     let tout = tspan[*next];
                     if tdir * (tnew - tout) < 0. {
-                        if stop {
-                            self.push(tnew, ynew.to_vec())?;
-                        }
                         break;
                     }
                     if tout == tnew {
@@ -197,16 +231,17 @@ impl Out {
                     }
                     *next += 1;
                 }
+                if stop && self.t.last() != Some(&tnew) {
+                    self.push(tnew, ynew.to_vec())?;
+                }
             }
         }
-        Ok(())
+        if self.t.len() > start {
+            m.output(&self.t[start..], &self.y[start..])
+        } else {
+            Ok(false)
+        }
     }
-    fn add_events(&mut self, found: &super::num::Located) {
-        self.te.extend_from_slice(&found.t);
-        self.ye.extend(found.y.iter().cloned());
-        self.ie.extend_from_slice(&found.i);
-    }
-
     fn push_data(&mut self, data: StepData, limit: usize) {
         if self.data_dropped {
             return;
@@ -247,6 +282,33 @@ fn wnorm(o: &Opts, v: &[f64], invwt: &[f64]) -> f64 {
         norm2(v) * invwt[0]
     } else {
         norm_inf((0..v.len()).map(|i| v[i] * invwt[i]))
+    }
+}
+
+fn clamp_non_negative(y: &mut [f64], non_negative: &[usize]) {
+    for &i in non_negative {
+        if y[i] < 0. {
+            y[i] = 0.;
+        }
+    }
+}
+
+fn non_negative_error(o: &Opts, ynew: &[f64], invwt: &[f64]) -> f64 {
+    if o.non_negative.is_empty() {
+        return 0.;
+    }
+    let mut violated = false;
+    let mut nn = vec![0.; ynew.len()];
+    for &i in &o.non_negative {
+        if ynew[i] < 0. {
+            nn[i] = -ynew[i];
+            violated = true;
+        }
+    }
+    if violated {
+        wnorm(o, &nn, invwt) / o.rtol
+    } else {
+        0.
     }
 }
 
@@ -640,7 +702,12 @@ pub fn ode113(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             .map(|(a, b)| 1. / a.max(b))
             .collect();
         let error = if ynew.iter().all(|v| v.is_finite()) {
-            wnorm(o, &correction, &inv_weight) / o.rtol
+            let e = wnorm(o, &correction, &inv_weight) / o.rtol;
+            if e <= 1. {
+                e.max(non_negative_error(o, &ynew, &inv_weight))
+            } else {
+                e
+            }
         } else {
             f64::INFINITY
         };
@@ -685,6 +752,7 @@ pub fn ode113(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
                 }
             }
         }
+        clamp_non_negative(&mut ynew, &o.non_negative);
         let fnew = rhs(m, tnew, &ynew)?;
         out.stats[2] += 1;
         adams113_update_into(fnew, &phi, &psi, h, degree, &mut next_phi);
@@ -695,32 +763,36 @@ pub fn ode113(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         out.stats[0] += 1;
         let mut endpoint = tnew;
         let mut stop = false;
+        let mut pending_events = None;
         if o.events {
-            let mut interpolate = |time| ntrp113(time, tnew, &ynew, order, &trial, &next_psi);
+            let mut interpolate = |time| {
+                let mut v = ntrp113(time, tnew, &ynew, order, &trial, &next_psi);
+                clamp_non_negative(&mut v, &o.non_negative);
+                v
+            };
             let (found, right) = odezero(
                 &mut interpolate,
                 &mut |time, state| m.events(time, state),
-                t0,
+                None,
                 &values,
                 t,
                 tnew,
                 &ynew,
             )?;
-            if (out.te.len() + found.t.len()).saturating_mul(n.saturating_add(2)) > MAX_VALUES {
-                return Err(format!(
-                    "Event output exceeds the {MAX_VALUES}-element limit."
-                ));
-            }
             stop = found.stop;
             if stop {
                 endpoint = *found.t.last().unwrap();
                 ynew = found.y.last().unwrap().clone();
                 rebase113(endpoint - tnew, order, &mut trial, &mut next_psi);
             }
-            out.add_events(&found);
+            pending_events = Some(found);
             values = right;
         }
-        let mut interpolate = |time| ntrp113(time, endpoint, &ynew, order, &trial, &next_psi);
+        let mut interpolate = |time| {
+            let mut v = ntrp113(time, endpoint, &ynew, order, &trial, &next_psi);
+            clamp_non_negative(&mut v, &o.non_negative);
+            v
+        };
         let data = if s.at == OutAt::Sol && !out.data_dropped {
             let mut saved = trial.clone();
             saved.resize_with(15, || vec![0.; n]);
@@ -732,7 +804,8 @@ pub fn ode113(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         } else {
             None
         };
-        out.step_output(
+        let stop_out = out.step_output(
+            m,
             s.at,
             s.tspan,
             &mut next_output,
@@ -744,7 +817,13 @@ pub fn ode113(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             data,
             &mut interpolate,
         )?;
-        if stop {
+        if let Some(mut found) = pending_events {
+            if stop_out && let Some(&t_last) = out.t.last() {
+                found.retain_through(t_last, direction);
+            }
+            out.events.append(found, ynew.len())?;
+        }
+        if stop || stop_out {
             break;
         }
         t = tnew;
@@ -855,6 +934,7 @@ mod ode113_cleanroom {
             mass_singular: "no".into(),
             initial_slope: None,
             events: false,
+            non_negative: Vec::new(),
         }
     }
     fn problem(kind: usize) -> Problem {
@@ -1085,7 +1165,7 @@ mod ode113_cleanroom {
             p.event = Some((direction * 0.5, false));
             let cut = integrate(&mut p, &[0., direction], &[0.], &o, OutAt::Sol).unwrap();
             assert!((cut.t.last().unwrap() - direction * 0.5).abs() < 1e-12);
-            assert_eq!(cut.ie, [1]);
+            assert_eq!(cut.events.i, [1]);
             for x in [direction * 0.25, direction * 0.49] {
                 let eval = |out: &Out| {
                     let b = out.t.partition_point(|t| direction * (*t - x) < 0.).max(1);
@@ -1105,9 +1185,8 @@ mod ode113_cleanroom {
                 direction,
             ];
             let requested = integrate(&mut p, &times, &[0.], &o, OutAt::Requested).unwrap();
-            assert_eq!(requested.t, [times[0], times[1], times[2], times[2]]);
-            assert_eq!(requested.y.len(), 4);
-            assert_eq!(requested.y[2], requested.y[3]);
+            assert_eq!(requested.t, [times[0], times[1], times[2]]);
+            assert_eq!(requested.y.len(), 3);
         }
     }
 
@@ -1832,7 +1911,12 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             correction.fill(0.);
         }
         let estimate = if converged {
-            error[order] * wnorm(o, &correction, &inverse) / o.rtol
+            let e = error[order] * wnorm(o, &correction, &inverse) / o.rtol;
+            if e <= 1. {
+                e.max(non_negative_error(o, &trial, &inverse))
+            } else {
+                e
+            }
         } else {
             f64::INFINITY
         };
@@ -1856,6 +1940,12 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         }
         out.stats[0] += 1;
         equal_steps += 1;
+        for &i in &o.non_negative {
+            if trial[i] < 0. {
+                correction[i] -= trial[i];
+                trial[i] = 0.;
+            }
+        }
         for (i, &d) in correction.iter().enumerate() {
             dif[order + 2][i] = d - dif[order + 1][i];
             dif[order + 1][i] = d;
@@ -1868,12 +1958,17 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         let mut finish_t = tnew;
         let mut finish_y = trial.clone();
         let mut stop = false;
-        let mut interpolate = |time| ntrp15s(time, tnew, &trial, h, &dif, order);
+        let mut interpolate = |time| {
+            let mut v = ntrp15s(time, tnew, &trial, h, &dif, order);
+            clamp_non_negative(&mut v, &o.non_negative);
+            v
+        };
+        let mut pending_events = None;
         if let Some(values) = event_values.as_ref() {
             let (found, right) = odezero(
                 &mut interpolate,
                 &mut |time, state| m.events(time, state),
-                t0,
+                None,
                 values,
                 t,
                 tnew,
@@ -1884,7 +1979,7 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
                 finish_t = *found.t.last().unwrap();
                 finish_y = found.y.last().unwrap().clone();
             }
-            out.add_events(&found);
+            pending_events = Some(found);
             event_values = Some(right);
         }
         let data = if s.at == OutAt::Sol {
@@ -1902,7 +1997,8 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         } else {
             None
         };
-        out.step_output(
+        let stop_out = out.step_output(
+            m,
             s.at,
             s.tspan,
             &mut next_output,
@@ -1914,10 +2010,16 @@ pub fn ode15s(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             data,
             &mut interpolate,
         )?;
+        if let Some(mut found) = pending_events {
+            if stop_out && let Some(&t_last) = out.t.last() {
+                found.retain_through(t_last, direction);
+            }
+            out.events.append(found, trial.len())?;
+        }
         t = finish_t;
         y = finish_y;
         fresh_step = true;
-        if stop || t == end {
+        if stop || stop_out || t == end {
             break;
         }
         // Only compare orders once the history has enough equal steps. This
@@ -2035,6 +2137,7 @@ mod ndf_tests {
             mass_singular: "maybe".into(),
             initial_slope: None,
             events: false,
+            non_negative: Vec::new(),
         }
     }
     fn run(p: &mut Problem, times: &[f64], y: &[f64], o: &Opts, at: OutAt) -> Out {
@@ -2595,15 +2698,14 @@ mod ndf_tests {
             let mut o = options(1, 1e-3);
             o.events = true;
             let first = run(&mut p, &[0., 1.], &[1.], &o, OutAt::Sol);
-            assert_eq!(first.te.len(), 1);
-            let te = first.te[0];
-            let ye = first.ye[0][0];
+            assert_eq!(first.events.t.len(), 1);
+            let te = first.events.t[0];
+            let ye = first.events.y[0][0];
             assert!(ye >= p.event_shift && ye - p.event_shift < 1e-12);
             assert_eq!(*first.t.last().unwrap(), te);
             let restarted = run(&mut p, &[te, 1.], &[ye], &o, OutAt::Sol);
             assert_eq!(*restarted.t.last().unwrap(), 1.);
-            assert_eq!(restarted.te.len(), usize::from(ye == p.event_shift));
-            assert!(restarted.te.iter().all(|&t| t == te));
+            assert!(restarted.events.t.is_empty());
         }
     }
 }
@@ -2653,11 +2755,12 @@ fn stiff23_finish(
     let mut finish_t = tnew;
     let mut finish_y = ynew.to_vec();
     let mut stop = false;
+    let mut pending_events = None;
     if let Some(values) = event_values.as_ref() {
         let (found, right) = odezero(
             interpolate,
             &mut |time, state| m.events(time, state),
-            s.tspan[0],
+            None,
             values,
             t,
             tnew,
@@ -2668,7 +2771,7 @@ fn stiff23_finish(
             finish_t = *found.t.last().unwrap();
             finish_y = found.y.last().unwrap().clone();
         }
-        out.add_events(&found);
+        pending_events = Some(found);
         *event_values = Some(right);
     }
     let saved = if s.at == OutAt::Sol {
@@ -2676,7 +2779,8 @@ fn stiff23_finish(
     } else {
         None
     };
-    out.step_output(
+    let stop_out = out.step_output(
+        m,
         s.at,
         s.tspan,
         next,
@@ -2688,7 +2792,13 @@ fn stiff23_finish(
         saved,
         interpolate,
     )?;
-    Ok((finish_t, finish_y, stop))
+    if let Some(mut found) = pending_events {
+        if stop_out && let Some(&t_last) = out.t.last() {
+            found.retain_through(t_last, direction);
+        }
+        out.events.append(found, ynew.len())?;
+    }
+    Ok((finish_t, finish_y, stop || stop_out))
 }
 
 /// d = 1/(2 + sqrt(2)) of the modified Rosenbrock (2,3) pair.
@@ -3447,7 +3557,7 @@ pub fn ode23tb(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
                 stage = Some((z1, ynew));
             }
         }
-        let Some((z1, ynew)) = stage else {
+        let Some((mut z1, mut ynew)) = stage else {
             if !jcurrent && !jac.constant {
                 dfdy = jac.refresh(m, &mut plain_f, t, &y, &mut out.stats)?;
                 jcurrent = true;
@@ -3468,7 +3578,10 @@ pub fn ode23tb(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         let (lu, rows) = factor.as_ref().unwrap();
         let estimate = stiff23_filter(&mass, lu, rows.as_ref(), &dfdy, d * h, &raw, &mut out.stats);
         let inverse = stiff23_inverse_weights(o, &y, &ynew);
-        let err = wnorm(o, &estimate, &inverse) / o.rtol;
+        let mut err = wnorm(o, &estimate, &inverse) / o.rtol;
+        if err <= 1. {
+            err = err.max(non_negative_error(o, &ynew, &inverse));
+        }
         if !err.is_finite() || err > 1. {
             out.stats[1] += 1;
             let shrink = if err.is_finite() {
@@ -3482,7 +3595,16 @@ pub fn ode23tb(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             continue;
         }
         out.stats[0] += 1;
-        let mut interpolate = |time| ntrp23tb(time, t, &y, tnew, &ynew, t2, &y2);
+        if !o.non_negative.is_empty() && o.non_negative.iter().any(|&i| ynew[i] < 0.) {
+            clamp_non_negative(&mut ynew, &o.non_negative);
+            z1 = scale(h, &m.f(tnew, &ynew)?);
+            out.stats[2] += 1;
+        }
+        let mut interpolate = |time| {
+            let mut v = ntrp23tb(time, t, &y, tnew, &ynew, t2, &y2);
+            clamp_non_negative(&mut v, &o.non_negative);
+            v
+        };
         let (finish_t, finish_y, stop) = stiff23_finish(
             m,
             &mut out,
@@ -3676,7 +3798,7 @@ pub fn ode23t(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
         }
         let inverse = stiff23_inverse_weights(o, &y, &predicted);
         let (lu, rows) = factor.as_ref().unwrap();
-        let (znew, ynew, converged) = newton_z(
+        let (mut znew, mut ynew, converged) = newton_z(
             m,
             o,
             &mass,
@@ -3722,7 +3844,10 @@ pub fn ode23t(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             &mut out.stats,
         );
         let inverse = stiff23_inverse_weights(o, &y, &ynew);
-        let err = wnorm(o, &estimate, &inverse) / o.rtol;
+        let mut err = wnorm(o, &estimate, &inverse) / o.rtol;
+        if err <= 1. {
+            err = err.max(non_negative_error(o, &ynew, &inverse));
+        }
         if !err.is_finite() || err > 1. {
             out.stats[1] += 1;
             let shrink = if err.is_finite() {
@@ -3736,7 +3861,16 @@ pub fn ode23t(m: &mut dyn Model, s: Setup, o: &Opts) -> R<Out> {
             continue;
         }
         out.stats[0] += 1;
-        let mut interpolate = |time| ntrp23t(time, t, &y, h, &ynew, &z0, &znew);
+        if !o.non_negative.is_empty() && o.non_negative.iter().any(|&i| ynew[i] < 0.) {
+            clamp_non_negative(&mut ynew, &o.non_negative);
+            znew = scale(h, &m.f(tnew, &ynew)?);
+            out.stats[2] += 1;
+        }
+        let mut interpolate = |time| {
+            let mut v = ntrp23t(time, t, &y, h, &ynew, &z0, &znew);
+            clamp_non_negative(&mut v, &o.non_negative);
+            v
+        };
         let (finish_t, finish_y, stop) = stiff23_finish(
             m,
             &mut out,
@@ -3859,6 +3993,7 @@ mod stiff23_tests {
             mass_singular: "maybe".into(),
             initial_slope: None,
             events: false,
+            non_negative: Vec::new(),
         }
     }
 

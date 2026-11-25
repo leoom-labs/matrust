@@ -166,11 +166,17 @@ impl Array {
             Self::Typed(a) => permutation(rows, keys, columns, direction, missing, cancel, |i| {
                 typed_key(a, i)
             })?,
-            Self::Character(_)
+            Self::Str(_)
+            | Self::Character(_)
             | Self::Cell(_)
             | Self::Graphics(_)
             | Self::Struct(_)
-            | Self::Handle(_) => {
+            | Self::Handle(_)
+            | Self::Categorical(_)
+            | Self::Datetime(_)
+            | Self::Duration(_)
+            | Self::Table(_)
+            | Self::Sparse(_) => {
                 return Err("Row sorting of character, cell, struct, function handle or graphics handle arrays is not implemented".into());
             }
             Self::Complex(_) => return Err("Complex row sorting is not implemented".into()),
@@ -196,11 +202,17 @@ impl Array {
                     cancel,
                 )?
                 .into(),
-            Self::Character(_)
+            Self::Str(_)
+            | Self::Character(_)
             | Self::Cell(_)
             | Self::Graphics(_)
             | Self::Struct(_)
-            | Self::Handle(_) => {
+            | Self::Handle(_)
+            | Self::Categorical(_)
+            | Self::Datetime(_)
+            | Self::Duration(_)
+            | Self::Table(_)
+            | Self::Sparse(_) => {
                 return Err("Row sorting of character, cell, struct, function handle or graphics handle arrays is not implemented".into());
             }
             Self::Complex(_) => return Err("Complex row sorting is not implemented".into()),
@@ -242,12 +254,20 @@ mod tests {
     #[test]
     fn repeated_key_work_is_rejected_before_permutation_allocation() {
         let cancel = AtomicBool::new(false);
+        // The fixed 512 Mi work budget binds before the 48 Mi element cap.
+        // One key column of 16 Mi rows fits; a repeated key does not.
+        const ROWS_16MI: usize = 16 * 1024 * 1024;
         assert!(
-            validate(MAX_ELEMENTS, 1, Some(&[1, 1]), &cancel)
+            validate(ROWS_16MI, 1, Some(&[1, 1]), &cancel)
                 .unwrap_err()
                 .contains("work budget")
         );
-        assert_eq!(validate(MAX_ELEMENTS, 1, None, &cancel).unwrap(), 1);
+        assert_eq!(validate(ROWS_16MI, 1, None, &cancel).unwrap(), 1);
+        assert!(
+            validate(MAX_ELEMENTS, 1, None, &cancel)
+                .unwrap_err()
+                .contains("work budget")
+        );
         assert_eq!(
             validate(0, MAX_ELEMENTS, None, &cancel).unwrap(),
             MAX_ELEMENTS

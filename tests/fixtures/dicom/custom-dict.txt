@@ -1,0 +1,14 @@
+# Original test dictionary; replacement, not augmentation.
+# tag VR keyword VM
+(0011,1001) US PrivateCount 1
+(0011,1002) LO PrivateLabel 1
+(60xx,0010) US CustomOverlayRows 1
+(0028,0002) US SamplesPerPixel 1
+(0028,0004) CS PhotometricInterpretation 1
+(0028,0010) US Rows 1
+(0028,0011) US Columns 1
+(0028,0100) US BitsAllocated 1
+(0028,0101) US BitsStored 1
+(0028,0102) US HighBit 1
+(0028,0103) US PixelRepresentation 1
+(7FE0,0010) OB/OW PixelData 1

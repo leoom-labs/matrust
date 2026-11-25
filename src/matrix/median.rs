@@ -38,22 +38,16 @@ fn progress(phase: Phase, cancel: &AtomicBool) -> Result<()> {
     check(cancel)
 }
 
-#[derive(Clone, Copy)]
-struct Lane<'a> {
-    data: &'a [f64],
-    start: usize,
-    stride: usize,
+struct Lane<F> {
+    at: F,
     len: usize,
 }
-impl Lane<'_> {
-    fn get(self, index: usize) -> f64 {
-        self.data[self.start + index * self.stride]
-    }
-    fn visit(self, cancel: &AtomicBool, mut f: impl FnMut(f64)) -> Result<()> {
+impl<F: Fn(usize) -> f64> Lane<F> {
+    fn visit(&self, cancel: &AtomicBool, mut f: impl FnMut(f64)) -> Result<()> {
         for first in (0..self.len).step_by(CHUNK) {
             check(cancel)?;
             for i in first..(first + CHUNK).min(self.len) {
-                f(self.get(i));
+                f((self.at)(i));
             }
         }
         check(cancel)
@@ -87,7 +81,11 @@ fn bucket(histogram: &[usize; 256], rank: &mut usize) -> Result<u64> {
     Err("Median internal rank invariant failed".into())
 }
 
-fn radix_median(lane: Lane<'_>, omit_nan: bool, cancel: &AtomicBool) -> Result<f64> {
+fn radix_median(
+    lane: Lane<impl Fn(usize) -> f64>,
+    omit_nan: bool,
+    cancel: &AtomicBool,
+) -> Result<f64> {
     let (mut count, mut invalid) = (0usize, false);
     let (mut lowest, mut highest) = (u64::MAX, 0);
     lane.visit(cancel, |x| {
@@ -142,11 +140,18 @@ fn radix_median(lane: Lane<'_>, omit_nan: bool, cancel: &AtomicBool) -> Result<f
 }
 
 #[derive(Default)]
-struct Scratch {
+pub(crate) struct MedianScratch {
     values: Vec<f64>,
 }
-impl Scratch {
-    fn reduce(&mut self, lane: Lane<'_>, omit_nan: bool, cancel: &AtomicBool) -> Result<f64> {
+impl MedianScratch {
+    pub(crate) fn reduce(
+        &mut self,
+        at: impl Fn(usize) -> f64,
+        len: usize,
+        omit_nan: bool,
+        cancel: &AtomicBool,
+    ) -> Result<f64> {
+        let lane = Lane { at, len };
         check(cancel)?;
         if lane.len > CHUNK {
             return radix_median(lane, omit_nan, cancel);
@@ -238,17 +243,13 @@ impl Matrix {
         };
         let lanes_per_task = output_len.div_ceil(workers).max(1);
         let calculate = |(task, out): (usize, &mut [f64])| -> Result<()> {
-            let mut scratch = Scratch::default();
+            let mut scratch = MedianScratch::default();
             for (offset, item) in out.iter_mut().enumerate() {
                 let index = task * lanes_per_task + offset;
                 let start = if stride == 1 { index * length } else { index };
                 *item = scratch.reduce(
-                    Lane {
-                        data: self.data(),
-                        start,
-                        stride,
-                        len: length,
-                    },
+                    |i| self.data()[start + i * stride],
+                    length,
                     omit_nan,
                     cancel,
                 )?;

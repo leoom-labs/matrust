@@ -13,6 +13,26 @@ use std::{
 const MAX_FIGURE_BYTES: usize = 17_000_000;
 const MAX_GENERATION_BYTES: u64 = 256 * 1024 * 1024;
 
+/// Mirrors the leaves `workspace_graph::plan` accepts; anything else would fail the
+/// whole checkpoint (layout, scripts and figures included), so it is left out instead.
+/// Exhaustive on purpose: a new `Array` kind must decide here.
+fn blocks_recovery(value: &crate::Array) -> bool {
+    use crate::Array as A;
+    match value {
+        A::Numeric(_) | A::Logical(_) | A::Complex(_) | A::Character(_) | A::Typed(_) => false,
+        A::Graphics(_) => false,
+        A::Cell(c) => (0..c.len()).any(|i| c.get_linear(i).is_ok_and(|v| blocks_recovery(v))),
+        A::Struct(_)
+        | A::Str(_)
+        | A::Handle(_)
+        | A::Table(_)
+        | A::Categorical(_)
+        | A::Datetime(_)
+        | A::Duration(_)
+        | A::Sparse(_) => true,
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct FigureView {
     pub bounds: [f64; 4],
@@ -378,7 +398,7 @@ impl SessionStore {
         let context = figures
             .as_ref()
             .zip(staged_figures.as_ref().map(|p| &p.manifest));
-        // Struct values cannot be recovered yet; they must not block the checkpoint.
+        // Structs and strings cannot be recovered yet; neither may block the checkpoint.
         // Their names travel in the manifest so restoring can say what was left out.
         let pending = session
             .workspace
@@ -386,7 +406,7 @@ impl SessionStore {
             .map(|mut values| {
                 let mut skipped = Vec::new();
                 values.retain(|name, value| {
-                    let keep = !value.contains_struct();
+                    let keep = !blocks_recovery(value);
                     if !keep {
                         skipped.push(name.clone());
                     }

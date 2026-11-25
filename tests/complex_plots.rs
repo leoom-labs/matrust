@@ -183,7 +183,7 @@ fn invalid_complex_calls_leave_figure_and_workspace_unchanged() {
         "bar(Z);",
         "stairs(Z);",
         "stem(Z);",
-        "plot(complex(zeros(2,65)));",
+        "plot(complex(zeros(10001,100)));",
         "plot(complex(zeros(1000001,1)));",
         "line(Z);",
     ] {

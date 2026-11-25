@@ -1,9 +1,11 @@
 //! MATLAB reduction forms: sum/mean(A[,dim]), [M,I] = min/max(A[,[],dim]),
 //! min/max(A,B), any/all(A[,dim]) and [r,c,v] = find(A[,n[,'first'|'last']]).
 //! Like unique and ismember, `mask[i]` says whether output i is requested.
+use super::logical_values::broadcast_error;
 use super::{Engine, Value};
 use crate::{
     Array, ComplexMatrix, LogicalMatrix, Matrix, Result,
+    broadcast2::Broadcast2,
     logical::ArrayRef,
     matrix::{
         Extreme, MAX_ELEMENTS, find_nonzero, find_nonzero_complex, find_shape, truth_along,
@@ -74,7 +76,7 @@ impl Engine {
             Value::Matrix(m) if m.len() == 1 => m.data()[0],
             _ => {
                 return Err(format!(
-                    "{name} dimension must be a positive integer scalar; 'all', type and NaN flags are not implemented"
+                    "{name} dimension must be a positive integer scalar"
                 ));
             }
         };
@@ -87,7 +89,7 @@ impl Engine {
     }
     /// `outputs` is the number of assignment targets (1 for an expression).
     pub(super) fn reduction_call(
-        &self,
+        &mut self,
         name: &str,
         args: &[Value],
         outputs: usize,
@@ -100,9 +102,7 @@ impl Engine {
                     [a] => (a, None),
                     [a, d] => (a, Some(self.reduction_dimension(name, d)?)),
                     _ => {
-                        return Err(format!(
-                            "Use {name}(A) or {name}(A,dim); 'all', type and NaN flags are not implemented"
-                        ));
+                        return Err(format!("Invalid arguments for {name}"));
                     }
                 };
                 let input = self.reduction_input(name, input)?;
@@ -129,7 +129,7 @@ impl Engine {
         Ok(values)
     }
     fn extreme_call(
-        &self,
+        &mut self,
         name: &str,
         args: &[Value],
         outputs: usize,
@@ -162,9 +162,7 @@ impl Engine {
                 Some(self.reduction_dimension(name, d)?)
             }
             _ => {
-                return Err(format!(
-                    "Use {name}(A), {name}(A,[],dim) or {name}(A,B); 'all' and NaN flags are not implemented"
-                ));
+                return Err(format!("Invalid arguments for {name}"));
             }
         };
         Ok(match self.reduction_input(name, &args[0])? {
@@ -198,26 +196,43 @@ impl Engine {
             Value::Matrix(m)
         })
     }
-    fn extreme_pair(&self, name: &str, kind: Extreme, a: Input, b: Input) -> Result<Value> {
+    fn extreme_pair(&mut self, name: &str, kind: Extreme, a: Input, b: Input) -> Result<Value> {
         if matches!(a, Input::Complex(_)) || matches!(b, Input::Complex(_)) {
             let complex = |input: Input| match input {
                 Input::Complex(m) => Ok(m),
                 real => ComplexMatrix::from_real(&self.real_input(name, real)?, &self.cancel),
             };
             let (a, b) = (complex(a)?, complex(b)?);
-            if a.len() != 1 && b.len() != 1 && (a.rows(), a.cols()) != (b.rows(), b.cols()) {
-                return Err("Matrix dimensions must agree.".into());
-            }
+            let shape = Broadcast2::new((a.rows(), a.cols()), (b.rows(), b.cols()))
+                .map_err(|message| broadcast_error(self, message))?;
+            let n = ComplexMatrix::checked_len(shape.rows, shape.cols)?;
+            self.preflight_elements(n * 2)?;
             return self.narrowed(a.extreme_pair(&b, kind, &self.cancel)?);
         }
-        let logical = matches!((&a, &b), (Input::Logical(_), Input::Logical(_)));
+        if let (Input::Logical(a), Input::Logical(b)) = (&a, &b) {
+            let shape = Broadcast2::new((a.rows(), a.cols()), (b.rows(), b.cols()))
+                .map_err(|message| broadcast_error(self, message))?;
+            self.preflight_elements(shape.len())?;
+            let op = match kind {
+                Extreme::Min => crate::logical::BooleanOp::And,
+                Extreme::Max => crate::logical::BooleanOp::Or,
+            };
+            return Ok(Value::Logical(a.combine(b, op, &self.cancel)?));
+        }
         let (a, b) = (self.real_input(name, a)?, self.real_input(name, b)?);
+        let shape = Broadcast2::new((a.rows(), a.cols()), (b.rows(), b.cols()))
+            .map_err(|message| broadcast_error(self, message))?;
+        self.preflight_elements(shape.len())?;
         // Ties (0 and -0) keep the first operand; NaN loses unless both are NaN.
         let pair = match kind {
-            Extreme::Min => a.zip(&b, |x, y| if y < x || x.is_nan() { y } else { x }),
-            Extreme::Max => a.zip(&b, |x, y| if y > x || x.is_nan() { y } else { x }),
+            Extreme::Min => shape.zip_real(&a, &b, &self.cancel, |x, y| {
+                if y < x || x.is_nan() { y } else { x }
+            }),
+            Extreme::Max => shape.zip_real(&a, &b, &self.cancel, |x, y| {
+                if y > x || x.is_nan() { y } else { x }
+            }),
         }?;
-        self.as_class(pair, logical)
+        Ok(Value::Matrix(pair))
     }
     fn find_call(&self, args: &[Value], outputs: usize, mask: [bool; 3]) -> Result<Vec<Value>> {
         let (limit, last) = match args {

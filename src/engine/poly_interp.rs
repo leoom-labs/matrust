@@ -1,9 +1,12 @@
 //! Polynomials, convolution, interpolation, scalar optimisation and a few
 //! array utilities (reference semantics). Private methods use the `polyopt_` prefix.
 mod array_ops;
+pub(super) use array_ops::{auto_edges, bin_picker};
 mod interp;
 mod optim;
 mod poly;
+mod smoothing;
+pub(super) use smoothing::{CubicPp, smoothing_data, smoothing_spline};
 
 use super::{Engine, Execution, Value};
 use crate::{Complex64, ComplexMatrix, Matrix, Result};
@@ -18,11 +21,16 @@ const NAMES: &[&str] = &[
     "conv2",
     "interp1",
     "interp2",
+    "makima",
     "spline",
     "pchip",
+    "csaps",
+    "fnval",
     "fzero",
     "fminsearch",
     "fminbnd",
+    "optimplotx",
+    "optimplotfval",
     "fft2",
     "ifft2",
     "fftshift",
@@ -105,8 +113,9 @@ pub(super) fn text_of(value: &Value) -> Option<&str> {
 
 fn max_outputs(name: &str) -> usize {
     match name {
-        "deconv" | "histc" | "histcounts" | "mode" | "polyder" => 2,
-        "fzero" | "fminsearch" | "fminbnd" => 3,
+        "deconv" | "histc" | "histcounts" | "mode" | "polyder" | "csaps" => 2,
+        "fzero" | "fminsearch" | "fminbnd" => 4,
+        "optimplotx" | "optimplotfval" => 1,
         _ => 1,
     }
 }
@@ -156,7 +165,13 @@ impl Engine {
         if count > max_outputs(name) {
             return Err(format!("{name} does not support {count} outputs"));
         }
-        let values = self.function_arguments(args, None, out)?;
+        let values = super::string_class::arguments(self, name, args, out)?;
+        if name == "mode" && super::nd_reduce::needs_dispatch(name, &values) {
+            let (value, frequency) = super::nd_reduce::reduce(self, name, &values, count > 1)?;
+            let outputs: Vec<_> = std::iter::once(value).chain(frequency).collect();
+            self.charge_function_outputs(&outputs)?;
+            return Ok(Some(outputs));
+        }
         let values = self.polyopt_text_arguments(&values)?;
         if super::cplx_poly::routes(name, &values) {
             let outputs = self.cxp_call(name, &values, count, out)?;
@@ -189,9 +204,13 @@ impl Engine {
             "polyint" => one(self.polyopt_polyint(args)),
             "conv2" => one(self.polyopt_conv2(args)),
             "interp1" => one(self.polyopt_interp1(args)),
+            "makima" => one(self.polyopt_makima(args)),
             "interp2" => one(self.polyopt_interp2(args)),
             "spline" | "pchip" => one(self.polyopt_spline(name, args)),
+            "csaps" => self.polyopt_csaps(args, nout),
+            "fnval" => one(self.polyopt_fnval(args, out)),
             "fzero" | "fminsearch" | "fminbnd" => self.polyopt_optimize(name, args, nout, out),
+            "optimplotx" | "optimplotfval" => self.polyopt_optimplot(name, args, nout, out),
             "fft2" | "ifft2" => one(self.polyopt_fft2(name, args)),
             "fftshift" | "ifftshift" => one(self.polyopt_shift(name, args)),
             "mode" => self.polyopt_mode(args, nout),

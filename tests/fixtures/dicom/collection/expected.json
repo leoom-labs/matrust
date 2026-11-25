@@ -1,0 +1,61 @@
+{
+  "skipped": 1,
+  "rows": [
+    {
+      "StudyDateTime": "2024-01-15 09:30:00",
+      "SeriesDateTime": "2024-01-15 09:31:00",
+      "PatientName": "DOE^JANE",
+      "PatientSex": "F",
+      "Modality": "CT",
+      "StudyDescription": "Head CT",
+      "SeriesDescription": "Axial 5mm",
+      "StudyInstanceUID": "1.2.826.0.1.3680043.10.100.1",
+      "SeriesInstanceUID": "1.2.826.0.1.3680043.10.200.1",
+      "Rows": 4,
+      "Columns": 4,
+      "Channels": 1,
+      "Frames": 3,
+      "Filenames": [
+        "study1_series1_b.dcm",
+        "study1_series1_a.dcm",
+        "study1_series1_c.dcm"
+      ]
+    },
+    {
+      "StudyDateTime": "2024-01-15 09:30:00",
+      "SeriesDateTime": "2024-01-15 09:45:12.5",
+      "PatientName": "DOE^JANE",
+      "PatientSex": "F",
+      "Modality": "MR",
+      "StudyDescription": "Head CT",
+      "SeriesDescription": "Multiframe 3D",
+      "StudyInstanceUID": "1.2.826.0.1.3680043.10.100.1",
+      "SeriesInstanceUID": "1.2.826.0.1.3680043.10.200.2",
+      "Rows": 4,
+      "Columns": 4,
+      "Channels": 1,
+      "Frames": 3,
+      "Filenames": [
+        "sub/study1_series2_multi.dcm"
+      ]
+    },
+    {
+      "StudyDateTime": null,
+      "SeriesDateTime": null,
+      "PatientName": "SMITH^BOB",
+      "PatientSex": "M",
+      "Modality": "US",
+      "StudyDescription": "Abdomen",
+      "SeriesDescription": "Color Doppler",
+      "StudyInstanceUID": "1.2.826.0.1.3680043.10.100.2",
+      "SeriesInstanceUID": "1.2.826.0.1.3680043.10.200.3",
+      "Rows": 4,
+      "Columns": 6,
+      "Channels": 3,
+      "Frames": 1,
+      "Filenames": [
+        "sub/study2_series3_rgb.dcm"
+      ]
+    }
+  ]
+}

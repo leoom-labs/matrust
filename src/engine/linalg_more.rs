@@ -690,7 +690,7 @@ impl Engine {
     }
     /// LAPACK dlacn2 (Hager/Higham) estimate of norm(inv(A),1) from solves
     /// with A (`false`) and A' (`true`), as dgecon and dtrcon use it.
-    fn lax_inverse_norm1(
+    pub(super) fn lax_inverse_norm1(
         &self,
         n: usize,
         solve: impl Fn(&DMatrix<f64>, bool) -> Option<DMatrix<f64>>,
@@ -2649,7 +2649,7 @@ impl Engine {
     }
 
     /// Match cxl_condition_warning's NaN policy without changing linsolve.
-    fn real_condition_warning(
+    pub(super) fn real_condition_warning(
         &mut self,
         norm: f64,
         inverse_norm: Option<f64>,

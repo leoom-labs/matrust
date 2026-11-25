@@ -10,8 +10,9 @@ const MAX_IIR_INITIAL_ORDER: usize = 256;
 // Candidate only: release measurements must establish whether this is appropriate.
 const PARALLEL_WORK: usize = 1_000_000;
 
-/// Odd reflection with max(1, 3*order) samples, matching the reference
-/// default. Row vectors retain orientation; other 2-D inputs use columns.
+/// Odd reflection with 3*order samples (0 for an order-0 gain), matching
+/// 3*(max(length(b), length(a))-1). Row vectors retain orientation; other
+/// 2-D inputs use columns.
 /// Empty input retains its shape, a deliberate MatRust extension. Coefficients
 /// must remain nonempty even for empty input. No SOS/options/complex support.
 pub fn filtfilt(b: &[f64], a: &[f64], x: &Matrix, cancel: &AtomicBool) -> Result<Matrix> {
@@ -29,7 +30,7 @@ pub fn filtfilt(b: &[f64], a: &[f64], x: &Matrix, cancel: &AtomicBool) -> Result
     } else {
         (x.rows(), x.cols())
     };
-    let padding = (3 * order).max(1);
+    let padding = 3 * order;
     if samples <= padding {
         return Err(format!(
             "filtfilt requires more than {padding} samples per channel"

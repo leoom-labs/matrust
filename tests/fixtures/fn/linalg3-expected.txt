@@ -696,7 +696,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -712,7 +712,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1092,7 +1092,7 @@ ERR Error with ARPACK routine dneupd:
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1246,7 +1246,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1337,7 +1337,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -1663,7 +1663,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END
@@ -2055,7 +2055,7 @@ x =
 
 x =
 
-   Empty matrix: 0-by-1
+  0×1 empty double matrix
 
 @@CLASS double [0 1]
 @@END

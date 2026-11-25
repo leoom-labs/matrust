@@ -234,12 +234,11 @@ fn median_script_options_rejections_and_precancel_are_atomic() {
         "median(A,NaN)",
         "median(A,Inf)",
         "median(A,[])",
-        "median(A,[1 2])",
+        "median(A,[1 1])",
         "median(A,'native')",
-        "median(A,'omitnan',2)",
+        "median(A,'omitnan',2,1)",
         "median(A,'Weights',[1 1])",
         "median(A,'omitnan','omitnan')",
-        "median(A>0)",
     ] {
         assert!(
             e.execute(&format!("M={expression};")).is_err(),
@@ -247,6 +246,10 @@ fn median_script_options_rejections_and_precancel_are_atomic() {
         );
         expect(e.variables["M"].clone(), (1, 1), &[99.]);
     }
+    // MathWorks: logical input is supported and median returns class(A).
+    e.execute("t=double(islogical(median([true false true])));")
+        .unwrap();
+    expect(e.variables["t"].clone(), (1, 1), &[1.]);
     assert!(e.execute("[X,Y]=median(A);").is_err());
     let m = input(1, 3, &[3., 1., 2.]);
     let cancel = AtomicBool::new(true);

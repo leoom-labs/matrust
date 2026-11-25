@@ -73,7 +73,7 @@ fn min_max(x: &[f64]) -> Option<(f64, f64)> {
 }
 /// histcounts 'auto': one bin per integer for integer data
 /// spanning at most 50, otherwise Scott's rule placed by `bin_picker`.
-fn auto_edges(x: &[f64]) -> Vec<f64> {
+pub(in crate::engine) fn auto_edges(x: &[f64]) -> Vec<f64> {
     let Some((lo, hi)) = min_max(x) else {
         return vec![0., 1.];
     };
@@ -93,7 +93,12 @@ fn auto_edges(x: &[f64]) -> Vec<f64> {
     bin_picker(lo, hi, None, 3.5 * var.sqrt() / n.cbrt())
 }
 /// Choose "nice" bin edges covering [xmin, xmax].
-fn bin_picker(xmin: f64, xmax: f64, nbins: Option<usize>, raw_width: f64) -> Vec<f64> {
+pub(in crate::engine) fn bin_picker(
+    xmin: f64,
+    xmax: f64,
+    nbins: Option<usize>,
+    raw_width: f64,
+) -> Vec<f64> {
     let xscale = xmin.abs().max(xmax.abs());
     let xrange = xmax - xmin;
     let raw_width = raw_width.max(eps_of(xscale));
@@ -443,8 +448,14 @@ impl Engine {
         if args.is_empty() {
             return Err("Not enough input arguments.".into());
         }
-        if args.len() > 2 || args.iter().skip(1).any(|a| text_of(a).is_some()) {
-            return Err("histcounts supports histcounts(X), histcounts(X,nbins) and histcounts(X,edges); name-value options are not supported yet".into());
+        if args.len() > 2
+            || args
+                .iter()
+                .skip(1)
+                .any(|a| text_of(a).is_some() || matches!(a, Value::Container(Array::Character(_))))
+        {
+            // Name-value options share histogram's binning rules.
+            return super::super::plots_2d_more::p2_histcounts(self, args, nout);
         }
         let x = real_matrix(&args[0], "histcounts")?;
         let finite: Vec<f64> = x.data().iter().copied().filter(|v| v.is_finite()).collect();
