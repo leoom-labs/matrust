@@ -1,0 +1,1 @@
+var e;function t(t){let n=document.querySelector(`#toast`);n&&(n.textContent=t,clearTimeout(e),e=setTimeout(()=>{n.textContent=``},4e3))}async function n(e,n=`Copied`){try{await navigator.clipboard.writeText(e),t(n)}catch{t(`Clipboard unavailable. Select and copy the text manually.`)}}export{t as n,n as t};
